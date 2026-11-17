@@ -212,16 +212,47 @@ function renderProgress(d) {
   );
 }
 
-async function main() {
-  let data;
-  try {
-    const res = await fetch("data.json", { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    data = await res.json();
-  } catch (err) {
-    $("#meta").textContent = `Không tải được data.json (${err.message}). Dữ liệu được sinh bởi workflow Pages.`;
-    return;
-  }
+// ---------------------------------------------------------------- data access (encrypted)
+// data.enc.json is an AES-256-GCM envelope produced by tools/encrypt_po.py in pages.yml.
+// The key is PBKDF2-SHA256(user + "\n" + password, salt, iter); wrong credentials cannot decrypt.
+const SESSION_KEY = "vnstratlab-po-key";
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const session = {
+  get() { try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null"); } catch (_) { return null; } },
+  set(v) { try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(v)); } catch (_) { /* unavailable */ } },
+  clear() { try { sessionStorage.removeItem(SESSION_KEY); } catch (_) { /* unavailable */ } },
+};
+
+async function deriveKey(user, password, env) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(`${user}\n${password}`), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt: b64(env.salt), iterations: env.iter, hash: "SHA-256" },
+    base, { name: "AES-GCM", length: 256 }, true, ["decrypt"]
+  );
+}
+async function decryptWith(key, env) {
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(env.iv) }, key, b64(env.data));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+const gate = $("#gate"), app = $("#app"), msg = $("#gate-msg"), form = $("#login"), btn = $("#login-btn");
+function say(text, err = false) { msg.textContent = text; msg.classList.toggle("err", err); }
+function busy(on) {
+  btn.disabled = on;
+  btn.replaceChildren(...(on ? [el("span", { class: "spin", "aria-hidden": "true" }), "Đang giải mã…"] : ["Đăng nhập"]));
+}
+
+async function loadEnvelope() {
+  const res = await fetch("data.enc.json", { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function show(data) {
+  gate.hidden = true;
+  app.hidden = false;
   $("#meta").textContent = `Cập nhật ${fmtTime(data.generated_at)} · commit ${data.commit || "—"}`;
   $("#repo-link").href = `https://github.com/${data.repository}`;
   renderKpis(data);
@@ -233,7 +264,70 @@ async function main() {
   renderPulls(data);
   renderRuns(data);
   renderProgress(data);
-  $("#phase-filter").addEventListener("change", () => renderBoard(data));
+  $("#phase-filter").onchange = () => renderBoard(data);
 }
+
+async function main() {
+  if (!window.crypto || !crypto.subtle) {
+    say("Trình duyệt không hỗ trợ WebCrypto (cần HTTPS).", true);
+    form.querySelectorAll("input, button").forEach((x) => { x.disabled = true; });
+    return;
+  }
+  let env;
+  try {
+    env = await loadEnvelope();
+  } catch (err) {
+    say(`Không tải được dữ liệu (${err.message}).`, true);
+    return;
+  }
+  if (!env) {
+    say("Dashboard chưa được cấu hình: thiếu secret VNSTRATLAB_PO_USER / VNSTRATLAB_PO_PASSWORD.", true);
+    form.querySelectorAll("input, button").forEach((x) => { x.disabled = true; });
+    return;
+  }
+
+  // resume the session: the derived key is kept only for this tab and only for this build
+  const saved = session.get();
+  if (saved && saved.salt === env.salt) {
+    try {
+      const key = await crypto.subtle.importKey("raw", b64(saved.key), "AES-GCM", false, ["decrypt"]);
+      show(await decryptWith(key, env));
+      return;
+    } catch (_) { session.clear(); }
+  }
+  $("#user").focus();
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const user = $("#user").value.trim(), pass = $("#pass").value;
+    if (!user || !pass) { say("Nhập tài khoản và mật khẩu.", true); return; }
+    busy(true); say("");
+    try {
+      const key = await deriveKey(user, pass, env);
+      const data = await decryptWith(key, env);
+      session.set({ salt: env.salt, key: toB64(await crypto.subtle.exportKey("raw", key)) });
+      $("#pass").value = "";
+      show(data);
+    } catch (_) {
+      say("Sai tài khoản hoặc mật khẩu.", true);
+      form.classList.remove("shake"); void form.offsetWidth; form.classList.add("shake");
+      $("#pass").select();
+    } finally {
+      busy(false);
+    }
+  });
+}
+
+$("#logout").addEventListener("click", () => {
+  session.clear();
+  location.reload();
+});
+$("#theme").addEventListener("click", () => {
+  const t = document.documentElement.dataset.theme;
+  const dark = t ? t === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const next = dark ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("vnstratlab-theme", next); } catch (_) { /* unavailable */ }
+});
 
 main();
