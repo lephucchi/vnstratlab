@@ -216,7 +216,8 @@ function renderProgress(d) {
 // data.enc.json is an AES-256-GCM envelope produced by tools/encrypt_po.py in pages.yml.
 // The key is PBKDF2-SHA256(user + "\n" + password, salt, iter); wrong credentials cannot decrypt.
 // Both values are NFC-normalised and trimmed, exactly like tools/encrypt_po.py.
-const norm = (s) => s.normalize("NFC").trim();
+// Same set as Python's strip(" \t\r\n"): spaces, tabs, CR and LF at both ends.
+const norm = (s) => s.normalize("NFC").replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "");
 const SESSION_KEY = "vnstratlab-po-key";
 const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -250,7 +251,7 @@ async function loadEnvelope() {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const env = await res.json();
-  if (env.v !== 1 || env.alg !== "AES-256-GCM" || env.kdf !== "PBKDF2-SHA256") {
+  if (env.v !== 1 || env.alg !== "AES-256-GCM" || env.kdf !== "PBKDF2-SHA256" || !(env.iter >= 100000)) {
     throw new Error("định dạng dữ liệu không hỗ trợ");
   }
   return env;
