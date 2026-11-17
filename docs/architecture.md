@@ -1,5 +1,9 @@
 # Architecture
 
+> Full flow from new data to a recommendation: [end-to-end-flow.md](end-to-end-flow.md).
+> Detailed engine spec: [engine.md](engine.md) · strategy catalogue: [strategies.md](strategies.md) ·
+> proposed refinements: [ADR-003](adr/ADR-003-engine-architecture.md).
+
 ## 1. Principles
 
 1. **One engine.** Backtest, lab and paper books run the same code; only the `Executor`
@@ -11,6 +15,9 @@
 4. **User data stays local.** Databases, raw downloads and config live in the app home, never in
    the repository or in CI.
 5. **Swap-able edges.** Data sources, strategies and notifiers are plug-ins behind protocols.
+6. **Pure domain core.** Engine, rules, strategies, risk and feature maths do no I/O; storage,
+   data sources and notifications sit in an infrastructure layer around them
+   ([engine.md §1](engine.md#1-layers), ADR-003 §1).
 
 ## 2. Pipeline
 

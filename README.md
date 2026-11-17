@@ -108,7 +108,10 @@ Details: [docs/configuration.md](docs/configuration.md) · [docs/data-sources.md
 | Doc | For |
 |---|---|
 | [Getting started](docs/getting-started.md) | Users |
+| [End-to-end flow](docs/end-to-end-flow.md) | Everyone |
 | [Architecture](docs/architecture.md) | Contributors |
+| [Engine specification](docs/engine.md) | Contributors |
+| [Strategy catalogue](docs/strategies.md) | Everyone |
 | [Configuration](docs/configuration.md) | Users |
 | [Data sources](docs/data-sources.md) | Users, contributors |
 | [Writing a strategy](docs/writing-strategies.md) | Users, contributors |

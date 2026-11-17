@@ -15,4 +15,9 @@ All notable changes are documented here. The format follows
   benchmark, weekly statistical tests, docs and release workflows.
 - Documentation: workflow, git branching, QA gates, benchmarks, architecture, configuration,
   data sources, writing strategies, roadmap; ADR-001.
+- ADR-005: long horizon decides monthly (accepted); threshold conversions and 12 tranches proposed.
+- ADR-004 (accepted): gated, weighted selection by default; pre-registered rule for `last_winner`.
+- End-to-end flow with a worked example (`docs/end-to-end-flow.md`).
+- Engine specification (`docs/engine.md`), strategy catalogue (`docs/strategies.md`),
+  ADR-003 (proposed engine and architecture refinements).
 - Implementation plan v1.1 (recommend-only, portfolio optimisation as Phase 3).

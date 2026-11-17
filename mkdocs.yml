@@ -39,11 +39,17 @@ nav:
       - Workflow: workflow.md
       - Git branching: git-branching.md
       - QA gates: qa-gates.md
+      - End-to-end flow: end-to-end-flow.md
       - Architecture: architecture.md
+      - Engine specification: engine.md
+      - Strategy catalogue: strategies.md
       - Implementation plan: plan/plan.md
       - Decision records:
           - Index: adr/README.md
           - ADR-001: adr/ADR-001-python-core-recommend-only.md
+          - ADR-003 (proposed): adr/ADR-003-engine-architecture.md
+          - ADR-004: adr/ADR-004-selection-method.md
+          - ADR-005: adr/ADR-005-long-horizon-monthly.md
   - Project:
       - Roadmap: roadmap.md
       - Maintainer setup: maintainers.md

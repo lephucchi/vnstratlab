@@ -22,8 +22,9 @@ the lab's answer is **hold the equal-weight benchmark** (`hold_benchmark`).
 Deflated Sharpe, max drawdown, turnover, hit rate, number of independent decisions, and the
 excess return vs. each benchmark with a bootstrap confidence interval.
 
-The long horizon has few independent decisions (about 2 per year). Reports state that number
-explicitly and avoid significance claims it cannot support.
+The long horizon decides monthly (~96 decisions in 8 years, ADR-005), but its 1-year
+outcomes overlap, leaving only ~8 non-overlapping outcomes (plan §12). Reports state both
+numbers and avoid significance claims they cannot support.
 
 ## 2. Technical benchmarks
 

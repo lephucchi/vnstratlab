@@ -38,6 +38,8 @@ Full example: [`examples/my_strategy.py`](../examples/my_strategy.py).
 
 ## Built-in library (Phase 1)
 
+Full rules, proposed parameters and status: [strategies.md](strategies.md).
+
 | ID | Strategy | Horizons |
 |---|---|---|
 | S00 | Composite score | short |

@@ -123,7 +123,7 @@ This document is research and engineering planning for an open-source project. I
 
 The loop runs inside `vnstratlab serve` (built-in scheduler). Paper books simulate fills at the next open.
 
-Decision days: Short = last trading day of the week; Medium = last trading day of the month (book split into 3–6 tranches, one tranche rebalanced per month); Long = after semi-annual and annual financial report seasons.
+Decision days: Short = last trading day of the week; Medium = last trading day of the month (book split into 3–6 tranches, one tranche rebalanced per month); Long = last trading day of the month, one of 12 tranches (ADR-005; previously after report seasons).
 
 ### 5.2 Repository layout
 
@@ -649,7 +649,7 @@ costs:
 books:
   short:  {capital_vnd: 11000000, decision_day: last_trading_day_of_week}
   medium: {capital_vnd: 11000000, decision_day: last_trading_day_of_month, tranches: 3}
-  long:   {capital_vnd: 11000000, decision_day: after_report_season}
+  long:   {capital_vnd: 11000000, decision_day: last_trading_day_of_month, tranches: 12}   # ADR-005
 
 risk:
   risk_per_position_pct: 0.01

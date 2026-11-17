@@ -16,7 +16,10 @@ selection, and portfolio **recommendations**. vnstratlab never places orders.
 - [Development workflow](workflow.md): roles, gates, task cards, handoff reports
 - [Git branching and releases](git-branching.md)
 - [QA gates](qa-gates.md): CI, code review, release readiness, owner approval
+- [End-to-end flow](end-to-end-flow.md): from new data to a recommendation
 - [Architecture](architecture.md)
+- [Engine specification](engine.md)
+- [Strategy catalogue](strategies.md)
 - [Implementation plan](plan/plan.md)
 - [Decision records](adr/README.md)
 
