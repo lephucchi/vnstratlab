@@ -1,5 +1,8 @@
 # vnstratlab · PO dashboard (branch `po`)
 
+**Live dashboard:** https://lephucchi.github.io/vnstratlab/po/ (login required; credentials are the
+`PO_USERNAME` / `PO_PASSWORD` repository secrets). Intro site: https://lephucchi.github.io/vnstratlab/
+
 Orphan branch: shares no history with the code. Served at `/po/` by `pages.yml` on `develop`.
 
 - `index.html`, `styles.css`, `app.js` — static UI (Vietnamese), no framework, no build step.
