@@ -91,6 +91,7 @@ file. Template: [`.env.example`](../.env.example).
 | `VNSTRATLAB_TELEGRAM_BOT_TOKEN` | Telegram report | Optional |
 | `VNSTRATLAB_TELEGRAM_CHAT_ID` | Telegram report | Optional |
 | `VNSTRATLAB_LLM_API_KEY` | News scoring (Phase 2) | Optional |
+| `VNSTRATLAB_PO_USER`, `VNSTRATLAB_PO_PASSWORD` | PO dashboard login; the Pages build encrypts the dashboard data with them (`tools/encrypt_po.py`) | Pages build only |
 
 Rules: never commit `.env` (it is git-ignored); secrets are held as `SecretStr`, never logged,
 printed or sent to the dashboard; `vnstratlab doctor` shows only *set / not set*.

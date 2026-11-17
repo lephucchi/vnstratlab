@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # Phase 2 news scoring.
     llm_api_key: SecretStr | None = None
 
+    # PO dashboard login (Pages build only): the dashboard data is encrypted with a key
+    # derived from these two values; see tools/encrypt_po.py.
+    po_user: str | None = None
+    po_password: SecretStr | None = None
+
     def secret_status(self) -> dict[str, bool]:
         """Which secrets are configured. Returns booleans only, never values."""
         return {
@@ -47,6 +52,8 @@ class Settings(BaseSettings):
             "telegram_bot_token": self.telegram_bot_token is not None,
             "telegram_chat_id": self.telegram_chat_id is not None,
             "llm_api_key": self.llm_api_key is not None,
+            "po_user": self.po_user is not None,
+            "po_password": self.po_password is not None,
         }
 
 

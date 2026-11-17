@@ -41,6 +41,8 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.10",
     "types-PyYAML",
+    # tools/encrypt_po.py (Pages build): AES-GCM for the PO dashboard data
+    "cryptography>=42",
 ]
 docs = ["mkdocs-material>=9.5"]
 # Data-source extras are added in P1-T03 after the source's licence is reviewed

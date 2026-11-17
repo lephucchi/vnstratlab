@@ -40,13 +40,29 @@ Status checks appear in the list only after the CI workflow has run once on a PR
 
 ## 5. Pages
 
-Settings → Pages → Source: **GitHub Actions**. The `docs.yml` workflow deploys on pushes to `main`.
+Settings → Pages → Build and deployment → Source: **GitHub Actions**. Do this before the first
+push: until Pages is enabled, the `deploy` job of `pages.yml` fails with
+`HttpError: Not Found ... Ensure GitHub Pages has been enabled`.
+
+Settings → Environments → `github-pages` → Deployment branches: allow **`main` and `develop`**.
+`pages.yml` runs from `develop` (pushes and the `site`/`po` dispatches); with only `main`
+allowed, its `deploy` job is rejected by the environment protection rule.
+
+PO dashboard login: Settings → Secrets and variables → Actions → add `VNSTRATLAB_PO_USER` and
+`VNSTRATLAB_PO_PASSWORD` (or `gh secret set VNSTRATLAB_PO_PASSWORD`). The build publishes the
+dashboard data only as `po/data.enc.json`, AES-256-GCM with a PBKDF2 key derived from that
+login; without the secrets nothing is published under `/po/`. Changing the password takes
+effect on the next Pages build.
+
+`pages.yml` is the only workflow that deploys Pages (on pushes to `develop`/`main`, daily, and
+when the orphan `site`/`po` branches change). `docs.yml` only checks that the docs build.
 
 ## 6. Security
 
 - Settings → Code security: enable **private vulnerability reporting**, Dependabot alerts and
   security updates, secret scanning and push protection.
-- No repository secrets are needed for CI.
+- CI needs no repository secrets. The Pages build needs two: `VNSTRATLAB_PO_USER` and
+  `VNSTRATLAB_PO_PASSWORD` (section 5).
 
 ## 7. Labels
 

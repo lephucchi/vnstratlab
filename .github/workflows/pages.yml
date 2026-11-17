@@ -2,7 +2,8 @@
 #   /        intro site      ← orphan branch `site`
 #   /docs/   documentation   ← mkdocs built from `main` (released docs)
 #   /po/     PO dashboard    ← orphan branch `po`
-#   /data/status.json, /po/data.json ← generated here from develop + GitHub API (public facts only)
+#   /data/status.json             ← generated here from develop + GitHub API (public facts only)
+#   /po/data.enc.json             ← PO dashboard data, encrypted with the PO login (secrets)
 # This is the ONLY workflow that deploys Pages. The orphan branches trigger it via workflow_dispatch.
 name: Pages
 
@@ -84,6 +85,16 @@ jobs:
         run: |
           python dev/tools/build_status.py --repo dev --out _site \
             --coverage coverage.json --junit junit.xml --bench bench-data/bench/data.js
+
+      # The PO dashboard data is published only encrypted (tools/encrypt_po.py): the key is
+      # derived from the PO login. Without the two secrets nothing is published under /po/.
+      - name: Encrypt PO dashboard data
+        env:
+          VNSTRATLAB_PO_USER: ${{ secrets.VNSTRATLAB_PO_USER }}
+          VNSTRATLAB_PO_PASSWORD: ${{ secrets.VNSTRATLAB_PO_PASSWORD }}
+        run: |
+          python dev/tools/encrypt_po.py --in _site/po/data.json --out _site/po/data.enc.json
+          test ! -e _site/po/data.json
 
       - uses: actions/upload-pages-artifact@v3
         with:
