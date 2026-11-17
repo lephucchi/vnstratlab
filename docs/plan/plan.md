@@ -51,7 +51,7 @@ This document is research and engineering planning for an open-source project. I
 | D3 | Backend | FastAPI, bound to 127.0.0.1 in Phases 1–2 |
 | D4 | UI | Plain HTML, CSS, JavaScript. No framework, no build step, no chart library (charts are hand-written SVG) |
 | D5 | Notifications | One Telegram bot |
-| D6 | Data source (Phase 1) | `vnstock` (free Community tier), behind an adapter interface so the source can be swapped |
+| D6 | Data source (Phase 1) | ~~`vnstock` (free Community tier)~~ **Superseded by [ADR-006](../adr/ADR-006-synthetic-first.md):** synthetic data first (P1-T36); the external source is chosen later, behind the same adapter interface |
 | D7 | News | **Not used in any signal in Phase 1.** Raw news is collected passively from Phase 1 so that Phase 2 has forward data |
 | D8 | Horizons | Short = 1 week (5 sessions), Medium = 3–6 months, Long = 1 year |
 | D9 | Capital | Three independent paper books, one per horizon, 11,000,000 VND each (section 4) |
@@ -351,7 +351,12 @@ News-based and ML strategies are excluded from the Phase 1 core. Each strategy h
 
 ### M1.1 — Data
 
-**P1-T03 — Source adapter and price ingestion**
+**P1-T36 — DataSource protocol and synthetic market** *(added by ADR-006)*
+- Depends on: P1-T02
+- Goal: the `DataSource` protocol of P1-T03 plus `SyntheticSource`: a deterministic, seeded market for the default universe (daily OHLCV and volume, HOSE price limits and tick sizes, lots, suspensions, corporate-action events, regime changes), written to the same tables real data will use.
+- Acceptance: same seed → byte-identical output; every generated price respects the reference ±limit and the tick grid; corporate-action events are listed with their dates; data is labelled synthetic in tables and reports; no network access.
+
+**P1-T03 — Source adapter and price ingestion** · **blocked on the source decision (ADR-006)**
 - Depends on: P1-T02
 - Goal: `DataSource` protocol with a `VnstockSource` implementation; ingest daily OHLCV for the universe into `prices_daily`, raw responses saved to `data/raw/` as Parquet.
 - Acceptance: backfill from a configurable start date (default 2015-01-01) is idempotent (re-run creates no duplicates); rate limit respected (configurable, default 50 calls/min); network failures retried with backoff and logged; unit tests use recorded fixtures.
@@ -400,7 +405,7 @@ News-based and ML strategies are excluded from the Phase 1 core. Each strategy h
 ### M1.3 — Engine
 
 **P1-T11 — Simulator core (SimExecutor)**
-- Depends on: P1-T02, P1-T06
+- Depends on: P1-T02, P1-T36 (was P1-T06; ADR-006)
 - Goal: event loop that turns target weights into orders and fills.
 - Rules: decision at close of t, fill at open of t+1; no buy fill if open at ceiling, no sell fill if open at floor; sell allowed only from the configured settlement offset; round to lots (odd lots per config with odd-lot slippage); tick rounding for limit prices; fees, sales tax, slippage per Appendix A.
 - Outputs: per-period ideal and executable returns, positions, turnover.
@@ -605,7 +610,7 @@ News-based and ML strategies are excluded from the Phase 1 core. Each strategy h
 
 | Risk / question | Mitigation / owner action |
 | --- | --- |
-| vnstock source changes or breaks | Adapter interface (D6); raw data kept; DQ stops the loop |
+| vnstock source changes or breaks | **Happened 2026-11-10** (ADR-006): synthetic data first; adapter interface; raw data kept; DQ stops the loop |
 | No free foreign-flow data | S06 disabled (P1-T04) |
 | VN30 membership history incomplete | P1-T05 reports gaps; owner supplies announcements |
 | Laptop off at run time | Missed-run detection and backfill (P1-T30); user VPS option |

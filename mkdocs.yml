@@ -50,7 +50,9 @@ nav:
           - ADR-003 (proposed): adr/ADR-003-engine-architecture.md
           - ADR-004: adr/ADR-004-selection-method.md
           - ADR-005: adr/ADR-005-long-horizon-monthly.md
+          - ADR-006: adr/ADR-006-synthetic-first.md
   - Project:
       - Roadmap: roadmap.md
       - Maintainer setup: maintainers.md
       - Progress: reports/progress.md
+      - Data source review (vnstock): reports/data-source-vnstock.md
