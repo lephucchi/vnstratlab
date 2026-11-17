@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vnstratlab</title>
+<meta name="description" content="Phòng lab chiến lược cổ phiếu Việt Nam: backtest đúng luật HOSE, chọn chiến lược bằng kiểm định thống kê, chỉ đưa ra khuyến nghị.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-inner">
+    <a class="brand" href="./">vnstratlab</a>
+    <nav class="links">
+      <a href="#how"><span data-lang="vi">Cách hoạt động</span><span data-lang="en">How it works</span></a>
+      <a href="#strategies"><span data-lang="vi">Chiến lược</span><span data-lang="en">Strategies</span></a>
+      <a href="#status"><span data-lang="vi">Trạng thái</span><span data-lang="en">Status</span></a>
+      <a href="docs/"><span data-lang="vi">Tài liệu</span><span data-lang="en">Docs</span></a>
+      <a href="po/">PO</a>
+      <a href="https://github.com/lephucchi/vnstratlab">GitHub</a>
+      <button id="lang" type="button" aria-label="Switch language">EN</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <p class="eyebrow">Open source · Apache-2.0 · Pre-alpha</p>
+    <h1 data-lang="vi">Phòng lab chiến lược cho cổ phiếu Việt Nam</h1>
+    <h1 data-lang="en">A strategy lab for Vietnamese stocks</h1>
+    <p class="lead" data-lang="vi">Mỗi tối, vnstratlab tải dữ liệu, cho cả thư viện chiến lược "giao dịch lại" quá khứ theo đúng luật sàn HOSE, chỉ giữ những chiến lược vượt qua kiểm định thống kê, rồi đưa ra <strong>khuyến nghị</strong> cho ba khung: 1 tuần, 3–6 tháng, 1 năm.</p>
+    <p class="lead" data-lang="en">Every evening vnstratlab pulls market data, replays a library of strategies through the past under real HOSE rules, keeps only those that survive statistical tests, and turns them into <strong>recommendations</strong> for three horizons: 1 week, 3–6 months, 1 year.</p>
+    <div class="notice" role="note">
+      <strong data-lang="vi">Chỉ khuyến nghị, không bao giờ đặt lệnh.</strong>
+      <strong data-lang="en">Recommend-only. It never places orders.</strong>
+      <span data-lang="vi">Bạn tự quyết định và tự đặt lệnh trên app của công ty chứng khoán. Đây không phải lời khuyên đầu tư.</span>
+      <span data-lang="en">You decide and place orders yourself in your broker's app. This is not investment advice.</span>
+    </div>
+  </section>
+
+  <section class="wrap grid3" aria-label="Highlights">
+    <article class="card">
+      <h3 data-lang="vi">Đúng luật sàn HOSE</h3><h3 data-lang="en">HOSE rules built in</h3>
+      <p data-lang="vi">Thanh toán T+, trần/sàn ±7%, lô chẵn 100 và lô lẻ, bước giá, phí, thuế bán 0,1%, trượt giá. Mua không khớp khi mở cửa đã ở trần.</p>
+      <p data-lang="en">T+ settlement, ±7% ceiling/floor, round and odd lots, tick sizes, fees, 0.1% sales tax, slippage. No buy fill on a ceiling open.</p>
+    </article>
+    <article class="card">
+      <h3 data-lang="vi">Không chọn "backtest đẹp nhất"</h3><h3 data-lang="en">No "best backtest" picking</h3>
+      <p data-lang="vi">Mọi bộ tham số được đăng ký trước khi chạy. Chiến lược phải qua Deflated Sharpe, PBO, kiểm định SPA và Model Confidence Set.</p>
+      <p data-lang="en">Every parameter set is registered before it runs. Strategies must pass Deflated Sharpe, PBO, the SPA test and a Model Confidence Set.</p>
+    </article>
+    <article class="card">
+      <h3 data-lang="vi">Kiểm tra thực tế trước phát hành</h3><h3 data-lang="en">Realism before release</h3>
+      <p data-lang="vi">Phí ×2/×3, khớp trễ, giới hạn thanh khoản, nhiễu tham số, các giai đoạn thị trường, đối chiếu chéo với engine khác.</p>
+      <p data-lang="en">Costs ×2/×3, delayed fills, liquidity caps, parameter noise, market regimes, cross-checks against other engines.</p>
+    </article>
+  </section>
+
+  <section id="how" class="wrap section">
+    <h2 data-lang="vi">Cách hoạt động</h2><h2 data-lang="en">How it works</h2>
+    <ol class="flow">
+      <li><span class="step">A</span><div><strong data-lang="vi">Pipeline dữ liệu</strong><strong data-lang="en">Data pipeline</strong>
+        <p data-lang="vi">Tải phiên mới → kiểm tra chất lượng → cổ tức và giá điều chỉnh → BCTC theo ngày công bố → chỉ báo.</p>
+        <p data-lang="en">Ingest the new session → data-quality checks → corporate actions and adjusted prices → fundamentals by publish date → features.</p></div></li>
+      <li><span class="step">B</span><div><strong data-lang="vi">Backtest "cỗ máy thời gian"</strong><strong data-lang="en">"Time machine" backtest</strong>
+        <p data-lang="vi">Với mỗi kỳ trong quá khứ, dữ liệu bị khóa tại ngày quyết định; lệnh khớp ở giá mở cửa phiên sau, theo luật sàn. Lặp lại cho mọi chiến lược, mọi kỳ từ 2016.</p>
+        <p data-lang="en">For each past period, data is locked at the decision date; orders fill at the next open under exchange rules. Repeated for every strategy and every period since 2016.</p></div></li>
+      <li><span class="step">C</span><div><strong data-lang="vi">Chọn chiến lược</strong><strong data-lang="en">Strategy selection</strong>
+        <p data-lang="vi">Cổng 1 (DSR, PBO) → Cổng 2 (thắng danh mục chia đều?) → MCS → trọng số. Không ai qua cổng thì giữ danh mục chia đều.</p>
+        <p data-lang="en">Gate 1 (DSR, PBO) → gate 2 (beats equal weight?) → MCS → weights. If nothing passes, hold the equal-weight benchmark.</p></div></li>
+      <li><span class="step">D</span><div><strong data-lang="vi">Khuyến nghị</strong><strong data-lang="en">Recommendation</strong>
+        <p data-lang="vi">Gộp chiến lược → quản trị rủi ro → số lượng theo lô, vùng mua, dừng lỗ, bằng chứng. Bạn đọc và tự quyết.</p>
+        <p data-lang="en">Combine strategies → risk layer → lot quantities, entry zone, stop, evidence. You read it and decide.</p></div></li>
+    </ol>
+    <p class="muted"><a href="docs/end-to-end-flow/" data-lang="vi">Đọc luồng end-to-end chi tiết →</a><a href="docs/end-to-end-flow/" data-lang="en">Read the full end-to-end flow →</a></p>
+  </section>
+
+  <section id="strategies" class="wrap section">
+    <h2 data-lang="vi">Thư viện chiến lược (Phase 1)</h2><h2 data-lang="en">Strategy library (Phase 1)</h2>
+    <div class="grid3">
+      <article class="card">
+        <h3 data-lang="vi">Ngắn hạn · 1 tuần</h3><h3 data-lang="en">Short · 1 week</h3>
+        <ul class="tags"><li>S00 Composite</li><li>S01 Weekly reversal</li><li>S02 Breakout 20d</li><li>S03 Oversold in uptrend</li><li>S04 Bank pairs</li><li>S05 Residual reversion</li><li>S06 Foreign flow*</li><li>S17 Equal weight</li></ul>
+      </article>
+      <article class="card">
+        <h3 data-lang="vi">Trung hạn · 3–6 tháng</h3><h3 data-lang="en">Medium · 3–6 months</h3>
+        <ul class="tags"><li>S08 Momentum</li><li>S09 Reversal</li><li>S10 P/B vs ROE</li><li>S11 E/P</li><li>S12 Asset quality</li><li>S13 Value+momentum</li><li>S14 Low volatility</li><li>S15 Sector trend</li><li>S17 Equal weight</li></ul>
+      </article>
+      <article class="card">
+        <h3 data-lang="vi">Dài hạn · 1 năm</h3><h3 data-lang="en">Long · 1 year</h3>
+        <ul class="tags"><li>S10 P/B vs ROE</li><li>S11 E/P</li><li>S12 Asset quality</li><li>S17 Equal weight</li><li>S18 HRP</li></ul>
+      </article>
+    </div>
+    <p class="muted small" data-lang="vi">* S06 chờ nguồn dữ liệu khối ngoại miễn phí. Mặc định: 13 mã ngân hàng trong VN30; có thể cấu hình danh sách khác.</p>
+    <p class="muted small" data-lang="en">* S06 waits for a free foreign-flow data source. Default universe: the 13 VN30 banks; configurable.</p>
+  </section>
+
+  <section id="status" class="wrap section">
+    <h2 data-lang="vi">Trạng thái dự án</h2><h2 data-lang="en">Project status</h2>
+    <p class="muted small" data-lang="vi">Số liệu đo tự động từ CI trên nhánh develop. Phần demo sẽ xuất hiện khi lệnh <code>vnstratlab demo</code> sẵn sàng.</p>
+    <p class="muted small" data-lang="en">Measured automatically by CI on develop. A demo will appear once <code>vnstratlab demo</code> is ready.</p>
+    <div class="kpis" id="kpis"><div class="kpi"><div class="label">…</div></div></div>
+    <div id="bench"></div>
+    <p class="muted small" id="status-meta"></p>
+  </section>
+
+  <section class="wrap section">
+    <h2 data-lang="vi">Lộ trình</h2><h2 data-lang="en">Roadmap</h2>
+    <table class="table">
+      <tbody>
+        <tr><td>v0.1</td><td data-lang="vi">Dữ liệu, bộ mô phỏng luật HOSE, chiến lược đầu tiên, backtest, demo offline</td><td data-lang="en">Data, HOSE simulator, first strategies, backtest, offline demo</td></tr>
+        <tr><td>v0.2</td><td data-lang="vi">Lab thống kê: DSR, PBO, SPA, MCS, meta-backtest, stress test</td><td data-lang="en">Statistical lab: DSR, PBO, SPA, MCS, meta-backtest, stress tests</td></tr>
+        <tr><td>v0.3</td><td data-lang="vi">Danh mục giả lập, dashboard, lịch chạy mỗi tối, Telegram</td><td data-lang="en">Paper books, dashboard, nightly scheduler, Telegram</td></tr>
+        <tr><td>v0.4</td><td data-lang="vi">Tin tức và chấm điểm bằng LLM (kiểm định đăng ký trước)</td><td data-lang="en">News and LLM scoring (pre-registered evaluation)</td></tr>
+        <tr><td>v0.5+</td><td data-lang="vi">Tối ưu danh mục có tính lô</td><td data-lang="en">Lot-aware portfolio optimisation</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="wrap section">
+    <h2 data-lang="vi">Cài đặt</h2><h2 data-lang="en">Install</h2>
+    <pre><code>git clone https://github.com/lephucchi/vnstratlab.git
+cd vnstratlab
+python -m venv .venv
+pip install -e ".[dev]"
+vnstratlab doctor</code></pre>
+    <p class="muted small" data-lang="vi">Khi phát hành: <code>uv tool install vnstratlab</code> hoặc <code>pipx install vnstratlab</code>.</p>
+    <p class="muted small" data-lang="en">Once released: <code>uv tool install vnstratlab</code> or <code>pipx install vnstratlab</code>.</p>
+  </section>
+</main>
+
+<footer class="wrap foot muted small">
+  <p data-lang="vi">Phần mềm nghiên cứu, không phải lời khuyên đầu tư. Dữ liệu thị trường do bạn tự tải và thuộc điều khoản của nhà cung cấp. <a href="https://github.com/lephucchi/vnstratlab/blob/main/DISCLAIMER.md">Tuyên bố miễn trừ</a> · Apache-2.0</p>
+  <p data-lang="en">Research software, not investment advice. Market data is downloaded by you and subject to its provider's terms. <a href="https://github.com/lephucchi/vnstratlab/blob/main/DISCLAIMER.md">Disclaimer</a> · Apache-2.0</p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
