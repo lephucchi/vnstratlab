@@ -12,6 +12,7 @@ const langBtn = document.getElementById("lang");
 function setLang(lang) {
   root.lang = lang;
   langBtn.textContent = lang === "vi" ? "EN" : "VI";
+  langBtn.setAttribute("aria-label", lang === "vi" ? "English" : "Tiếng Việt");
   store.set("vnstratlab-lang", lang);
 }
 setLang(store.get("vnstratlab-lang") || "vi");
@@ -22,10 +23,25 @@ function isDark() {
   const t = root.dataset.theme;
   return t ? t === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
-document.getElementById("theme").addEventListener("click", () => {
-  const next = isDark() ? "light" : "dark";
-  root.dataset.theme = next;
-  store.set("vnstratlab-theme", next);
+const themeBtn = document.getElementById("theme");
+const syncTheme = () => { themeBtn.setAttribute("aria-pressed", String(isDark())); window.dispatchEvent(new Event("themechange")); };
+themeBtn.addEventListener("click", () => {
+  root.dataset.theme = isDark() ? "light" : "dark";
+  store.set("vnstratlab-theme", root.dataset.theme);
+  syncTheme();
+});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncTheme);
+themeBtn.setAttribute("aria-pressed", String(isDark()));
+
+// ---------------------------------------------------------------- mobile menu
+const menuBtn = document.getElementById("menu"), mobileNav = document.getElementById("mobile-nav");
+menuBtn.addEventListener("click", () => {
+  const open = mobileNav.hidden;
+  mobileNav.hidden = !open;
+  menuBtn.setAttribute("aria-expanded", String(open));
+});
+mobileNav.addEventListener("click", (e) => {
+  if (e.target.closest("a")) { mobileNav.hidden = true; menuBtn.setAttribute("aria-expanded", "false"); }
 });
 
 // ---------------------------------------------------------------- background: breathing dot grid
@@ -34,6 +50,8 @@ document.getElementById("theme").addEventListener("click", () => {
   const ctx = canvas.getContext("2d");
   const GAP = 26;
   let w = 0, h = 0, dpr = 1, mx = -1e4, my = -1e4, raf = 0, t0 = performance.now();
+  let rgb = "10,10,10"; // cached; refreshed on theme change, not every frame
+  const readColor = () => { rgb = getComputedStyle(root).getPropertyValue("--dot").trim() || "10,10,10"; if (reduceMotion) draw(0); };
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -43,7 +61,6 @@ document.getElementById("theme").addEventListener("click", () => {
     if (reduceMotion) draw(0);
   }
   function draw(t) {
-    const rgb = getComputedStyle(root).getPropertyValue("--dot").trim() || "10,10,10";
     ctx.clearRect(0, 0, w, h);
     const sy = window.scrollY * 0.15;
     for (let y = -(sy % GAP); y < h + GAP; y += GAP) {
@@ -63,6 +80,8 @@ document.getElementById("theme").addEventListener("click", () => {
   window.addEventListener("resize", resize);
   window.addEventListener("pointermove", (e) => { mx = e.clientX; my = e.clientY; }, { passive: true });
   document.addEventListener("pointerleave", () => { mx = my = -1e4; });
+  window.addEventListener("themechange", readColor);
+  readColor();
   resize();
   if (!reduceMotion) {
     raf = requestAnimationFrame(loop);
@@ -75,10 +94,11 @@ document.getElementById("theme").addEventListener("click", () => {
   }
 })();
 
-// ---------------------------------------------------------------- terminal (real commands, real output)
+// ---------------------------------------------------------------- terminal (real commands, excerpt of real output)
 const SCRIPT = [
   ["p", "git clone https://github.com/lephucchi/vnstratlab.git && cd vnstratlab"],
   ["o", "Cloning into 'vnstratlab'... done."],
+  ["p", "python -m venv .venv && source .venv/bin/activate"],
   ["p", 'pip install -e ".[dev]"'],
   ["o", "Successfully installed vnstratlab-0.0.1"],
   ["p", "vnstratlab doctor"],
@@ -147,10 +167,21 @@ io.observe(document.getElementById("term"));
 
 // ---------------------------------------------------------------- strategy tabs
 const tabs = document.querySelectorAll('[role="tab"]');
-tabs.forEach((tab) => tab.addEventListener("click", () => {
-  tabs.forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
+function selectTab(tab, focus = false) {
+  tabs.forEach((t) => { const on = t === tab; t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1; });
   document.querySelectorAll("[data-panel]").forEach((p) => { p.hidden = p.dataset.panel !== tab.dataset.tab; });
-}));
+  if (focus) tab.focus();
+}
+tabs.forEach((tab, i) => {
+  tab.addEventListener("click", () => selectTab(tab));
+  tab.addEventListener("keydown", (e) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    let next = step ? tabs[(i + step + tabs.length) % tabs.length] : null;
+    if (e.key === "Home") next = tabs[0];
+    if (e.key === "End") next = tabs[tabs.length - 1];
+    if (next) { e.preventDefault(); selectTab(next, true); }
+  });
+});
 
 // ---------------------------------------------------------------- copy buttons
 async function copy(text, btn) {
