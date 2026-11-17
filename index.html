@@ -46,11 +46,10 @@
     </a>
     <nav class="links" aria-label="Main">
       <a href="#how"><span data-lang="vi">Cách hoạt động</span><span data-lang="en">How it works</span></a>
-      <a href="#workflow"><span data-lang="vi">Quy trình</span><span data-lang="en">Workflow</span></a>
+      <a href="#selection"><span data-lang="vi">Chọn chiến lược</span><span data-lang="en">Selection</span></a>
       <a href="#strategies"><span data-lang="vi">Chiến lược</span><span data-lang="en">Strategies</span></a>
       <a href="#status"><span data-lang="vi">Trạng thái</span><span data-lang="en">Status</span></a>
       <a href="docs/"><span data-lang="vi">Tài liệu</span><span data-lang="en">Docs</span></a>
-      <a href="po/">PO</a>
     </nav>
     <div class="nav-actions">
       <button id="menu" class="icon-btn menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mobile-nav">
@@ -68,11 +67,10 @@
   </div>
   <nav class="mobile-nav wrap" id="mobile-nav" aria-label="Main (mobile)" hidden>
       <a href="#how"><span data-lang="vi">Cách hoạt động</span><span data-lang="en">How it works</span></a>
-      <a href="#workflow"><span data-lang="vi">Quy trình</span><span data-lang="en">Workflow</span></a>
+      <a href="#selection"><span data-lang="vi">Chọn chiến lược</span><span data-lang="en">Selection</span></a>
       <a href="#strategies"><span data-lang="vi">Chiến lược</span><span data-lang="en">Strategies</span></a>
       <a href="#status"><span data-lang="vi">Trạng thái</span><span data-lang="en">Status</span></a>
       <a href="docs/"><span data-lang="vi">Tài liệu</span><span data-lang="en">Docs</span></a>
-      <a href="po/">PO</a>
     </nav>
 </header>
 
@@ -157,43 +155,45 @@
     <div class="sec-head">
       <p class="kicker mono">02 — <span data-lang="vi">Cách hoạt động</span><span data-lang="en">How it works</span></p>
       <h2 data-lang="vi">Một vòng lặp mỗi tối giao dịch.</h2>
-      <p class="tag-plan mono" data-lang="vi">thiết kế · đang xây dựng (v0.1–v0.3)</p>
       <h2 data-lang="en">One loop, every trading evening.</h2>
+      <p class="tag-plan mono" data-lang="vi">thiết kế · đang xây dựng (v0.1–v0.3)</p>
       <p class="tag-plan mono" data-lang="en">design · under construction (v0.1–v0.3)</p>
-      <p class="sub" data-lang="vi">Bước bắt buộc nào lỗi thì vòng lặp dừng, khuyến nghị hôm qua vẫn là bản mới nhất, và bạn nhận cảnh báo. Phần tùy chọn (tin tức, thông báo) không bao giờ làm dừng vòng lặp.</p>
-      <p class="sub" data-lang="en">If a required step fails the loop stops, yesterday's recommendation stays the latest, and you get an alert. Optional parts (news, notifications) never stop it.</p>
+      <p class="sub" data-lang="vi">Sau giờ đóng cửa, bốn bước chạy nối tiếp trên máy của bạn. Bước bắt buộc nào lỗi thì vòng lặp dừng, khuyến nghị hôm qua vẫn là bản mới nhất và bạn nhận cảnh báo. Phần tùy chọn (tin tức, thông báo) không bao giờ làm dừng vòng lặp.</p>
+      <p class="sub" data-lang="en">After the close, four steps run in sequence on your machine. If a required step fails the loop stops, yesterday's recommendation stays the latest and you get an alert. Optional parts (news, notifications) never stop it.</p>
     </div>
 
     <div class="pipe">
       <div class="node">
         <span class="node-id mono">A</span>
-        <h3 data-lang="vi">Pipeline dữ liệu</h3><h3 data-lang="en">Data pipeline</h3>
-        <ul class="steps mono"><li>ingest</li><li>dq checks</li><li>corporate actions</li><li>fundamentals @ published_at</li><li>features (point-in-time)</li></ul>
+        <h3 data-lang="vi">Dữ liệu</h3><h3 data-lang="en">Data</h3>
+        <p class="what" data-lang="vi">Tải phiên mới, kiểm tra lỗi, điều chỉnh giá theo cổ tức và chia tách, rồi tính chỉ báo. Chỉ dùng thông tin đã công bố tại thời điểm đó.</p>
+        <p class="what" data-lang="en">Fetch the new session, check it for errors, adjust prices for dividends and splits, then compute features. Only information already published at that time is used.</p>
+        <ul class="steps mono"><li>ingest → dq checks</li><li>corporate actions</li><li>fundamentals @ published_at</li><li>features (point-in-time)</li></ul>
       </div>
       <div class="link" aria-hidden="true"><i></i></div>
       <div class="node">
         <span class="node-id mono">B</span>
-        <h3 data-lang="vi">Lab backtest</h3><h3 data-lang="en">Backtest lab</h3>
-        <ul class="steps mono"><li>every registered trial</li><li>data locked at decision date</li><li>fill at next open</li><li>append OOS returns</li></ul>
+        <h3 data-lang="vi">Giao dịch lại quá khứ</h3><h3 data-lang="en">Replay the past</h3>
+        <p class="what" data-lang="vi">Mỗi chiến lược được cho "sống lại" từng kỳ từ 2016: chỉ thấy dữ liệu đến ngày quyết định, khớp lệnh ở giá mở cửa phiên sau, chịu phí, thuế, lô và giá trần/sàn.</p>
+        <p class="what" data-lang="en">Each strategy re-lives every period since 2016: it sees data only up to the decision date, fills at the next open, and pays fees, tax, lots and price limits.</p>
+        <ul class="steps mono"><li>every registered trial</li><li>data locked at decision date</li><li>HOSE rules + costs</li><li>OOS returns per period</li></ul>
       </div>
       <div class="link" aria-hidden="true"><i></i></div>
-      <div class="node">
+      <div class="node node-key">
         <span class="node-id mono">C</span>
         <h3 data-lang="vi">Chọn chiến lược</h3><h3 data-lang="en">Selection</h3>
-        <ol class="gates mono">
-          <li><b>gate 1</b> DSR · PBO</li>
-          <li><b>gate 2</b> SPA vs EW</li>
-          <li><b>MCS</b></li>
-          <li><b>Hedge</b> weights, shrunk to EW</li>
-        </ol>
-        <p class="fallback mono" data-lang="vi">không ai qua → hold_benchmark (chia đều)</p>
-        <p class="fallback mono" data-lang="en">none pass → hold_benchmark (equal weight)</p>
+        <p class="what" data-lang="vi">Giữ lại những chiến lược có lợi thế thật, không phải may mắn, và quyết định tin mỗi cái bao nhiêu.</p>
+        <p class="what" data-lang="en">Keep only strategies with a real edge, not luck, and decide how much to trust each one.</p>
+        <ol class="gates mono"><li><b>gate 1</b> DSR · PBO</li><li><b>gate 2</b> SPA vs EW</li><li><b>MCS</b> → weights</li></ol>
+        <a class="node-more" href="#selection"><span data-lang="vi">Giải thích bên dưới ↓</span><span data-lang="en">Explained below ↓</span></a>
       </div>
       <div class="link" aria-hidden="true"><i></i></div>
       <div class="node">
         <span class="node-id mono">D</span>
         <h3 data-lang="vi">Khuyến nghị</h3><h3 data-lang="en">Recommendation</h3>
-        <ul class="steps mono"><li>combine + risk layer</li><li>lot-aware quantities</li><li>entry zone · stop · evidence</li><li>append-only journal</li></ul>
+        <p class="what" data-lang="vi">Gộp các chiến lược được chọn thành một danh mục, áp giới hạn rủi ro, tính số lượng theo lô, vùng mua, dừng lỗ và bằng chứng.</p>
+        <p class="what" data-lang="en">Blend the selected strategies into one portfolio, apply risk limits, and size lots, entry zone, stop and evidence.</p>
+        <ul class="steps mono"><li>combine + risk layer</li><li>lot-aware quantities</li><li>append-only journal</li></ul>
       </div>
       <div class="wall">
         <span class="mono" data-lang="vi">ranh giới · không đặt lệnh · không kết nối broker</span>
@@ -209,77 +209,65 @@
     <p class="more"><a href="docs/end-to-end-flow/"><span data-lang="vi">Luồng end-to-end chi tiết</span><span data-lang="en">Full end-to-end flow</span> →</a></p>
   </section>
 
-  <!-- GIT WORKFLOW -->
-  <section class="wrap section" id="workflow">
+  <!-- SELECTION -->
+  <section class="wrap section" id="selection">
     <div class="sec-head">
-      <p class="kicker mono">03 — <span data-lang="vi">Quy trình</span><span data-lang="en">Workflow</span></p>
-      <h2 data-lang="vi">Mỗi thay đổi đi qua bốn cổng.</h2>
-      <h2 data-lang="en">Every change passes four gates.</h2>
-      <p class="sub" data-lang="vi">Git Flow rút gọn: một card là một nhánh <code>feat/*</code>, merge vào <code>develop</code> sau CI và review; phát hành qua <code>release/*</code> và chủ dự án duyệt.</p>
-      <p class="sub" data-lang="en">Reduced Git Flow: one card is one <code>feat/*</code> branch, merged into <code>develop</code> after CI and review; releases go through <code>release/*</code> and owner approval.</p>
+      <p class="kicker mono">03 — <span data-lang="vi">Chọn chiến lược</span><span data-lang="en">Selection</span></p>
+      <h2 data-lang="vi">Tách lợi thế thật khỏi may mắn.</h2>
+      <h2 data-lang="en">Separating real edge from luck.</h2>
+      <p class="sub" data-lang="vi">Thử đủ nhiều chiến lược thì gần như chắc chắn sẽ có một cái trông rất đẹp trên quá khứ, chỉ nhờ may mắn. Bước này trả lời hai câu hỏi: chiến lược nào thật sự tốt hơn việc đơn giản mua đều tất cả các mã, và nên tin mỗi chiến lược bao nhiêu?</p>
+      <p class="sub" data-lang="en">Try enough strategies and one will almost surely look great on the past, by luck alone. This step answers two questions: which strategies truly beat simply buying every stock equally, and how much should each be trusted?</p>
     </div>
-    <div class="graph-wrap">
-      <svg class="graph" id="graph" viewBox="0 0 960 330" role="img" aria-labelledby="graph-t">
-        <title id="graph-t">Git branching: feat branches merge into develop after G1 CI and G2 review; release branch passes G3; main is tagged after G4 owner approval. Orphan branches site, po and bench-data are never merged.</title>
-        <g class="lanes mono">
-          <text x="0" y="44">main</text>
-          <text x="0" y="104">release/*</text>
-          <text x="0" y="164">develop</text>
-          <text x="0" y="224">feat/*</text>
-          <text x="0" y="300" class="faint">site · po · bench-data</text>
-        </g>
-        <!-- lane lines -->
-        <path class="ln" d="M110 40H940"/>
-        <path class="ln ln-strong" d="M110 160H940"/>
-        <path class="ln ln-dash" d="M170 296H940"/>
-        <!-- feat branches -->
-        <path class="br" d="M150 160C175 160 175 220 200 220H260C285 220 285 160 310 160"/>
-        <path class="br" d="M330 160C355 160 355 220 380 220H440C465 220 465 160 490 160"/>
-        <!-- release -->
-        <path class="br" d="M540 160C565 160 565 100 590 100H700C725 100 725 40 750 40"/>
-        <path class="br" d="M700 100C725 100 725 160 750 160"/>
-        <!-- hotfix back-merge omitted for clarity -->
-        <!-- flowing pulse on develop -->
-        <path class="pulse" d="M110 160H940"/>
-        <!-- commits -->
-        <g class="commits">
-          <circle cx="130" cy="40" r="6" class="c tag" style="--d:0"/>
-          <circle cx="150" cy="160" r="5" class="c" style="--d:1"/>
-          <circle cx="215" cy="220" r="5" class="c" style="--d:2"/>
-          <circle cx="250" cy="220" r="5" class="c" style="--d:3"/>
-          <circle cx="310" cy="160" r="6" class="c merge" style="--d:4"/>
-          <circle cx="395" cy="220" r="5" class="c" style="--d:5"/>
-          <circle cx="430" cy="220" r="5" class="c" style="--d:6"/>
-          <circle cx="490" cy="160" r="6" class="c merge" style="--d:7"/>
-          <circle cx="600" cy="100" r="5" class="c" style="--d:8"/>
-          <circle cx="650" cy="100" r="5" class="c" style="--d:9"/>
-          <circle cx="750" cy="40" r="7" class="c tag" style="--d:10"/>
-          <circle cx="750" cy="160" r="6" class="c merge" style="--d:11"/>
-          <circle cx="860" cy="160" r="5" class="c" style="--d:12"/>
-          <circle cx="230" cy="296" r="4" class="c hollow" style="--d:3"/>
-          <circle cx="520" cy="296" r="4" class="c hollow" style="--d:7"/>
-          <circle cx="820" cy="296" r="4" class="c hollow" style="--d:11"/>
-        </g>
-        <!-- gates -->
-        <g class="gates-lbl mono">
-          <g transform="translate(235 250)"><rect x="-26" y="-11" width="52" height="22" rx="11"/><text>G1 CI</text></g>
-          <g transform="translate(415 250)"><rect x="-32" y="-11" width="64" height="22" rx="11"/><text>G2 review</text></g>
-          <g transform="translate(625 72)"><rect x="-38" y="-11" width="76" height="22" rx="11"/><text>G3 readiness</text></g>
-          <g transform="translate(750 12)"><rect x="-34" y="-11" width="68" height="22" rx="11"/><text>G4 owner</text></g>
-        </g>
-        <g class="tags mono">
-          <text x="130" y="66">vX.Y.Z</text>
-          <text x="750" y="68">vX.Y+1.0</text>
-          <text x="940" y="320" text-anchor="end" class="faint">orphan · never merged · tags illustrative</text>
-        </g>
-      </svg>
+
+    <ol class="funnel">
+      <li style="--w:100%">
+        <div class="f-bar"><span class="mono">14</span></div>
+        <div class="f-text">
+          <h3 data-lang="vi">Ứng viên</h3><h3 data-lang="en">Candidates</h3>
+          <p data-lang="vi">Mỗi bộ tham số của mỗi chiến lược là một <b>trial</b>, được đăng ký <b>trước</b> khi chạy và không được sửa. Tất cả đều được đếm, kể cả những cái thất bại.</p>
+          <p data-lang="en">Every parameter set of every strategy is a <b>trial</b>, registered <b>before</b> it runs and never edited. All of them are counted, failures included.</p>
+        </div>
+      </li>
+      <li style="--w:42%">
+        <div class="f-bar"><span class="mono">4</span></div>
+        <div class="f-text">
+          <h3><span data-lang="vi">Cổng 1 · Lợi thế có thật không?</span><span data-lang="en">Gate 1 · Is the edge real?</span></h3>
+          <p data-lang="vi"><b>Deflated Sharpe</b> phạt việc đã thử nhiều lần: thử càng nhiều, ngưỡng càng cao. <b>PBO</b> đo xác suất chiến lược tốt nhất trên quá khứ lại kém trên dữ liệu chưa thấy. Cần đủ số kỳ dữ liệu tối thiểu.</p>
+          <p data-lang="en"><b>Deflated Sharpe</b> penalises having tried many times: the more trials, the higher the bar. <b>PBO</b> measures the chance that the in-sample winner does badly on unseen data. A minimum number of periods is required.</p>
+        </div>
+      </li>
+      <li style="--w:42%">
+        <div class="f-bar"><span class="mono">p 0.06</span></div>
+        <div class="f-text">
+          <h3><span data-lang="vi">Cổng 2 · Có thắng chia đều không?</span><span data-lang="en">Gate 2 · Does it beat equal weight?</span></h3>
+          <p data-lang="vi">Kiểm định <b>SPA</b> của Hansen so nhóm còn lại với danh mục mua đều tất cả các mã (S17) trên giai đoạn gần nhất. Không thắng rõ ràng thì dừng ở đây.</p>
+          <p data-lang="en">Hansen's <b>SPA</b> test compares the survivors with buying every stock equally (S17) over the recent window. No clear win, stop here.</p>
+        </div>
+      </li>
+      <li style="--w:32%">
+        <div class="f-bar"><span class="mono">3</span></div>
+        <div class="f-text">
+          <h3><span data-lang="vi">MCS · Cái nào thật sự tốt nhất?</span><span data-lang="en">MCS · Which are truly best?</span></h3>
+          <p data-lang="vi"><b>Model Confidence Set</b> giữ lại tập chiến lược không phân biệt được với cái tốt nhất về mặt thống kê, thay vì chọn một "người thắng" có thể chỉ hên.</p>
+          <p data-lang="en">The <b>Model Confidence Set</b> keeps every strategy statistically indistinguishable from the best, instead of crowning one winner that may just be lucky.</p>
+        </div>
+      </li>
+      <li style="--w:32%">
+        <div class="f-bar f-split"><span style="--p:40%"></span><span style="--p:33%"></span><span style="--p:27%"></span></div>
+        <div class="f-text">
+          <h3><span data-lang="vi">Trọng số · Tin mỗi cái bao nhiêu?</span><span data-lang="en">Weights · How much to trust each?</span></h3>
+          <p data-lang="vi">Chiến lược tốt hơn được tỷ trọng cao hơn (Hedge), nhưng bị kéo một phần về chia đều và có trần mỗi chiến lược, để không dồn hết vào một cái.</p>
+          <p data-lang="en">Better strategies get more weight (Hedge), but weights are pulled partly back toward equal and capped per strategy, so nothing gets everything.</p>
+        </div>
+      </li>
+    </ol>
+    <div class="fallback-box">
+      <span class="mono">hold_benchmark</span>
+      <p data-lang="vi">Nếu ở bất kỳ cổng nào không còn ai, khuyến nghị đơn giản là <b>giữ danh mục chia đều</b>. Đây là kết quả bình thường và trung thực, không phải lỗi.</p>
+      <p data-lang="en">If nothing survives any gate, the recommendation is simply to <b>hold the equal-weight portfolio</b>. That is a normal, honest outcome, not an error.</p>
     </div>
-    <div class="gate-grid">
-      <div><span class="mono g">G1</span><p data-lang="vi">CI tự động: ruff, mypy strict, pytest 3 OS × 3 phiên bản Python, coverage ≥ 80%, guardrails, gitleaks.</p><p data-lang="en">Automated CI: ruff, strict mypy, pytest on 3 OS × 3 Pythons, coverage ≥ 80%, guardrails, gitleaks.</p></div>
-      <div><span class="mono g">G2</span><p data-lang="vi">Review độc lập theo task card và checklist, không dựa trên bản tóm tắt của người viết code.</p><p data-lang="en">Independent review against the task card and checklist, not the author's summary.</p></div>
-      <div><span class="mono g">G3</span><p data-lang="vi">Sẵn sàng phát hành: benchmark đầu tư, đối chiếu engine, stress test thực tế, so sánh sản phẩm.</p><p data-lang="en">Release readiness: investment benchmarks, cross-engine check, realism stress tests, product comparison.</p></div>
-      <div><span class="mono g">G4</span><p data-lang="vi">Chủ dự án đọc báo cáo và duyệt. Chỉ khi đó mới merge vào <code>main</code> và gắn tag.</p><p data-lang="en">The owner reads the report and approves. Only then is <code>main</code> merged and tagged.</p></div>
-    </div>
+    <p class="note" data-lang="vi">Số liệu trên là <b>ví dụ minh họa</b> (14 trial ngắn hạn), không phải kết quả thật. Vì sao không chọn luôn chiến lược tốt nhất kỳ trước? Người thắng của một giai đoạn thường là nhờ may mắn; chỉ chuyển sang cách đó nếu một kiểm định đăng ký trước chứng minh nó tốt hơn (<a href="https://github.com/lephucchi/vnstratlab/blob/develop/docs/adr/ADR-004-selection-method.md">ADR-004</a>).</p>
+    <p class="note" data-lang="en">The numbers above are an <b>illustrative example</b> (14 short-horizon trials), not real results. Why not just pick last period's best? A single period's winner is often luck; switching to that rule requires a pre-registered test to prove it better (<a href="https://github.com/lephucchi/vnstratlab/blob/develop/docs/adr/ADR-004-selection-method.md">ADR-004</a>).</p>
   </section>
 
   <!-- STRATEGIES -->
@@ -288,6 +276,8 @@
       <p class="kicker mono">04 — <span data-lang="vi">Chiến lược</span><span data-lang="en">Strategies</span></p>
       <h2 data-lang="vi">Thư viện Phase 1, theo ba khung thời gian.</h2>
       <h2 data-lang="en">The Phase 1 library, across three horizons.</h2>
+      <p class="sub" data-lang="vi">Bấm vào từng chiến lược để xem ý tưởng, quy tắc, tham số đề xuất và cơ sở nghiên cứu. Tất cả đang ở giai đoạn thiết kế; tham số được đóng băng khi từng card bắt đầu.</p>
+      <p class="sub" data-lang="en">Click a strategy to see its idea, rules, proposed parameters and research basis. All are at design stage; parameters are frozen when each card starts.</p>
     </div>
     <div class="tabs" role="tablist" aria-label="Horizon">
       <button role="tab" aria-selected="true" data-tab="short" id="tab-short" aria-controls="panel-short" tabindex="0"><span data-lang="vi">Ngắn · 1 tuần</span><span data-lang="en">Short · 1 week</span></button>
@@ -295,12 +285,21 @@
       <button role="tab" aria-selected="false" data-tab="long" id="tab-long" aria-controls="panel-long" tabindex="-1"><span data-lang="vi">Dài · 1 năm</span><span data-lang="en">Long · 1 year</span></button>
     </div>
     <div class="tab-panels">
-      <ul class="strats mono" data-panel="short" id="panel-short" role="tabpanel" aria-labelledby="tab-short"><li><b>S00</b> Composite</li><li><b>S01</b> Weekly reversal</li><li><b>S02</b> Breakout 20d</li><li><b>S03</b> Oversold in uptrend</li><li><b>S04</b> Bank pairs</li><li><b>S05</b> Residual reversion</li><li><b>S06</b> Foreign flow*</li><li><b>S17</b> Equal weight</li></ul>
-      <ul class="strats mono" data-panel="medium" id="panel-medium" role="tabpanel" aria-labelledby="tab-medium" hidden><li><b>S08</b> Momentum</li><li><b>S09</b> Reversal</li><li><b>S10</b> P/B vs ROE</li><li><b>S11</b> E/P</li><li><b>S12</b> Asset quality</li><li><b>S13</b> Value + momentum</li><li><b>S14</b> Low volatility</li><li><b>S15</b> Sector trend</li><li><b>S17</b> Equal weight</li></ul>
-      <ul class="strats mono" data-panel="long" id="panel-long" role="tabpanel" aria-labelledby="tab-long" hidden><li><b>S10</b> P/B vs ROE</li><li><b>S11</b> E/P</li><li><b>S12</b> Asset quality</li><li><b>S17</b> Equal weight</li><li><b>S18</b> HRP</li></ul>
+      <div data-panel="short" id="panel-short" role="tabpanel" aria-labelledby="tab-short"></div>
+      <div data-panel="medium" id="panel-medium" role="tabpanel" aria-labelledby="tab-medium" hidden></div>
+      <div data-panel="long" id="panel-long" role="tabpanel" aria-labelledby="tab-long" hidden></div>
     </div>
-    <p class="note" data-lang="vi">* S06 chờ nguồn dữ liệu khối ngoại miễn phí. Mặc định: 13 mã ngân hàng trong VN30, có thể cấu hình. <a href="docs/strategies/">Quy tắc từng chiến lược →</a></p>
-    <p class="note" data-lang="en">* S06 waits for a free foreign-flow source. Default universe: the 13 VN30 banks, configurable. <a href="docs/strategies/">Rules for each strategy →</a></p>
+    <p class="note" data-lang="vi">Mặc định: 13 mã ngân hàng trong VN30, có thể cấu hình. <a href="docs/strategies/">Danh mục chiến lược đầy đủ →</a></p>
+    <p class="note" data-lang="en">Default universe: the 13 VN30 banks, configurable. <a href="docs/strategies/">Full strategy catalogue →</a></p>
+
+    <dialog class="strat-dlg" id="strat-dlg" aria-labelledby="dlg-title">
+      <div class="dlg-head">
+        <span class="mono dlg-id" id="dlg-id"></span>
+        <h3 id="dlg-title"></h3>
+        <button class="icon-btn dlg-close" type="button" id="dlg-close" aria-label="Close">✕</button>
+      </div>
+      <div class="dlg-body" id="dlg-body"></div>
+    </dialog>
   </section>
 
   <!-- STATUS -->
@@ -377,6 +376,7 @@ vnstratlab doctor</pre>
     </nav>
   </div>
 </footer>
+<script src="strategies.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
