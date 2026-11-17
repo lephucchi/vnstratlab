@@ -52,8 +52,8 @@ def _b64(raw: bytes) -> str:
 
 
 def normalise(value: str) -> str:
-    """Same rule as the PO page: Unicode NFC, surrounding whitespace removed."""
-    return unicodedata.normalize("NFC", value).strip()
+    """Same rule as the PO page: NFC, then strip spaces, tabs, CR and LF at both ends."""
+    return unicodedata.normalize("NFC", value).strip(" \t\r\n")
 
 
 def key_material(user: str, password: str) -> bytes:
