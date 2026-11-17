@@ -102,7 +102,7 @@ so sánh kết quả thật với khuyến nghị.
 ## Cấu hình và khóa bí mật
 
 - **Tham số** (phí, giới hạn rủi ro, ngưỡng kiểm định, tham số chiến lược) nằm trong YAML.
-- **Khóa bí mật** (API dữ liệu, Telegram, LLM) chỉ đọc từ biến môi trường hoặc file `.env`
+- **Khóa bí mật** (khóa vnstock nếu cần, Telegram) chỉ đọc từ biến môi trường hoặc file `.env`
   (sao chép từ [`.env.example`](.env.example)). Không bao giờ commit, ghi log hay hiển thị.
 - **Dữ liệu nằm trên máy bạn.** vnstratlab không phân phối lại dữ liệu giá.
 

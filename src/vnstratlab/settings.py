@@ -5,48 +5,76 @@ Rules (docs/configuration.md):
   committed, logged, printed, or sent to the browser.
 - Non-secret parameters (strategy params, thresholds, costs) live in YAML config,
   not here.
+- Variable names are plain and conventional (no project prefix): each field maps to the
+  upper-case field name, e.g. `telegram_bot_token` -> `TELEGRAM_BOT_TOKEN`.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ENV_PREFIX = "VNSTRATLAB_"
+ENV_NAMES = (
+    "APP_HOME",
+    "LOG_LEVEL",
+    "VNSTOCK_API_KEY",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_ID",
+    "PO_USERNAME",
+    "PO_PASSWORD",
+)
 
 
 class Settings(BaseSettings):
-    """Environment-driven settings. Every field maps to `VNSTRATLAB_<FIELD>`."""
+    """Environment-driven settings. Every field maps to the upper-case field name."""
 
     model_config = SettingsConfigDict(
-        env_prefix=ENV_PREFIX,
+        env_prefix="",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    home: Path | None = None
+    # App home override (not `HOME`, which belongs to the operating system).
+    app_home: Path | None = None
     log_level: str = "INFO"
 
-    # Market data provider key, only if the chosen source requires one.
-    data_api_key: SecretStr | None = None
+    # vnstock key, only if the installed vnstock version asks for one (source review: P1-T03).
+    vnstock_api_key: SecretStr | None = None
 
-    # Optional notifications.
+    # Optional Telegram report: the bot's token, and the id of the chat it posts to.
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
 
-    # Phase 2 news scoring.
-    llm_api_key: SecretStr | None = None
+    # PO dashboard login, used only by the Pages build (tools/encrypt_po.py).
+    po_username: str | None = None
+    po_password: SecretStr | None = None
+
+    @field_validator(
+        "app_home",
+        "vnstock_api_key",
+        "telegram_bot_token",
+        "telegram_chat_id",
+        "po_username",
+        "po_password",
+        mode="before",
+    )
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """`KEY=` with nothing after it (as in .env.example) means not set."""
+        return None if isinstance(value, str) and not value.strip() else value
 
     def secret_status(self) -> dict[str, bool]:
-        """Which secrets are configured. Returns booleans only, never values."""
+        """Which user-facing secrets are configured. Booleans only, never values.
+
+        The PO login is maintainer-only (Pages build) and is not reported here.
+        """
         return {
-            "data_api_key": self.data_api_key is not None,
+            "vnstock_api_key": self.vnstock_api_key is not None,
             "telegram_bot_token": self.telegram_bot_token is not None,
             "telegram_chat_id": self.telegram_chat_id is not None,
-            "llm_api_key": self.llm_api_key is not None,
         }
 
 

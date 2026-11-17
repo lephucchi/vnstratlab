@@ -2,7 +2,8 @@
 #   /        intro site      ← orphan branch `site`
 #   /docs/   documentation   ← mkdocs built from `main` (released docs)
 #   /po/     PO dashboard    ← orphan branch `po`
-#   /data/status.json, /po/data.json ← generated here from develop + GitHub API (public facts only)
+#   /data/status.json             ← generated here from develop + GitHub API (public, measured facts)
+#   /po/data.enc.json             ← PO dashboard data, encrypted with the PO login (secrets)
 # This is the ONLY workflow that deploys Pages. The orphan branches trigger it via workflow_dispatch.
 name: Pages
 
@@ -78,12 +79,17 @@ jobs:
           [ -f _site/index.html ] || echo '<meta http-equiv="refresh" content="0; url=docs/">' > _site/index.html
           touch _site/.nojekyll
 
+      # build_status.py publishes the PO data only encrypted with the PO login
+      # (tools/encrypt_po.py); without the two secrets nothing is published under /po/.
       - name: Generate status data
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PO_USERNAME: ${{ secrets.PO_USERNAME }}
+          PO_PASSWORD: ${{ secrets.PO_PASSWORD }}
         run: |
           python dev/tools/build_status.py --repo dev --out _site \
             --coverage coverage.json --junit junit.xml --bench bench-data/bench/data.js
+          test ! -e _site/po/data.json
 
       - uses: actions/upload-pages-artifact@v3
         with:

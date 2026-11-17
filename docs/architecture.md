@@ -52,7 +52,7 @@
 | Package | Responsibility | First card |
 |---|---|---|
 | `vnstratlab.cli` | Typer commands | P1-T01 |
-| `vnstratlab.paths` | App home and file locations (`VNSTRATLAB_HOME`) | P1-T01 |
+| `vnstratlab.paths` | App home and file locations (`APP_HOME`) | P1-T01 |
 | `vnstratlab.settings` | Env-only secrets | P1-T01 |
 | `vnstratlab.config` | Packaged YAML defaults, loader and validation | P1-T02 |
 | `vnstratlab.data` | `DataSource` protocol, adapters, ingestion, DQ checks, corporate actions, fundamentals, universe membership | P1-T03 |

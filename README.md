@@ -111,7 +111,7 @@ Every command that writes supports `--dry-run`.
 - **Parameters** (costs, risk limits, gate thresholds, strategy params) live in YAML. Packaged
   defaults are in [`src/vnstratlab/config/`](src/vnstratlab/config/); your overrides live in
   the app home.
-- **Secrets** (data API key, Telegram token, LLM key) come only from environment variables or
+- **Secrets** (vnstock key if needed, Telegram token) come only from environment variables or
   a `.env` file. Copy [`.env.example`](.env.example). They are never committed, logged or shown.
 - **Your data stays on your machine.** vnstratlab does not ship or redistribute market data.
 
