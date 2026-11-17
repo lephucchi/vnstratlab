@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vnstratlab · PO dashboard</title>
+<meta name="description" content="Bảng theo dõi dự án vnstratlab: kế hoạch, tiến độ, quyết định, chất lượng.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-inner">
+    <div>
+      <h1>vnstratlab <span class="muted">· PO dashboard</span></h1>
+      <p class="muted small" id="meta">Đang tải dữ liệu…</p>
+    </div>
+    <nav class="links">
+      <a href="../">Giới thiệu</a>
+      <a href="../docs/">Tài liệu</a>
+      <a id="repo-link" href="https://github.com/lephucchi/vnstratlab">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section aria-labelledby="kpi-h">
+    <h2 id="kpi-h" class="sr-only">Chỉ số chính</h2>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <section aria-labelledby="wait-h" class="card">
+    <h2 id="wait-h">Chờ bạn quyết</h2>
+    <ul class="list" id="waiting"></ul>
+  </section>
+
+  <section aria-labelledby="road-h" class="card">
+    <div class="section-head">
+      <h2 id="road-h">Lộ trình theo milestone</h2>
+      <span class="muted small">Tiến độ = card đã xong / tổng card</span>
+    </div>
+    <div id="roadmap"></div>
+  </section>
+
+  <section aria-labelledby="board-h" class="card">
+    <div class="section-head">
+      <h2 id="board-h">Bảng công việc</h2>
+      <label class="small">Giai đoạn
+        <select id="phase-filter">
+          <option value="all">Tất cả</option>
+          <option value="Phase 1">Phase 1</option>
+          <option value="Phase 2">Phase 2</option>
+          <option value="Phase 3">Phase 3</option>
+        </select>
+      </label>
+    </div>
+    <div class="board" id="board"></div>
+  </section>
+
+  <div class="two-col">
+    <section aria-labelledby="adr-h" class="card">
+      <h2 id="adr-h">Quyết định (ADR)</h2>
+      <table class="table" id="adrs"><thead><tr><th>ADR</th><th>Trạng thái</th></tr></thead><tbody></tbody></table>
+    </section>
+    <section aria-labelledby="q-h" class="card">
+      <h2 id="q-h">Chất lượng</h2>
+      <div id="quality"></div>
+    </section>
+  </div>
+
+  <div class="two-col">
+    <section aria-labelledby="pr-h" class="card">
+      <h2 id="pr-h">Pull request đang mở</h2>
+      <ul class="list" id="pulls"></ul>
+    </section>
+    <section aria-labelledby="run-h" class="card">
+      <h2 id="run-h">CI gần đây</h2>
+      <ul class="list" id="runs"></ul>
+    </section>
+  </div>
+
+  <section aria-labelledby="log-h" class="card">
+    <h2 id="log-h">Nhật ký tiến độ</h2>
+    <table class="table" id="progress"><thead><tr><th>Ngày</th><th>Card</th><th>Nội dung</th><th>Test</th><th>Review</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section aria-labelledby="sys-h" class="card">
+    <h2 id="sys-h">Hệ thống</h2>
+    <div class="sys-grid">
+      <a class="sys" href="../docs/end-to-end-flow/"><strong>Luồng end-to-end</strong><span>Dữ liệu → lab → chọn chiến lược → đề xuất</span></a>
+      <a class="sys" href="../docs/engine/"><strong>Engine</strong><span>Vòng phiên, luật HOSE, sổ tiền, chế độ lý tưởng/thực thi</span></a>
+      <a class="sys" href="../docs/strategies/"><strong>Chiến lược</strong><span>S00–S18: quy tắc, tham số, trạng thái</span></a>
+      <a class="sys" href="../docs/architecture/"><strong>Kiến trúc</strong><span>Lớp, gói, lưu trữ, nơi chạy</span></a>
+      <a class="sys" href="../docs/workflow/"><strong>Quy trình</strong><span>Vai trò agent, cổng G0–G4</span></a>
+      <a class="sys" href="../docs/git-branching/"><strong>Nhánh git</strong><span>develop, feat, release, hotfix, orphan</span></a>
+      <a class="sys" href="../docs/qa-gates/"><strong>Cổng QA</strong><span>CI, review, sẵn sàng phát hành</span></a>
+      <a class="sys" href="../docs/plan/plan/"><strong>Kế hoạch</strong><span>Plan v1.1 đầy đủ</span></a>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap muted small foot">
+  Dữ liệu sinh tự động bởi <code>tools/build_status.py</code> trong workflow <code>pages.yml</code>.
+  vnstratlab chỉ đưa ra khuyến nghị, không bao giờ đặt lệnh.
+</footer>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# This orphan branch holds only the PO dashboard UI. Deployment is done by pages.yml on develop;
+# a push here asks it to rebuild the whole Pages site.
+name: Trigger Pages
+
+on:
+  push:
+    branches: [po]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref develop
