@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794926793100,
+  "lastUpdate": 1794926897727,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -217,6 +217,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0001700370459597214",
             "extra": "mean: 6.74233571428573 msec\nrounds: 14"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "be908208f707b0cc7f21cf0eced97b81b2f14fea",
+          "message": "docs(adr): ADR-006 synthetic data first; vnstock review (#12)\n\n- D6 superseded: pre-v6 vnstock stopped working on 2026-11-10; v6 is proprietary and\n  rejected as a dependency; vnstock-oapi + SSI stays a deferred candidate\n- new card P1-T36 (DataSource protocol + synthetic market); P1-T11 depends on it;\n  real-data cards blocked on the owner's source decision\n- data-sources, plan, roadmap, .env.example, CHANGELOG, mkdocs nav updated\n\nCo-authored-by: Le Phuc Chi <lephucchi@users.noreply.github.com>",
+          "timestamp": "2026-11-17T21:47:52+07:00",
+          "tree_id": "739c85e613254e371c898a98e118235ab68b9fe5",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/be908208f707b0cc7f21cf0eced97b81b2f14fea"
+        },
+        "date": 1794926897130,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 100.2053334817058,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002274183976824281",
+            "extra": "mean: 9.979508727273156 msec\nrounds: 11"
           }
         ]
       }
