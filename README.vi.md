@@ -112,6 +112,14 @@ Tài liệu kỹ thuật viết bằng tiếng Anh, nằm trong [docs/](docs/ind
 cấu hình, nguồn dữ liệu, cách viết chiến lược, benchmark, quy trình phát triển, chia nhánh git,
 các cổng QA và lộ trình.
 
+## Quy trình phát triển
+
+[![Quy trình: nhánh feat vào develop sau CI (G1) và review (G2), nhánh release qua kiểm tra sẵn sàng (G3), chủ dự án duyệt (G4) trước khi vào main](docs/assets/workflow.png)](docs/git-branching.md)
+
+Mọi thay đổi đi qua bốn cổng; `main` và `develop` chỉ nhận thay đổi qua pull request. Chi tiết:
+[nhánh git](docs/git-branching.md) · [cổng QA](docs/qa-gates.md) ·
+[quy trình](docs/workflow.md). Nguồn ảnh: [docs/assets/workflow.html](docs/assets/workflow.html).
+
 ## Đóng góp
 
 Đọc [CONTRIBUTING.md](CONTRIBUTING.md). Tóm tắt: tạo nhánh từ `develop`, mỗi task card một nhánh,

@@ -137,6 +137,14 @@ Details: [docs/configuration.md](docs/configuration.md) · [docs/data-sources.md
 | [Implementation plan](docs/plan/plan.md) | Maintainers, AI agents |
 | [Maintainer setup](docs/maintainers.md) | Maintainers |
 
+## Development workflow
+
+[![Development workflow: feat branches into develop after CI (G1) and review (G2), release branches pass readiness (G3), owner approval (G4) before main](docs/assets/workflow.png)](docs/git-branching.md)
+
+Every change passes four gates; `main` and `develop` accept pull requests only. Details:
+[git branching](docs/git-branching.md) · [QA gates](docs/qa-gates.md) ·
+[workflow](docs/workflow.md). Image source: [docs/assets/workflow.html](docs/assets/workflow.html).
+
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md). In short: branch from `develop`, one task card per

@@ -1,0 +1,104 @@
+<!doctype html>
+<!-- Source of docs/assets/workflow.png (rendered at 1600x840, 2x). Content follows docs/git-branching.md and docs/qa-gates.md. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>vnstratlab · workflow</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root { --fg: #0a0a0a; --bg: #fff; --muted: #6b6b6b; --line: #e3e3e3; --line-2: #d4d4d4; --mono: "Geist Mono", ui-monospace, Consolas, monospace; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { width: 1600px; height: 840px; position: relative; background: #fff; color: var(--fg); font: 400 15px/1.45 "Geist", system-ui, sans-serif;
+    background-image: radial-gradient(rgba(10,10,10,.09) 1px, transparent 1.2px); background-size: 24px 24px; overflow: hidden; padding: 46px 60px; }
+  h1 { margin: 0; font-size: 34px; letter-spacing: -.035em; font-weight: 600; }
+  .sub { margin: 4px 0 26px; color: var(--muted); }
+  .wrap { border: 1px solid var(--line); border-radius: 16px; background: #fff; padding: 22px 26px 10px; }
+  .graph { width: 100%; height: auto; display: block; }
+  .graph text { fill: var(--fg); font: 12px var(--mono); }
+  .graph .faint, .graph .lanes text { fill: var(--muted); }
+  .graph .ln { stroke: var(--line-2); stroke-width: 1.5; fill: none; }
+  .graph .ln-strong { stroke: var(--fg); stroke-width: 2; }
+  .graph .ln-dash { stroke-dasharray: 3 5; }
+  .graph .br { stroke: var(--fg); stroke-width: 1.6; fill: none; }
+  .graph .pulse { display: none; }
+  .graph .c { fill: #fff; stroke: var(--fg); stroke-width: 2; }
+  .graph .c.merge, .graph .c.tag { fill: var(--fg); }
+  .graph .c.hollow { stroke: var(--muted); stroke-dasharray: 2 2; }
+  .graph .gates-lbl rect { fill: #fff; stroke: var(--fg); stroke-width: 1; }
+  .graph .gates-lbl text { font-size: 10.5px; text-anchor: middle; dominant-baseline: central; }
+  .graph .tags text { text-anchor: middle; font-size: 11px; }
+  .graph .tags text.faint { text-anchor: end; }
+  .gates { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 18px; }
+  .gates div { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 14px 16px; }
+  .gates b { font: 500 12px var(--mono); border: 1px solid var(--fg); border-radius: 999px; padding: 1px 9px; }
+  .gates p { margin: 8px 0 0; font-size: 14px; color: #333; }
+</style>
+</head>
+<body>
+<h1>vnstratlab · development workflow</h1>
+<p class="sub">Reduced Git Flow. One task card = one <b>feat/*</b> branch; main and develop are protected (pull requests only). Tags are illustrative.</p>
+<div class="wrap">
+<svg class="graph" viewBox="0 0 960 330" role="img" aria-labelledby="graph-t">
+        <title id="graph-t">Git branching: feat branches merge into develop after G1 CI and G2 review; release branch passes G3; main is tagged after G4 owner approval. Orphan branches site, po and bench-data are never merged.</title>
+        <g class="lanes mono">
+          <text x="0" y="44">main</text>
+          <text x="0" y="104">release/*</text>
+          <text x="0" y="164">develop</text>
+          <text x="0" y="224">feat/*</text>
+          <text x="0" y="300" class="faint">site · po · bench-data</text>
+        </g>
+        <!-- lane lines -->
+        <path class="ln" d="M110 40H940"/>
+        <path class="ln ln-strong" d="M110 160H940"/>
+        <path class="ln ln-dash" d="M170 296H940"/>
+        <!-- feat branches -->
+        <path class="br" d="M150 160C175 160 175 220 200 220H260C285 220 285 160 310 160"/>
+        <path class="br" d="M330 160C355 160 355 220 380 220H440C465 220 465 160 490 160"/>
+        <!-- release -->
+        <path class="br" d="M540 160C565 160 565 100 590 100H700C725 100 725 40 750 40"/>
+        <path class="br" d="M700 100C725 100 725 160 750 160"/>
+        <!-- hotfix back-merge omitted for clarity -->
+        <!-- flowing pulse on develop -->
+        <path class="pulse" d="M110 160H940"/>
+        <!-- commits -->
+        <g class="commits">
+          <circle cx="130" cy="40" r="6" class="c tag" style="--d:0"/>
+          <circle cx="150" cy="160" r="5" class="c" style="--d:1"/>
+          <circle cx="215" cy="220" r="5" class="c" style="--d:2"/>
+          <circle cx="250" cy="220" r="5" class="c" style="--d:3"/>
+          <circle cx="310" cy="160" r="6" class="c merge" style="--d:4"/>
+          <circle cx="395" cy="220" r="5" class="c" style="--d:5"/>
+          <circle cx="430" cy="220" r="5" class="c" style="--d:6"/>
+          <circle cx="490" cy="160" r="6" class="c merge" style="--d:7"/>
+          <circle cx="600" cy="100" r="5" class="c" style="--d:8"/>
+          <circle cx="650" cy="100" r="5" class="c" style="--d:9"/>
+          <circle cx="750" cy="40" r="7" class="c tag" style="--d:10"/>
+          <circle cx="750" cy="160" r="6" class="c merge" style="--d:11"/>
+          <circle cx="860" cy="160" r="5" class="c" style="--d:12"/>
+          <circle cx="230" cy="296" r="4" class="c hollow" style="--d:3"/>
+          <circle cx="520" cy="296" r="4" class="c hollow" style="--d:7"/>
+          <circle cx="820" cy="296" r="4" class="c hollow" style="--d:11"/>
+        </g>
+        <!-- gates -->
+        <g class="gates-lbl mono">
+          <g transform="translate(235 250)"><rect x="-34" y="-12" width="68" height="24" rx="12"/><text>G1 CI</text></g>
+          <g transform="translate(415 250)"><rect x="-46" y="-12" width="92" height="24" rx="12"/><text>G2 review</text></g>
+          <g transform="translate(625 72)"><rect x="-56" y="-12" width="112" height="24" rx="12"/><text>G3 readiness</text></g>
+          <g transform="translate(750 12)"><rect x="-44" y="-12" width="88" height="24" rx="12"/><text>G4 owner</text></g>
+        </g>
+        <g class="tags mono">
+          <text x="130" y="66">vX.Y.Z</text>
+          <text x="790" y="66" style="text-anchor:start">vX.Y+1.0</text>
+          <text x="940" y="320" text-anchor="end" class="faint">orphan · never merged · tags illustrative</text>
+        </g>
+      </svg>
+</div>
+<div class="gates">
+  <div><b>G1 · CI</b><p>Automated on every PR: ruff, strict mypy, pytest on 3 OS × 3 Pythons, coverage ≥ 80%, guardrails, gitleaks.</p></div>
+  <div><b>G2 · review</b><p>Independent review against the task card and checklist, not the author's summary.</p></div>
+  <div><b>G3 · readiness</b><p>Every release/*: investment benchmarks, cross-engine check, realism stress tests, product comparison.</p></div>
+  <div><b>G4 · owner</b><p>The owner reads the readiness report and approves. Only then is main merged and tagged.</p></div>
+</div>
+</body>
+</html>
