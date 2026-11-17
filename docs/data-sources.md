@@ -2,7 +2,8 @@
 
 ## Policy
 
-1. **Free first.** Phase 1 uses free sources so anyone can run the lab.
+1. **Free first.** Phase 1 uses free sources so anyone can run the lab. Until a source is chosen,
+   Phase 1 runs on a deterministic synthetic market (P1-T36, [ADR-006](adr/ADR-006-synthetic-first.md)).
 2. **Adapter interface.** Every source implements the `DataSource` protocol (P1-T03), so a
    source can be replaced without touching the engine.
 3. **No redistribution.** vnstratlab downloads data to the user's machine only. The repository,
@@ -18,7 +19,9 @@
 
 | Source | Type | Status | Notes |
 |---|---|---|---|
-| `vnstock` | Python library over public Vietnamese market endpoints | To review in P1-T03 | Recent versions use their own licence terms; review before making it a dependency. Check the installed API, not old docs |
+| Synthetic market (P1-T36) | Seeded generator: OHLCV, limits, ticks, lots, corporate actions | **Used in Phase 1** | Labelled synthetic everywhere; never evidence about the real market |
+| `vnstock` 6 | Proprietary library (vendor index, not PyPI) | **Rejected as a dependency** | Pre-v6 releases stopped working on 2026-11-10; v6 has expiring releases and a remote switch-off. [Review](reports/data-source-vnstock.md) |
+| `vnstock-oapi` + SSI FastConnect Data | Source-available adapter over the broker's Open API, user's own SSI account and keys | Candidate, decision deferred (ADR-006) | Free extensions allowed under conditions; raw vs. adjusted, fees, rate limits and IP policy unknown. [Review](reports/data-source-vnstock.md) |
 | Exchange and index announcements (HOSE) | Public web pages | Used in P1-T05 | VN30 review announcements for `universe_membership` |
 | Company financial statements | Public filings | P1-T07 | Must record `published_at` |
 | Foreign / proprietary flow | Various | P1-T04 investigates | S06 disabled if no acceptable free source |

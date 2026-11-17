@@ -7,6 +7,9 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- **Data source (ADR-006):** plan decision D6 (`vnstock`) is superseded. Phase 1 runs on a
+  synthetic market (new card P1-T36); real-data cards wait for the owner's source decision.
+  Review: `docs/reports/data-source-vnstock.md`.
 - **Breaking:** environment variables have no project prefix: `APP_HOME` (was
   `VNSTRATLAB_HOME`), `LOG_LEVEL`, `VNSTOCK_API_KEY` (was `VNSTRATLAB_DATA_API_KEY`),
   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. The unused LLM key is removed until the Phase 2
