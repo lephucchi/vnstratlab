@@ -1,0 +1,47 @@
+# Technical benchmarks (docs/benchmarks.md). Results for develop are stored in the
+# `bench-data` branch; PRs more than 20% slower get a warning comment.
+name: Benchmark
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop, "release/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: pytest benchmarks --benchmark-only --no-cov --benchmark-json=benchmark.json
+      - name: Store / compare results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: vnstratlab
+          tool: pytest
+          output-file-path: benchmark.json
+          gh-pages-branch: bench-data
+          benchmark-data-dir-path: bench
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: ${{ github.event_name == 'push' }}
+          alert-threshold: "120%"
+          comment-on-alert: true
+          fail-on-alert: false   # becomes true from v0.2 (docs/qa-gates.md)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-json
+          path: benchmark.json

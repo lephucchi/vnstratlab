@@ -1,0 +1,53 @@
+# --- secrets: never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- market data and local state: never commit (provider terms, privacy)
+data/
+*.duckdb
+*.duckdb.wal
+*.sqlite
+*.sqlite3
+*.parquet
+!src/vnstratlab/demo/*.parquet
+backups/
+logs/
+*.log
+
+# --- python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# --- tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.benchmarks/
+site/
+
+# --- notebooks: keep outputs out of git
+.ipynb_checkpoints/
+
+# --- agent harness runtime files
+.harness/runs/
+.claude/settings.local.json
+
+# --- OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

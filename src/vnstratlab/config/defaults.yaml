@@ -1,0 +1,67 @@
+# vnstratlab packaged defaults.
+# `vnstratlab init` writes a user config to the app home that overrides these keys.
+# Parameters here are FROZEN for agents: changing a strategy param, gate threshold or
+# risk limit is an owner decision (docs/workflow.md). A new param set = a new trial.
+# vnstratlab is recommend-only: there is no broker, automation level or kill switch.
+
+project:
+  timezone: Asia/Ho_Chi_Minh
+  backfill_start: 2015-01-01
+  market: hose                 # file in config/markets/
+  universe: vn30_banks         # file in config/universes/
+
+books:                         # paper books, one per horizon, independent
+  short:  {capital_vnd: 11000000, decision_day: last_trading_day_of_week}
+  medium: {capital_vnd: 11000000, decision_day: last_trading_day_of_month, tranches: 3}
+  long:   {capital_vnd: 11000000, decision_day: after_report_season}
+
+costs:                         # [VERIFY] with your broker; see docs/configuration.md
+  brokerage_fee_pct: 0.0015
+  sales_tax_pct: 0.001
+  slippage_pct: {round_lot: 0.001, odd_lot: 0.003}
+
+risk:
+  risk_per_position_pct: 0.01
+  atr_stop_multiple: 2.0
+  max_positions: 4
+  max_weight_per_ticker: 0.35
+  circuit_breaker_drawdown_pct: 0.10
+  rebalance_threshold_pct: 0.10
+  vol_target_annual: null      # null = off
+
+lab:
+  seed: 20261117
+  gate1: {dsr_min: 0.95, pbo_max: 0.5, min_periods: {short: 52, medium: 24, long: 4}}
+  gate2: {spa_alpha: 0.10, bootstrap_reps: 2000, block_size: {short: 4, medium: 3, long: 1}}
+  mcs_alpha: 0.10
+  weights:
+    short:  {window: 52, lambda: 0.5,  eta: 2.0, max_weight: 0.4}
+    medium: {window: 36, lambda: 0.75, eta: 1.0, max_weight: 0.4}
+    long:   {window: null, lambda: 1.0, eta: null, max_weight: 0.5}
+  decay: {short_window: 26, medium_window: 12}
+  challenger_min_periods: {short: 13, medium: 6}
+
+benchmarks:                    # every lab report and recommendation is compared against these
+  market_indices: [VNINDEX, VN30]
+  equal_weight_universe: true
+  sector_index: true           # computed from the universe
+  risk_free: {source: config, annual_rate: null}   # 12-month deposit rate, set by user [VERIFY]
+  naive_selectors: [equal_weight_strategies, last_winner]
+
+stress:                        # realism checks run by `vnstratlab stress` and QA gate G3
+  cost_multipliers: [2.0, 3.0]
+  fill_delay_sessions: [1, 2]
+  max_participation_adv20: 0.01
+  param_perturbation_pct: 0.20
+  regimes: []                  # list of {name, start, end}; filled per release
+
+strategies: {}                 # filled by strategy cards P1-T14..P1-T19
+
+news:
+  collect_raw: true            # Phase 1: collect only
+  use_in_signals: false        # only ADR-002 may set this to true
+  cutoff_time: "14:45"
+
+notify:
+  console: true
+  telegram: false              # token and chat id come from env (VNSTRATLAB_TELEGRAM_*)

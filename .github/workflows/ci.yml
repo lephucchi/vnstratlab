@@ -1,0 +1,106 @@
+# Gate G1 (docs/qa-gates.md). Synthetic data only; no secrets needed.
+name: CI
+
+on:
+  push:
+    branches: [main, develop, "release/**", "hotfix/**"]
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Conventional Commits title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "PR title: $TITLE"
+          echo "$TITLE" | grep -Eq '^(feat|fix|test|docs|refactor|perf|chore|exp)(\([a-z0-9-]+\))?!?: .+' \
+            || { echo "::error::PR title must follow Conventional Commits, e.g. 'feat(engine): block buys on ceiling open'"; exit 1; }
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+
+  guardrails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Recommend-only and config guardrails
+        run: pytest tests/test_guardrails.py --no-cov -v
+      - name: No real market data committed
+        run: |
+          if git ls-files | grep -Ei '\.(duckdb|sqlite|sqlite3)$|^data/' ; then
+            echo "::error::Database or data/ files are committed"; exit 1; fi
+          if git ls-files '*.parquet' | grep -v '^src/vnstratlab/demo/' ; then
+            echo "::error::Parquet files outside src/vnstratlab/demo/"; exit 1; fi
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: pytest -m "not slow and not network"
+      - name: Smoke
+        run: |
+          vnstratlab --help
+          vnstratlab doctor
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check dist/*
+      - name: Install wheel in a clean venv
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl
+          /tmp/clean/bin/vnstratlab --version

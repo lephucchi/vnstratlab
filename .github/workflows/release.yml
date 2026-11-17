@@ -1,0 +1,93 @@
+# Release (docs/git-branching.md §6).
+#   vX.Y.ZrcN tag (on a release/* branch) -> TestPyPI
+#   vX.Y.Z    tag (on main)               -> PyPI + GitHub Release
+# Publishing uses PyPI Trusted Publishing (OIDC); no tokens are stored.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      prerelease: ${{ steps.kind.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: kind
+        name: Classify tag and check where it points
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)"
+          [ "v${VERSION}" = "${TAG}" ] || { echo "::error::Tag ${TAG} != pyproject version ${VERSION}"; exit 1; }
+          if echo "$TAG" | grep -Eq 'rc[0-9]+$'; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            git fetch origin main
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+              || { echo "::error::Final release tags must point to a commit on main"; exit 1; }
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]" build twine
+      - run: pytest -m "not network"
+      - run: python -m build
+      - run: twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    needs: build
+    if: needs.build.outputs.prerelease == 'true'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    needs: build
+    if: needs.build.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes "See CHANGELOG.md"

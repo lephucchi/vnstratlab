@@ -1,0 +1,30 @@
+# Ho Chi Minh City Stock Exchange (HOSE) rules.
+# Every value carries a status. [VERIFY] values come from secondary sources and must be
+# confirmed against an official source before a release relies on them (QA gate G3).
+
+market: hose
+currency: VND
+
+rules:
+  earliest_sell_session_offset:
+    value: 3          # buy on T, simulator allows selling at the open of T+3 (conservative)
+    status: VERIFY
+    note: "Settlement is T+2 with shares arriving in the afternoon of T+2; T+3 open is a conservative simulator default."
+  price_limit_pct: {value: 0.07, status: VERIFY}
+  round_lot: {value: 100, status: VERIFY}
+  odd_lot: {value: {min: 1, max: 99, limit_orders_only: true}, status: VERIFY}
+  tick_sizes:
+    value: [[0, 10], [10000, 50], [50000, 100]]   # [price_from_vnd, tick_vnd]
+    status: VERIFY
+  sessions:
+    value: {ato: "09:00-09:15", continuous: ["09:15-11:30", "13:00-14:30"], atc: "14:30-14:45"}
+    status: VERIFY
+  sales_tax_pct: {value: 0.001, status: confirmed, source: "broker fee page"}
+  short_selling: {value: false, status: confirmed}
+  intraday_t0: {value: false, status: confirmed}
+
+# Market holidays per year. A test fails if the current year is missing (P1-T02).
+# Each entry: {date: YYYY-MM-DD, name: "..."}; add `source` per year.
+holidays:
+  2026: []
+  2027: []

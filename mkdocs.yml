@@ -1,0 +1,50 @@
+site_name: vnstratlab
+site_description: Strategy lab for Vietnamese stocks. Recommendations only; never places orders.
+site_url: https://lephucchi.github.io/vnstratlab/
+repo_url: https://github.com/lephucchi/vnstratlab
+edit_uri: edit/develop/docs/
+
+theme:
+  name: material
+  features: [navigation.sections, content.code.copy, search.suggest]
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/brightness-7, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/brightness-4, name: Light mode}
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.superfences
+
+validation:
+  links:
+    not_found: info
+    absolute_links: ignore
+    unrecognized_links: info
+
+nav:
+  - Home: index.md
+  - Users:
+      - Getting started: getting-started.md
+      - Configuration: configuration.md
+      - Data sources: data-sources.md
+      - Writing a strategy: writing-strategies.md
+      - Benchmarks: benchmarks.md
+  - Contributors:
+      - Workflow: workflow.md
+      - Git branching: git-branching.md
+      - QA gates: qa-gates.md
+      - Architecture: architecture.md
+      - Implementation plan: plan/plan.md
+      - Decision records:
+          - Index: adr/README.md
+          - ADR-001: adr/ADR-001-python-core-recommend-only.md
+  - Project:
+      - Roadmap: roadmap.md
+      - Maintainer setup: maintainers.md
+      - Progress: reports/progress.md

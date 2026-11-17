@@ -1,0 +1,137 @@
+# Git branching and releases
+
+vnstratlab uses a reduced **Git Flow**: a protected production branch (`main`), an integration
+branch (`develop`), short-lived work branches, release branches for the readiness gate, and
+hotfix branches for urgent fixes on a released version.
+
+## 1. Branches
+
+| Branch | Created from | Merges into | Purpose | Lifetime |
+|---|---|---|---|---|
+| `main` | — | — | **Production.** Only released code. Every commit on `main` is tagged `vX.Y.Z` | Permanent |
+| `develop` | `main` | `release/*` | Integration. Always installs and passes CI | Permanent |
+| `feat/<card>-<slug>` | `develop` | `develop` | One task card. Example: `feat/P1-T03-price-ingest` | Until merged |
+| `fix/<issue>-<slug>` | `develop` | `develop` | Bug fix on unreleased code. Example: `fix/42-tick-rounding` | Until merged |
+| `docs/<slug>` | `develop` | `develop` | Docs-only change | Until merged |
+| `chore/<slug>` | `develop` | `develop` | Tooling, CI, dependencies | Until merged |
+| `exp/<slug>` | `develop` | **never merged** | Research: a strategy idea or data probe. Results go into a report in `docs/reports/` via a separate `docs/` PR | Deleted after the report |
+| `release/vX.Y.Z` | `develop` | `main`, then back into `develop` | Feature freeze and gate G3. Only fixes, version bump, changelog, readiness report | Until released |
+| `hotfix/vX.Y.Z-<slug>` | `main` | `main`, then back into `develop` | Serious bug in a released version (e.g. wrong recommendation caused by a bug) | Until released |
+
+Branch names use lowercase and hyphens. Card IDs keep their case (`P1-T03`).
+
+## 2. Flow diagram
+
+```
+main     ──●───────────────────────────────●──────────────●────────
+           v0.0.1                         v0.1.0  ▲       v0.1.1
+             \                           ▲        │       ▲
+release        \             release/v0.1.0 ●──●──┘       │
+                 \                     ▲         \        │
+develop   ────────●───●───●───●───●────●──────────●───────●──── ...
+                     ▲   ▲   ▲   ▲                 ▲      │
+feat/fix            ─┘  ─┘  ─┘  ─┘                 │   hotfix/v0.1.1-*
+                                                   └── (back-merge)
+```
+
+## 3. Commits
+
+[Conventional Commits](https://www.conventionalcommits.org/), checked by CI on the PR title:
+
+```
+<type>(<scope>): <summary in imperative, lower case, no period>
+
+[optional body: why, not what]
+
+[optional footer: Refs #12, BREAKING CHANGE: ...]
+```
+
+| Type | Use for |
+|---|---|
+| `feat` | New behaviour |
+| `fix` | Bug fix |
+| `test` | Tests only |
+| `docs` | Docs only |
+| `refactor` | No behaviour change |
+| `perf` | Performance |
+| `chore` | Tooling, deps, CI |
+| `exp` | Experiment notes (rare; on `exp/*` only) |
+
+Scopes match packages: `data`, `features`, `engine`, `lab`, `risk`, `strategies`, `portfolio`,
+`journal`, `news`, `notify`, `app`, `web`, `cli`, `config`, `ci`, `docs`.
+
+## 4. Merge strategy
+
+| PR | Method | Why |
+|---|---|---|
+| `feat/*`, `fix/*`, `docs/*`, `chore/*` → `develop` | **Squash** | One card = one commit on `develop`; the PR title becomes the commit message |
+| `release/*` → `main` | **Merge commit** | Keeps the release boundary visible |
+| `main` → `develop` after release/hotfix | **Merge commit** | Brings version bump and fixes back |
+| `hotfix/*` → `main` | **Merge commit** | Same as release |
+
+Rebase your branch on `develop` before requesting review if it is behind. Never force-push
+`main`, `develop` or `release/*`.
+
+## 5. Versioning
+
+[Semantic Versioning](https://semver.org/). Before 1.0, a minor bump may break the API.
+
+| Bump | When |
+|---|---|
+| Major `X` | 1.0 when Phase 1 is stable; later for breaking config or API changes |
+| Minor `Y` | A milestone (see [roadmap](roadmap.md)) |
+| Patch `Z` | Fixes only |
+| Pre-release `vX.Y.ZrcN` | Release candidates from `release/*`, published to **TestPyPI** |
+
+The version lives in `pyproject.toml` (`[project] version`) and is bumped on the release branch.
+
+## 6. Releasing (step by step)
+
+1. **Freeze.** Manager creates `release/vX.Y.0` from `develop` when the milestone's cards are merged.
+2. **Bump.** On the release branch: set the version in `pyproject.toml`; move *Unreleased* in
+   `CHANGELOG.md` under `## [X.Y.0] - YYYY-MM-DD`. Commit `chore(release): vX.Y.0`.
+3. **Release candidate.** Tag `vX.Y.0rc1` on the release branch and push the tag. CI builds and
+   publishes to TestPyPI. Install it in a clean venv: `pip install -i https://test.pypi.org/simple/ vnstratlab==X.Y.0rc1`.
+4. **G3.** Reality Analyst runs the readiness checks and commits
+   `docs/reports/release-vX.Y.0-readiness.md` to the release branch. Fixes go onto the release
+   branch (each through G1/G2); repeat rc tags as needed.
+5. **PR to `main`.** Open `release/vX.Y.0 → main`. Required: CI green, G2 approval, readiness
+   report says **Ready**, owner approval (G4).
+6. **Tag.** After merge, tag the merge commit on `main`: `git tag -a vX.Y.0 -m "vX.Y.0"` and push.
+   The `release.yml` workflow verifies the tag is on `main`, builds, publishes to PyPI and creates
+   the GitHub Release.
+7. **Back-merge.** Merge `main` into `develop`. Delete the release branch.
+
+## 7. Hotfix (step by step)
+
+1. Create `hotfix/vX.Y.Z-<slug>` from `main`.
+2. Fix with a test that fails before the fix. Bump the patch version and update the changelog.
+3. PR into `main`: G1, G2, reduced G3 (stress + benchmarks; full G3 if engine, lab or strategies changed), G4.
+4. Tag `vX.Y.Z` on `main`, then back-merge `main` into `develop`.
+
+## 8. Branch protection (configured on GitHub)
+
+| Setting | `main` | `develop` |
+|---|---|---|
+| Require a pull request | ✅ | ✅ |
+| Required approvals | 1 (owner) | 1 |
+| Dismiss stale approvals on new commits | ✅ | ✅ |
+| Required status checks | `lint`, `test (all matrix)`, `guardrails`, `secrets`, `pr-title` | same |
+| Require branches up to date | ✅ | ✅ |
+| Require conversation resolution | ✅ | ✅ |
+| Require linear history | ❌ (merge commits for releases) | ✅ (squash only) |
+| Allow force pushes / deletions | ❌ | ❌ |
+| Restrict who can push | Owner only | — |
+
+Setup instructions: [maintainers.md](maintainers.md).
+
+## 9. Environments
+
+| Environment | Trigger | Target |
+|---|---|---|
+| CI | Every push / PR | GitHub Actions (synthetic data only) |
+| `testpypi` | Tag `vX.Y.ZrcN` on `release/*` | TestPyPI |
+| `pypi` (prod) | Tag `vX.Y.Z` on `main` | PyPI + GitHub Release |
+| `github-pages` | Push to `main` | Docs site |
+
+Real market data never enters any GitHub environment of this public repository.

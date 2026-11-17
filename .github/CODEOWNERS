@@ -1,0 +1,8 @@
+# Owner review is required for everything; these paths are the sensitive ones.
+*                                   @lephucchi
+/src/vnstratlab/config/             @lephucchi
+/src/vnstratlab/engine/             @lephucchi
+/src/vnstratlab/lab/                @lephucchi
+/tests/test_guardrails.py           @lephucchi
+/.github/                           @lephucchi
+/docs/adr/                          @lephucchi

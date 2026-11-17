@@ -1,0 +1,18 @@
+# Default universe: bank stocks in VN30.
+# This file seeds the `universe_membership` table (P1-T05). The engine reads membership
+# by date from that table, never from a hard-coded list.
+
+universe: vn30_banks
+index: VN30
+sector: banks
+review_months: [1, 7]
+
+membership:
+  - effective_from: 2026-08-03
+    effective_to: null
+    tickers: [ACB, BID, CTG, HDB, LPB, MBB, SHB, SSB, STB, TCB, VCB, VIB, VPB]
+    source_url: null     # fill with the HOSE announcement URL in P1-T05
+
+# Known changes that must exist in history to avoid survivorship bias.
+known_exits:
+  - {ticker: TPB, last_member_date: 2026-07-31, source_url: null}

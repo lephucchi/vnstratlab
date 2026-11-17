@@ -1,0 +1,32 @@
+# Heavy statistical tests (e.g. DSR/PBO over 200 seeds, P1-T21), marked `slow`.
+# Weekly and on demand; synthetic data only.
+name: Statistical tests
+
+on:
+  schedule:
+    - cron: "0 20 * * 6"   # Saturday 20:00 UTC = Sunday 03:00 Vietnam
+  workflow_dispatch:
+  pull_request:
+    branches: ["release/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  slow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Run slow tests (exit 5 = none collected yet)
+        run: |
+          set +e
+          pytest -m slow --no-cov -v
+          code=$?
+          if [ "$code" -eq 5 ]; then echo "No slow tests yet."; exit 0; fi
+          exit $code
