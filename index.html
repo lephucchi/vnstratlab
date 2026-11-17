@@ -5,18 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>vnstratlab · PO</title>
 <meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; form-action 'none'; base-uri 'none'">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="../buffalo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="styles.css">
-<script>
-  try { const t = localStorage.getItem("vnstratlab-theme"); if (t) document.documentElement.dataset.theme = t; } catch (_) {}
-</script>
+<script src="theme.js"></script>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<svg class="sprite" width="0" height="0" aria-hidden="true">
   <symbol id="buffalo" viewBox="0 0 120 120">
     <g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M46 47C30 47 12 42 7 21C18 33 33 37 49 37Z" fill="currentColor"/>
@@ -37,7 +36,7 @@
 <!-- ============ LOGIN ============ -->
 <section class="gate" id="gate">
   <form class="gate-card" id="login" autocomplete="on" novalidate>
-    <svg class="mark"><use href="#buffalo"/></svg>
+    <svg class="mark" aria-hidden="true"><use href="#buffalo"/></svg>
     <h1>PO dashboard</h1>
     <p>Bảng theo dõi dự án vnstratlab. Đăng nhập để giải mã dữ liệu.</p>
     <label class="field"><span>Tài khoản</span><input id="user" name="username" autocomplete="username" required autocapitalize="off" spellcheck="false"></label>
@@ -52,7 +51,7 @@
 <div id="app" hidden>
 <header class="top">
   <div class="wrap top-inner">
-    <a class="brand" href="../"><svg class="mark"><use href="#buffalo"/></svg>vnstratlab <span class="sep">/</span> <span class="po">PO</span></a>
+    <a class="brand" href="../"><svg class="mark" aria-hidden="true"><use href="#buffalo"/></svg>vnstratlab <span class="sep">/</span> <span class="po">PO</span></a>
     <nav aria-label="Liên kết">
       <a class="hide-sm" href="../">Giới thiệu</a>
       <a class="hide-sm" href="../docs/">Tài liệu</a>
@@ -150,7 +149,7 @@
 </main>
 
 <footer class="wrap muted small foot">
-  <svg class="mark"><use href="#buffalo"/></svg>
+  <svg class="mark" aria-hidden="true"><use href="#buffalo"/></svg>
   <span>Dữ liệu sinh tự động bởi <code>tools/build_status.py</code>, mã hóa bởi <code>tools/encrypt_po.py</code>. vnstratlab chỉ đưa ra khuyến nghị, không bao giờ đặt lệnh.</span>
 </footer>
 </div>

@@ -215,6 +215,8 @@ function renderProgress(d) {
 // ---------------------------------------------------------------- data access (encrypted)
 // data.enc.json is an AES-256-GCM envelope produced by tools/encrypt_po.py in pages.yml.
 // The key is PBKDF2-SHA256(user + "\n" + password, salt, iter); wrong credentials cannot decrypt.
+// Both values are NFC-normalised and trimmed, exactly like tools/encrypt_po.py.
+const norm = (s) => s.normalize("NFC").trim();
 const SESSION_KEY = "vnstratlab-po-key";
 const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -225,7 +227,7 @@ const session = {
 };
 
 async function deriveKey(user, password, env) {
-  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(`${user}\n${password}`), "PBKDF2", false, ["deriveKey"]);
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(`${norm(user)}\n${norm(password)}`), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
     { name: "PBKDF2", salt: b64(env.salt), iterations: env.iter, hash: "SHA-256" },
     base, { name: "AES-GCM", length: 256 }, true, ["decrypt"]
@@ -247,7 +249,11 @@ async function loadEnvelope() {
   const res = await fetch("data.enc.json", { cache: "no-store" });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const env = await res.json();
+  if (env.v !== 1 || env.alg !== "AES-256-GCM" || env.kdf !== "PBKDF2-SHA256") {
+    throw new Error("định dạng dữ liệu không hỗ trợ");
+  }
+  return env;
 }
 
 function show(data) {
@@ -281,7 +287,7 @@ async function main() {
     return;
   }
   if (!env) {
-    say("Dashboard chưa được cấu hình: thiếu secret VNSTRATLAB_PO_USER / VNSTRATLAB_PO_PASSWORD.", true);
+    say("Dashboard chưa được cấu hình: thiếu secret PO_USERNAME / PO_PASSWORD.", true);
     form.querySelectorAll("input, button").forEach((x) => { x.disabled = true; });
     return;
   }
@@ -299,7 +305,7 @@ async function main() {
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const user = $("#user").value.trim(), pass = $("#pass").value;
+    const user = norm($("#user").value), pass = norm($("#pass").value);
     if (!user || !pass) { say("Nhập tài khoản và mật khẩu.", true); return; }
     busy(true); say("");
     try {
