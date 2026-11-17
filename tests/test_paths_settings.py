@@ -55,3 +55,18 @@ def test_env_example_lists_every_variable() -> None:
     for name in ENV_NAMES:
         assert f"{name}=" in example
     assert "VNSTRATLAB_" not in example
+
+
+def test_blank_values_are_unset(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    for name in ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    env_file = tmp_path / ".env"
+    lines = ["VNSTOCK_API_KEY=", "TELEGRAM_CHAT_ID=  ", "LOG_LEVEL=DEBUG", ""]
+    env_file.write_text(chr(10).join(lines), encoding="utf-8")
+    settings = load_settings(env_file)
+    assert settings.secret_status() == {
+        "vnstock_api_key": False,
+        "telegram_bot_token": False,
+        "telegram_chat_id": False,
+    }
+    assert settings.log_level == "DEBUG"

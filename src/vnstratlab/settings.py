@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_NAMES = (
@@ -51,6 +51,20 @@ class Settings(BaseSettings):
     # PO dashboard login, used only by the Pages build (tools/encrypt_po.py).
     po_username: str | None = None
     po_password: SecretStr | None = None
+
+    @field_validator(
+        "app_home",
+        "vnstock_api_key",
+        "telegram_bot_token",
+        "telegram_chat_id",
+        "po_username",
+        "po_password",
+        mode="before",
+    )
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """`KEY=` with nothing after it (as in .env.example) means not set."""
+        return None if isinstance(value, str) and not value.strip() else value
 
     def secret_status(self) -> dict[str, bool]:
         """Which user-facing secrets are configured. Booleans only, never values.
