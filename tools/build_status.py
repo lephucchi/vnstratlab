@@ -26,7 +26,7 @@ import re
 import subprocess
 import urllib.error
 import urllib.request
-import xml.etree.ElementTree as ET  # noqa: N817
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -51,8 +51,13 @@ def scrub(value: Any) -> Any:
 
 def git(repo: Path, *args: str) -> str:
     try:
-        return subprocess.run(
-            ["git", *args], cwd=repo, check=True, capture_output=True, text=True, encoding="utf-8"
+        return subprocess.run(  # noqa: S603 - fixed internal git arguments
+            ["git", *args],  # noqa: S607 - git from PATH, as in CI
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
         ).stdout
     except (subprocess.CalledProcessError, FileNotFoundError):
         return ""
@@ -98,8 +103,15 @@ def parse_plan(text: str) -> list[dict[str, Any]]:
             first, last, title = m.group(1), m.group(2), m.group(3)
             card_id = f"{first}…{last}" if last else first
             cards.append(
-                {"id": card_id, "title": title, "milestone": milestone, "phase": phase,
-                 "status": "todo", "branch": None, "source": "plan"}
+                {
+                    "id": card_id,
+                    "title": title,
+                    "milestone": milestone,
+                    "phase": phase,
+                    "status": "todo",
+                    "branch": None,
+                    "source": "plan",
+                }
             )
     return cards
 
@@ -113,8 +125,16 @@ def parse_roadmap_cards(text: str) -> list[dict[str, Any]]:
     for line in text.splitlines():
         if m := ROADMAP_CARD_RE.match(line):
             cards.append(
-                {"id": m.group(1), "title": m.group(2), "milestone": "", "phase": "Phase 1",
-                 "release": m.group(3), "status": "todo", "branch": None, "source": "roadmap"}
+                {
+                    "id": m.group(1),
+                    "title": m.group(2),
+                    "milestone": "",
+                    "phase": "Phase 1",
+                    "release": m.group(3),
+                    "status": "todo",
+                    "branch": None,
+                    "source": "roadmap",
+                }
             )
     return cards
 
@@ -143,7 +163,9 @@ def card_files(repo: Path) -> dict[str, dict[str, Any]]:
     for path in sorted((repo / "docs" / "cards").glob("*.md")):
         add(path.read_text(encoding="utf-8"), "develop")
 
-    for ref in git(repo, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin").split():
+    for ref in git(
+        repo, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"
+    ).split():
         branch = ref.removeprefix("origin/")
         if not branch.startswith(("feat/", "fix/")):
             continue
@@ -162,8 +184,14 @@ def parse_progress(text: str) -> list[dict[str, str]]:
         parts = [p.strip() for p in line.split("|")]
         if len(parts) >= 6 and re.match(r"\d{4}-\d{2}-\d{2}", parts[0]):
             rows.append(
-                {"date": parts[0], "card": parts[1], "ref": parts[2], "summary": parts[3],
-                 "tests": parts[4], "review": parts[5]}
+                {
+                    "date": parts[0],
+                    "card": parts[1],
+                    "ref": parts[2],
+                    "summary": parts[3],
+                    "tests": parts[4],
+                    "review": parts[5],
+                }
             )
     return rows
 
@@ -180,22 +208,36 @@ def parse_adrs(adr_dir: Path) -> list[dict[str, str]]:
         raw = re.sub(r"[*`]", "", m.group(1)).strip() if m else "unknown"
         low = re.sub(r"\([^)]*\)", "", raw).lower()  # ignore parenthetical notes
         status = (
-            "proposed" if "proposed" in low and "accepted" not in low
-            else "partly-accepted" if "proposed" in low
-            else "accepted" if "accepted" in low
-            else "rejected" if "rejected" in low
-            else "superseded" if "superseded" in low
+            "proposed"
+            if "proposed" in low and "accepted" not in low
+            else "partly-accepted"
+            if "proposed" in low
+            else "accepted"
+            if "accepted" in low
+            else "rejected"
+            if "rejected" in low
+            else "superseded"
+            if "superseded" in low
             else raw
         )
-        adrs.append({"id": path.stem.split("-", 2)[0] + "-" + path.stem.split("-")[1],
-                     "file": path.name, "title": title, "status": status, "status_text": raw})
+        adrs.append(
+            {
+                "id": path.stem.split("-", 2)[0] + "-" + path.stem.split("-")[1],
+                "file": path.name,
+                "title": title,
+                "status": status,
+                "status_text": raw,
+            }
+        )
     return adrs
 
 
 def count_verify(repo: Path) -> int:
     total = 0
     for path in (repo / "src" / "vnstratlab" / "config").rglob("*.yaml"):
-        total += len(re.findall(r"status:\s*(VERIFY|provisional)", path.read_text(encoding="utf-8")))
+        total += len(
+            re.findall(r"status:\s*(VERIFY|provisional)", path.read_text(encoding="utf-8"))
+        )
     return total
 
 
@@ -213,7 +255,7 @@ def read_coverage(path: Path | None) -> float | None:
 def read_junit(path: Path | None) -> dict[str, int] | None:
     if not path or not path.exists():
         return None
-    root = ET.parse(path).getroot()
+    root = ET.parse(path).getroot()  # noqa: S314 - junit.xml written by our own pytest run
     suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
     totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
     for s in suites:
@@ -239,10 +281,15 @@ def read_bench(path: Path | None) -> list[dict[str, Any]]:
         last = entries[-1]
         for b in last.get("benches", []):
             out.append(
-                {"name": b.get("name"), "value": b.get("value"), "unit": b.get("unit"),
-                 "commit": last.get("commit", {}).get("id", "")[:7],
-                 "date": dt.datetime.fromtimestamp(last.get("date", 0) / 1000, dt.UTC)
-                 .replace(microsecond=0).isoformat()}
+                {
+                    "name": b.get("name"),
+                    "value": b.get("value"),
+                    "unit": b.get("unit"),
+                    "commit": last.get("commit", {}).get("id", "")[:7],
+                    "date": dt.datetime.fromtimestamp(last.get("date", 0) / 1000, dt.UTC)
+                    .replace(microsecond=0)
+                    .isoformat(),
+                }
             )
     return out
 
@@ -275,15 +322,29 @@ def github_data() -> dict[str, Any]:
     return {
         "available": pulls is not None or runs is not None,
         "pulls": [
-            {"number": p["number"], "title": p["title"], "head": p["head"]["ref"],
-             "base": p["base"]["ref"], "user": p["user"]["login"], "draft": p.get("draft", False),
-             "updated_at": p["updated_at"], "url": p["html_url"]}
+            {
+                "number": p["number"],
+                "title": p["title"],
+                "head": p["head"]["ref"],
+                "base": p["base"]["ref"],
+                "user": p["user"]["login"],
+                "draft": p.get("draft", False),
+                "updated_at": p["updated_at"],
+                "url": p["html_url"],
+            }
             for p in (pulls or [])
         ],
         "runs": [
-            {"name": r["name"], "branch": r["head_branch"], "sha": r["head_sha"][:7],
-             "status": r["status"], "conclusion": r["conclusion"], "event": r["event"],
-             "created_at": r["created_at"], "url": r["html_url"]}
+            {
+                "name": r["name"],
+                "branch": r["head_branch"],
+                "sha": r["head_sha"][:7],
+                "status": r["status"],
+                "conclusion": r["conclusion"],
+                "event": r["event"],
+                "created_at": r["created_at"],
+                "url": r["html_url"],
+            }
             for r in ((runs or {}).get("workflow_runs") or [])
         ],
         "branches": sorted(b["name"] for b in (branches or [])),
@@ -293,15 +354,19 @@ def github_data() -> dict[str, Any]:
 # ------------------------------------------------------------------ assemble
 
 
-def build(repo: Path, out: Path, coverage: Path | None, junit: Path | None,
-          bench: Path | None) -> None:
+def build(
+    repo: Path, out: Path, coverage: Path | None, junit: Path | None, bench: Path | None
+) -> None:
     plan_text = (repo / "docs" / "plan" / "plan.md").read_text(encoding="utf-8")
     cards = parse_plan(plan_text)
     known = {c["id"] for c in cards}
     roadmap = repo / "docs" / "roadmap.md"
     if roadmap.exists():
-        cards += [c for c in parse_roadmap_cards(roadmap.read_text(encoding="utf-8"))
-                  if c["id"] not in known]
+        cards += [
+            c
+            for c in parse_roadmap_cards(roadmap.read_text(encoding="utf-8"))
+            if c["id"] not in known
+        ]
     overrides = card_files(repo)
     by_id = {c["id"]: c for c in cards}
     for cid, card in overrides.items():
@@ -312,7 +377,9 @@ def build(repo: Path, out: Path, coverage: Path | None, junit: Path | None,
             by_id[cid] = card
 
     progress_path = repo / "docs" / "reports" / "progress.md"
-    progress = parse_progress(progress_path.read_text(encoding="utf-8")) if progress_path.exists() else []
+    progress = (
+        parse_progress(progress_path.read_text(encoding="utf-8")) if progress_path.exists() else []
+    )
     for row in progress:  # anything merged per the progress log is done
         if row["card"] in by_id:
             by_id[row["card"]]["status"] = "done"
@@ -326,12 +393,15 @@ def build(repo: Path, out: Path, coverage: Path | None, junit: Path | None,
     generated = now_iso()
 
     counts = {s: sum(1 for c in cards if c["status"] == s) for s in CARD_STATUSES}
-    waiting = (
-        [{"type": "adr", "text": a["title"], "status": a["status"]}
-         for a in adrs if a["status"] in ("proposed", "partly-accepted")]
-        + [{"type": "pr", "text": f"#{p['number']} {p['title']}", "url": p["url"]}
-           for p in gh["pulls"] if not p["draft"]]
-    )
+    waiting = [
+        {"type": "adr", "text": a["title"], "status": a["status"]}
+        for a in adrs
+        if a["status"] in ("proposed", "partly-accepted")
+    ] + [
+        {"type": "pr", "text": f"#{p['number']} {p['title']}", "url": p["url"]}
+        for p in gh["pulls"]
+        if not p["draft"]
+    ]
 
     po = {
         "generated_at": generated,
@@ -352,7 +422,9 @@ def build(repo: Path, out: Path, coverage: Path | None, junit: Path | None,
         "tests": tests,
         "coverage": cov,
         "benchmarks": benches,
-        "last_ci": next((r for r in gh["runs"] if r["name"] == "CI" and r["branch"] == "develop"), None),
+        "last_ci": next(
+            (r for r in gh["runs"] if r["name"] == "CI" and r["branch"] == "develop"), None
+        ),
         "cards_done": counts["done"],
         "cards_total": len(cards),
     }
@@ -360,7 +432,9 @@ def build(repo: Path, out: Path, coverage: Path | None, junit: Path | None,
     for rel, payload in (("po/data.json", po), ("data/status.json", status)):
         target = out / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(scrub(payload), ensure_ascii=False, indent=1), encoding="utf-8")
+        target.write_text(
+            json.dumps(scrub(payload), ensure_ascii=False, indent=1), encoding="utf-8"
+        )
         print(f"wrote {target}")
 
 
