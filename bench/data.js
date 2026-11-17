@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794924446685,
+  "lastUpdate": 1794925816300,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -155,6 +155,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00006287081021327206",
             "extra": "mean: 4.8773773888891965 msec\nrounds: 18"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8e79a362a26bba8f3dfbe32e58278ce33ad16fec",
+          "message": "docs(readme): development workflow diagram (#10)\n\nTwin of the docs PR into main, keeps develop in sync.\n\nCo-authored-by: Le Phuc Chi <lephucchi@users.noreply.github.com>",
+          "timestamp": "2026-11-17T21:29:53+07:00",
+          "tree_id": "5fe2fe4a64e774b433e37be4f2086e4ed647c742",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/8e79a362a26bba8f3dfbe32e58278ce33ad16fec"
+        },
+        "date": 1794925815505,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 148.16762317510688,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000216403986213601",
+            "extra": "mean: 6.7491127857142175 msec\nrounds: 14"
           }
         ]
       }
