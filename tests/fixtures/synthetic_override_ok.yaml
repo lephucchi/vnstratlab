@@ -1,0 +1,7 @@
+# Synthetic user override: one nested key, one list replacement.
+costs:
+  slippage_pct: {round_lot: 0.002}
+risk:
+  max_positions: 6
+benchmarks:
+  market_indices: [VN30]

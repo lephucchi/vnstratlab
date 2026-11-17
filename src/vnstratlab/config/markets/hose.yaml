@@ -23,8 +23,34 @@ rules:
   short_selling: {value: false, status: confirmed}
   intraday_t0: {value: false, status: confirmed}
 
-# Market holidays per year. A test fails if the current year is missing (P1-T02).
-# Each entry: {date: YYYY-MM-DD, name: "..."}; add `source` per year.
+# Market holidays per year: weekdays on which HOSE does NOT trade.
+# HOSE does not trade on government make-up Saturdays (e.g. 2026-08-22).
+# coverage: complete = all holidays of the year listed; partial = known gaps.
+# status: VERIFY = from press reports of HOSE/HNX notices; confirmed = checked against the
+#         HOSE notice itself; provisional = from the government holiday plan before HOSE announced.
+# A test fails if the current year is missing or empty (P1-T02).
 holidays:
-  2026: []
-  2027: []
+  2026:
+    coverage: complete
+    days:
+      - {date: 2026-01-01, name: "Tết Dương lịch", status: VERIFY, source: "https://thitruongtaichinhtiente.vn/lich-nghi-giao-dich-chung-khoan-tet-duong-lich-2026-75790.html"}
+      - {date: 2026-01-02, name: "Tết Dương lịch (nghỉ bù)", status: VERIFY, source: "https://thitruongtaichinhtiente.vn/lich-nghi-giao-dich-chung-khoan-tet-duong-lich-2026-75790.html"}
+      - {date: 2026-02-16, name: "Tết Nguyên đán", status: VERIFY, source: "https://thitruongtaichinhtiente.vn/lich-nghi-giao-dich-chung-khoan-tet-nguyen-dan-binh-ngo-2026-77799.html"}
+      - {date: 2026-02-17, name: "Tết Nguyên đán", status: VERIFY, source: "https://thitruongtaichinhtiente.vn/lich-nghi-giao-dich-chung-khoan-tet-nguyen-dan-binh-ngo-2026-77799.html"}
+      - {date: 2026-02-18, name: "Tết Nguyên đán", status: VERIFY, source: "https://thitruongtaichinhtiente.vn/lich-nghi-giao-dich-chung-khoan-tet-nguyen-dan-binh-ngo-2026-77799.html"}
+      - {date: 2026-02-19, name: "Tết Nguyên đán", status: VERIFY, source: "https://thitruongtaichinhtiente.vn/lich-nghi-giao-dich-chung-khoan-tet-nguyen-dan-binh-ngo-2026-77799.html"}
+      - {date: 2026-02-20, name: "Tết Nguyên đán", status: VERIFY, source: "https://thitruongtaichinhtiente.vn/lich-nghi-giao-dich-chung-khoan-tet-nguyen-dan-binh-ngo-2026-77799.html"}
+      - {date: 2026-04-27, name: "Giỗ Tổ Hùng Vương (nghỉ bù)", status: VERIFY, source: "https://thuvienphapluat.vn/hoi-dap-phap-luat/san-hose-khi-nao-nghi-gio-to-hung-vuong-2026-138084516.html"}
+      - {date: 2026-04-30, name: "Ngày Giải phóng miền Nam", status: VERIFY, source: "https://thuvienphapluat.vn/hoi-dap-phap-luat/san-hose-nghi-le-30-4-1-5-nam-2026-tu-ngay-nao-138085279.html"}
+      - {date: 2026-05-01, name: "Quốc tế Lao động", status: VERIFY, source: "https://thuvienphapluat.vn/hoi-dap-phap-luat/san-hose-nghi-le-30-4-1-5-nam-2026-tu-ngay-nao-138085279.html"}
+      - {date: 2026-08-31, name: "Quốc khánh (nghỉ hoán đổi)", status: VERIFY, source: "https://doanhnhan.baophapluat.vn/hose-thong-bao-lich-nghi-le-quoc-khanh-2-9-khong-giao-dich-bu-vao-thu-bay-22-08.html"}
+      - {date: 2026-09-01, name: "Quốc khánh", status: VERIFY, source: "https://doanhnhan.baophapluat.vn/hose-thong-bao-lich-nghi-le-quoc-khanh-2-9-khong-giao-dich-bu-vao-thu-bay-22-08.html"}
+      - {date: 2026-09-02, name: "Quốc khánh", status: VERIFY, source: "https://doanhnhan.baophapluat.vn/hose-thong-bao-lich-nghi-le-quoc-khanh-2-9-khong-giao-dich-bu-vao-thu-bay-22-08.html"}
+  2027:
+    coverage: partial   # HOSE has not published its 2027 calendar yet (as of 2026-11-17)
+    days:
+      - {date: 2027-02-04, name: "Tết Nguyên đán", status: provisional, source: "https://lsvn.vn/chinh-thuc-chot-lich-nghi-mot-so-dip-le-tet-nam-2026-va-nam-2027-a180209.html"}
+      - {date: 2027-02-05, name: "Tết Nguyên đán", status: provisional, source: "https://lsvn.vn/chinh-thuc-chot-lich-nghi-mot-so-dip-le-tet-nam-2026-va-nam-2027-a180209.html"}
+      - {date: 2027-02-08, name: "Tết Nguyên đán", status: provisional, source: "https://lsvn.vn/chinh-thuc-chot-lich-nghi-mot-so-dip-le-tet-nam-2026-va-nam-2027-a180209.html"}
+      - {date: 2027-02-09, name: "Tết Nguyên đán", status: provisional, source: "https://lsvn.vn/chinh-thuc-chot-lich-nghi-mot-so-dip-le-tet-nam-2026-va-nam-2027-a180209.html"}
+      - {date: 2027-02-10, name: "Tết Nguyên đán", status: provisional, source: "https://lsvn.vn/chinh-thuc-chot-lich-nghi-mot-so-dip-le-tet-nam-2026-va-nam-2027-a180209.html"}

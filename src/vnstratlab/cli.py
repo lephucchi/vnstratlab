@@ -16,6 +16,8 @@ from typing import Annotated
 import typer
 
 from vnstratlab import __version__
+from vnstratlab.calendar import holiday_coverage
+from vnstratlab.config.loader import ConfigError, load_config_with_info
 from vnstratlab.paths import get_paths
 from vnstratlab.settings import load_settings
 
@@ -61,6 +63,27 @@ def main(
     """vnstratlab command-line interface."""
 
 
+def _echo_config_status() -> bool:
+    """Print config validity and holiday coverage. Returns False if the config is invalid."""
+    try:
+        loaded = load_config_with_info()
+    except ConfigError as exc:
+        typer.echo("config: INVALID")
+        for problem in exc.problems:
+            typer.echo(f"  {problem}")
+        return False
+    cfg = loaded.config
+    typer.echo("config: OK")
+    this_year = date.today().year
+    for year in (this_year, this_year + 1):
+        coverage = holiday_coverage(cfg, year)
+        warning = "" if coverage == "complete" else "  WARNING: incomplete, check hose.yaml"
+        typer.echo(f"  holidays {year}: {coverage}{warning}")
+    for year in loaded.user_holiday_years:
+        typer.echo(f"  holidays {year}: user override")
+    return True
+
+
 @app.command()
 def doctor() -> None:
     """Check the installation: version, paths and which secrets are set (never their values)."""
@@ -71,9 +94,12 @@ def doctor() -> None:
     typer.echo(f"home         {paths.home}  (exists: {paths.home.exists()})")
     typer.echo(f"config       {paths.config_file}  (exists: {paths.config_file.exists()})")
     typer.echo(f"data         {paths.data_dir}")
+    config_ok = _echo_config_status()
     typer.echo("secrets:")
     for name, is_set in settings.secret_status().items():
         typer.echo(f"  {name:<20} {'set' if is_set else 'not set'}")
+    if not config_ok:
+        raise typer.Exit(code=1)
 
 
 @app.command()

@@ -1,0 +1,6 @@
+market:
+  holidays:
+    2026:
+      coverage: partial
+      days:
+        - {date: 2027-03-08, name: "synthetic wrong year", status: VERIFY, source: "synthetic"}

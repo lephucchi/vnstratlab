@@ -1,0 +1,6 @@
+market:
+  holidays:
+    2030:
+      coverage: partial
+      days:
+        - {date: 2030-03-04, name: "synthetic", status: provisional, source: "synthetic"}

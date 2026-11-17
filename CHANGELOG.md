@@ -7,6 +7,11 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Config loader and trading calendar (P1-T02): typed frozen config (`load_config`, `ConfigError`
+  with `dotted.path: reason` messages), deep-merge of user `config.yaml`, `TradingCalendar`
+  (config holidays or observed sessions), `decision_days` for short/medium/long horizons,
+  `holiday_coverage`; `doctor` reports config status and holiday coverage; HOSE holidays for
+  2026 (complete) and 2027 (partial); long book uses monthly decision days.
 - Pages: single deployment (`pages.yml`) combining intro site (`site` branch), docs (from `main`) and PO dashboard (`po` branch); `tools/build_status.py` generates public status data; `docs.yml` is build-only.
 - Project scaffold (P1-T01): `src/` layout package, Typer CLI with `doctor` and stubs for all
   planned commands, per-user app home via `platformdirs` (`VNSTRATLAB_HOME` override),

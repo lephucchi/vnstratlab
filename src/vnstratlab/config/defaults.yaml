@@ -13,7 +13,7 @@ project:
 books:                         # paper books, one per horizon, independent
   short:  {capital_vnd: 11000000, decision_day: last_trading_day_of_week}
   medium: {capital_vnd: 11000000, decision_day: last_trading_day_of_month, tranches: 3}
-  long:   {capital_vnd: 11000000, decision_day: after_report_season}
+  long:   {capital_vnd: 11000000, decision_day: last_trading_day_of_month}
 
 costs:                         # [VERIFY] with your broker; see docs/configuration.md
   brokerage_fee_pct: 0.0015

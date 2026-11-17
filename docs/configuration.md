@@ -34,7 +34,7 @@ Packaged defaults: [`src/vnstratlab/config/`](../src/vnstratlab/config/)
 | `markets/hose.yaml` | HOSE rules (settlement offset, price limit, lots, ticks, sessions, tax) and holidays per year |
 | `universes/vn30_banks.yaml` | Default universe seed (13 VN30 banks + known exits) |
 
-Your `<home>/config.yaml` overrides any key (deep merge, from P1-T02). Example:
+Your `<home>/config.yaml` overrides any key. Example:
 
 ```yaml
 books:
@@ -44,6 +44,25 @@ costs:
 benchmarks:
   risk_free: {annual_rate: 0.05}
 ```
+
+### Merge rules
+
+`load_config()` ([`config/loader.py`](../src/vnstratlab/config/loader.py)) deep-merges your
+`config.yaml` over the packaged defaults:
+
+- dicts merge recursively, so overriding one nested key leaves its siblings intact;
+- **lists and scalars replace** the default (a list in your file is not appended);
+- `market:` and `universe:` in your file are merged over the packaged
+  `markets/<project.market>.yaml` and `universes/<project.universe>.yaml`; you can override market
+  rules or supply `holidays` for a year (a `days` list replaces the packaged list for that year;
+  an empty `days: []` removes all holidays of that year). Year keys may be quoted; they are
+  normalised to integers, and non-integer or duplicate years are errors.
+
+Validation is strict: unknown keys are errors, percentages must be in [0, 1), capital > 0,
+`max_positions` >= 1, horizons are `short|medium|long`, and holidays must be weekdays inside their
+year. All problems are reported together as `dotted.path: reason`; `vnstratlab doctor` prints
+`config: INVALID` with these lines and exits 1, otherwise `config: OK` plus holiday coverage
+for the current and next year (`partial` or `missing` is a warning, not an error).
 
 ### `[VERIFY]` values
 
