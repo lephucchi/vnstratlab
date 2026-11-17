@@ -1,0 +1,165 @@
+<!doctype html>
+<!-- Source of docs/assets/architecture.png (rendered at 1600x1000, 2x). Content follows docs/architecture.md. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>vnstratlab · architecture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root { --fg: #0a0a0a; --muted: #6b6b6b; --line: #e3e3e3; --soft: #f6f6f6; --mono: "Geist Mono", ui-monospace, Consolas, monospace; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { width: 1600px; height: 1000px; position: relative; background: #fff; color: var(--fg); font: 400 15px/1.45 "Geist", system-ui, sans-serif;
+    background-image: radial-gradient(rgba(10,10,10,.09) 1px, transparent 1.2px); background-size: 24px 24px; overflow: hidden; }
+  .head { position: absolute; left: 60px; top: 46px; right: 60px; display: flex; align-items: center; gap: 16px; }
+  .head svg { width: 54px; height: 54px; }
+  .head h1 { margin: 0; font-size: 34px; letter-spacing: -.035em; font-weight: 600; }
+  .head p { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
+  .tag { margin-left: auto; font: 500 12.5px var(--mono); border: 1px solid var(--fg); border-radius: 999px; padding: 5px 12px; }
+  .box { position: absolute; width: 330px; height: 240px; background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; box-shadow: 0 1px 0 rgba(0,0,0,.02), 0 18px 40px -28px rgba(0,0,0,.35); }
+  .box .n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--fg); color: #fff; font: 500 12.5px var(--mono); }
+  .box h2 { display: inline; margin: 0 0 0 10px; font-size: 18px; letter-spacing: -.02em; font-weight: 600; vertical-align: 2px; }
+  .box ul { list-style: none; margin: 14px 0 0; padding: 0; font: 13px/1.5 var(--mono); color: #333; }
+  .box li { padding: 5px 0; border-top: 1px dashed var(--line); }
+  .box li:first-child { border-top: 0; }
+  .box li b { font-weight: 500; color: var(--fg); }
+  .box li.dim { color: var(--muted); }
+  .box.you { border-style: dashed; border-color: var(--fg); background: #fafafa; }
+  .box.you p { margin: 12px 0 0; color: #333; font-size: 15px; }
+  .lines { position: absolute; inset: 0; width: 1600px; height: 1000px; }
+  .lines path { fill: none; stroke: var(--fg); stroke-width: 1.6; }
+  .lines .dash { stroke-dasharray: 5 6; }
+  .wall { position: absolute; left: 1199px; top: 548px; height: 264px; border-left: 2px dashed var(--fg); }
+  .wall span { position: absolute; left: -12px; top: 26%; transform: translate(-50%, -50%) rotate(-90deg); white-space: nowrap; background: #fff; padding: 0 10px; font: 500 12px var(--mono); }
+  .band { position: absolute; left: 60px; right: 60px; top: 856px; display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; }
+  .band > div { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 14px 18px; }
+  .band h3 { margin: 0 0 8px; font: 500 11.5px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font: 12.5px var(--mono); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; background: var(--soft); }
+  .chip.k { background: var(--fg); color: #fff; border-color: var(--fg); }
+  .chip.o { background: #fff; border-color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="head">
+  <svg viewBox="0 0 120 120" fill="none" stroke="#0a0a0a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M46 47C30 47 12 42 7 21C18 33 33 37 49 37Z" fill="#0a0a0a"/><path d="M74 47C90 47 108 42 113 21C102 33 87 37 71 37Z" fill="#0a0a0a"/>
+    <path d="M43 50C34 48 26 52 22 58C30 60 38 58 44 56Z"/><path d="M77 50C86 48 94 52 98 58C90 60 82 58 76 56Z"/>
+    <path d="M44 40C52 34 68 34 76 40C80 52 78 66 74 78C72 90 68 98 60 100C52 98 48 90 46 78C42 66 40 52 44 40Z"/><path d="M54 43Q60 48 66 43"/>
+    <ellipse cx="60" cy="91" rx="15" ry="10.5"/><ellipse cx="54.5" cy="92" rx="2" ry="2.8" fill="#0a0a0a" stroke="none"/><ellipse cx="65.5" cy="92" rx="2" ry="2.8" fill="#0a0a0a" stroke="none"/>
+    <circle cx="51" cy="62" r="2.8" fill="#0a0a0a" stroke="none"/><circle cx="69" cy="62" r="2.8" fill="#0a0a0a" stroke="none"/>
+  </svg>
+  <div>
+    <h1>vnstratlab · architecture</h1>
+    <p>One engine, one nightly loop on your machine. Point-in-time data, every trial counted, recommend-only.</p>
+  </div>
+  <span class="tag">design · v0.1–v0.3 under construction</span>
+</div>
+
+<svg class="lines" viewBox="0 0 1600 1000" aria-hidden="true">
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#0a0a0a" stroke="none"/></marker></defs>
+  <path d="M390 300H448" marker-end="url(#a)"/>
+  <path d="M780 300H838" marker-end="url(#a)"/>
+  <path d="M1170 300H1228" marker-end="url(#a)"/>
+  <path d="M1395 400V478Q1395 490 1383 490H237Q225 490 225 502V548" marker-end="url(#a)"/>
+  <path d="M390 680H448" marker-end="url(#a)"/>
+  <path d="M780 680H838" marker-end="url(#a)"/>
+  <path class="dash" d="M1170 680H1228" marker-end="url(#a)"/>
+</svg>
+
+<div class="box" style="left:60px;top:160px">
+  <span class="n">A</span><h2>Data</h2>
+  <ul>
+    <li><b>DataSource</b> adapters (free API first)</li>
+    <li>ingest → data-quality checks</li>
+    <li>corporate actions, adjusted prices</li>
+    <li>fundamentals by <b>published_at</b></li>
+    <li class="dim">fail → stop loop + alert</li>
+  </ul>
+</div>
+<div class="box" style="left:450px;top:160px">
+  <span class="n">B</span><h2>Features</h2>
+  <ul>
+    <li><b>market.duckdb</b></li>
+    <li>features_daily, point-in-time</li>
+    <li>universe membership history</li>
+    <li>feature_version per run</li>
+    <li class="dim">news collected on the side</li>
+  </ul>
+</div>
+<div class="box" style="left:840px;top:160px">
+  <span class="n">C</span><h2>Strategies</h2>
+  <ul>
+    <li><b>S00–S18</b> built-ins + user plug-ins</li>
+    <li>short · medium · long horizons</li>
+    <li>params frozen, every trial logged</li>
+    <li>output: target weights</li>
+    <li class="dim">pure functions, no I/O</li>
+  </ul>
+</div>
+<div class="box" style="left:1230px;top:160px">
+  <span class="n">D</span><h2>Engine</h2>
+  <ul>
+    <li><b>SimExecutor</b> + HOSE rules</li>
+    <li>T+ settlement, limits, lots, ticks</li>
+    <li>fees, sales tax, slippage</li>
+    <li>fill at next open</li>
+    <li>OOS returns → <b>lab.duckdb</b></li>
+  </ul>
+</div>
+
+<div class="box" style="left:60px;top:560px">
+  <span class="n">E</span><h2>Lab</h2>
+  <ul>
+    <li><b>gate 1</b> DSR · PBO · min periods</li>
+    <li><b>gate 2</b> SPA vs equal weight</li>
+    <li>Model Confidence Set</li>
+    <li>Hedge weights, shrunk to EW</li>
+    <li class="dim">none pass → hold_benchmark</li>
+  </ul>
+</div>
+<div class="box" style="left:450px;top:560px">
+  <span class="n">F</span><h2>Risk</h2>
+  <ul>
+    <li>combine strategy weights</li>
+    <li>sizing, ATR stops, limits</li>
+    <li>circuit breaker</li>
+    <li>lot-aware quantities</li>
+    <li class="dim">portfolio optimiser (Phase 3)</li>
+  </ul>
+</div>
+<div class="box" style="left:840px;top:560px">
+  <span class="n">G</span><h2>Recommendation</h2>
+  <ul>
+    <li><b>journal.sqlite</b>, append-only</li>
+    <li>entry zone · stop · evidence</li>
+    <li>PaperExecutor → paper books</li>
+    <li>dashboard 127.0.0.1 (read-only)</li>
+    <li>Telegram / console report</li>
+  </ul>
+</div>
+<div class="wall"><span>boundary · no orders · no broker</span></div>
+<div class="box you" style="left:1230px;top:560px">
+  <span class="n">→</span><h2>You</h2>
+  <p>Read the recommendation the next morning, decide, and place orders yourself in your broker's app.</p>
+  <p style="color:#6b6b6b;font-size:13.5px">Optional: record your real fills to compare with what was recommended.</p>
+</div>
+
+<div class="band">
+  <div>
+    <h3>Layers</h3>
+    <div class="chips">
+      <span class="chip k">domain core · no I/O</span><span class="chip">engine</span><span class="chip">rules</span><span class="chip">strategies</span><span class="chip">risk</span><span class="chip">features</span>
+      <span class="chip o">infrastructure</span><span class="chip">DuckDB / SQLite</span><span class="chip">data sources</span><span class="chip">notify</span><span class="chip">FastAPI read-only</span><span class="chip">scheduler</span>
+    </div>
+  </div>
+  <div>
+    <h3>Where it runs</h3>
+    <div class="chips">
+      <span class="chip k">your machine</span><span class="chip">app home: data, config, .env</span>
+      <span class="chip o">GitHub Actions</span><span class="chip">CI on synthetic data only</span><span class="chip">Pages</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -12,6 +12,11 @@ that survive statistical tests, and turns them into **recommendations** for thre
 
 > 🇻🇳 Đọc bằng tiếng Việt: [README.vi.md](README.vi.md)
 
+**Website:** [lephucchi.github.io/vnstratlab](https://lephucchi.github.io/vnstratlab/) ·
+**Docs:** [https://lephucchi.github.io/vnstratlab/docs/](https://lephucchi.github.io/vnstratlab/docs/)
+
+[![vnstratlab website: the strategy lab for Vietnamese stocks](docs/assets/site.png)](https://lephucchi.github.io/vnstratlab/)
+
 > [!IMPORTANT]
 > **vnstratlab never places orders.** It has no broker connection and never will
 > ([ADR-001](docs/adr/ADR-001-python-core-recommend-only.md)). It produces recommendations;
@@ -36,6 +41,15 @@ Most backtests lie, usually by accident. vnstratlab is built around three ideas:
 3. **Realism before release.** Each release passes stress tests (costs ×2/×3, delayed fills,
    liquidity caps, parameter noise, market regimes) and a cross-check against other
    backtesting engines (see [QA gates](docs/qa-gates.md)).
+
+## Architecture
+
+[![vnstratlab architecture: data, features, strategies, engine, lab, risk, recommendation, then you decide](docs/assets/architecture.png)](docs/architecture.md)
+
+One engine and one nightly loop on your machine; the pipeline stops at a recommendation and
+never reaches a broker. Details: [docs/architecture.md](docs/architecture.md) ·
+[end-to-end flow](docs/end-to-end-flow.md). Image source:
+[docs/assets/architecture.html](docs/assets/architecture.html).
 
 ## Status
 

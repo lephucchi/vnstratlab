@@ -7,6 +7,11 @@ ngắn hạn (1 tuần), trung hạn (3–6 tháng) và dài hạn (1 năm).
 
 > 🇬🇧 English: [README.md](README.md)
 
+**Website:** [lephucchi.github.io/vnstratlab](https://lephucchi.github.io/vnstratlab/) ·
+**Tài liệu:** [https://lephucchi.github.io/vnstratlab/docs/](https://lephucchi.github.io/vnstratlab/docs/)
+
+[![Website vnstratlab: phòng lab chiến lược cho cổ phiếu Việt Nam](docs/assets/site.png)](https://lephucchi.github.io/vnstratlab/)
+
 > [!IMPORTANT]
 > **vnstratlab không bao giờ đặt lệnh.** Phần mềm không kết nối với công ty chứng khoán nào
 > và sẽ không bao giờ có chức năng này ([ADR-001](docs/adr/ADR-001-python-core-recommend-only.md)).
@@ -29,6 +34,15 @@ ngắn hạn (1 tuần), trung hạn (3–6 tháng) và dài hạn (1 năm).
 3. **Kiểm tra tính thực tế trước mỗi bản phát hành.** Stress test (phí ×2/×3, khớp lệnh trễ,
    giới hạn thanh khoản, nhiễu tham số, các giai đoạn thị trường) và đối chiếu chéo với các
    engine backtest khác ([QA gates](docs/qa-gates.md)).
+
+## Kiến trúc
+
+[![Kiến trúc vnstratlab: dữ liệu, chỉ báo, chiến lược, engine, lab, rủi ro, khuyến nghị, rồi bạn tự quyết](docs/assets/architecture.png)](docs/architecture.md)
+
+Một engine, một vòng lặp mỗi tối chạy trên máy của bạn; pipeline dừng ở khuyến nghị và không
+bao giờ kết nối công ty chứng khoán. Chi tiết: [docs/architecture.md](docs/architecture.md) ·
+[luồng end-to-end](docs/end-to-end-flow.md). Nguồn ảnh:
+[docs/assets/architecture.html](docs/assets/architecture.html).
 
 ## Trạng thái
 
