@@ -1,7 +1,8 @@
 """Build public status data for the project websites (stdlib only).
 
 Outputs
-- <out>/po/data.json  : project-management data for the PO dashboard (branch `po`)
+- <out>/po/data.enc.json : project-management data for the PO dashboard (branch `po`),
+                           encrypted with the PO login (tools/encrypt_po.py); never plaintext
 - <out>/data/status.json : measured facts for the intro site (branch `site`)
 
 Sources (all public): repository files on develop and on feature branches, the progress log,
@@ -24,6 +25,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -429,13 +431,30 @@ def build(
         "cards_total": len(cards),
     }
 
-    for rel, payload in (("po/data.json", po), ("data/status.json", status)):
-        target = out / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps(scrub(payload), ensure_ascii=False, indent=1), encoding="utf-8"
-        )
-        print(f"wrote {target}")
+    target = out / "data" / "status.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(scrub(status), ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"wrote {target}")
+    publish_po(json.dumps(scrub(po), ensure_ascii=False, indent=1).encode("utf-8"), out / "po")
+
+
+def publish_po(plaintext: bytes, po_dir: Path) -> None:
+    """PO data is published only encrypted (tools/encrypt_po.py), never as plaintext.
+
+    Done here rather than in a separate workflow step so that every version of pages.yml
+    (including the one on `main`, which the daily schedule runs) is safe.
+    """
+    stale = po_dir / "data.json"
+    stale.unlink(missing_ok=True)
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from encrypt_po import publish
+
+        from vnstratlab.settings import load_settings
+    except ImportError as exc:
+        print(f"::warning::PO dashboard data not published ({exc}).")
+        return
+    publish(plaintext, po_dir, load_settings())
 
 
 def main() -> None:

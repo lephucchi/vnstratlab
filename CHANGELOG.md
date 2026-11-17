@@ -6,7 +6,17 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** environment variables have no project prefix: `APP_HOME` (was
+  `VNSTRATLAB_HOME`), `LOG_LEVEL`, `VNSTOCK_API_KEY` (was `VNSTRATLAB_DATA_API_KEY`),
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. The unused LLM key is removed until the Phase 2
+  card that needs it. Rename the keys in your `.env`.
+- Pages: PO dashboard data is published only encrypted (`po/data.enc.json`); the plaintext
+  `po/data.json` is no longer written.
+
 ### Added
+- PO dashboard login: `PO_USERNAME` / `PO_PASSWORD` (GitHub secrets for the Pages build),
+  `tools/encrypt_po.py` (AES-256-GCM, PBKDF2-SHA256 600k, NFC-normalised credentials).
 - Config loader and trading calendar (P1-T02): typed frozen config (`load_config`, `ConfigError`
   with `dotted.path: reason` messages), deep-merge of user `config.yaml`, `TradingCalendar`
   (config holidays or observed sessions), `decision_days` for short/medium/long horizons,

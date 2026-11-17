@@ -69,10 +69,10 @@ def test_doctor_never_prints_secret_values(
     monkeypatch: pytest.MonkeyPatch, tmp_path: object
 ) -> None:
     secret = "synthetic-secret-value-123"  # noqa: S105 - synthetic test value
-    monkeypatch.setenv("VNSTRATLAB_HOME", str(tmp_path))
-    monkeypatch.setenv("VNSTRATLAB_DATA_API_KEY", secret)
+    monkeypatch.setenv("APP_HOME", str(tmp_path))
+    monkeypatch.setenv("VNSTOCK_API_KEY", secret)
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0
     assert secret not in result.output
-    assert "data_api_key" in result.output
+    assert "vnstock_api_key" in result.output
     assert "set" in result.output

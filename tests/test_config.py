@@ -140,7 +140,7 @@ def test_packaged_holidays_cover_current_year_with_sources(tmp_path: Path) -> No
 
 
 def test_doctor_ok_without_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("VNSTRATLAB_HOME", str(tmp_path))
+    monkeypatch.setenv("APP_HOME", str(tmp_path))
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0
     assert "config: OK" in result.output
@@ -150,7 +150,7 @@ def test_doctor_ok_without_user_config(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 def test_doctor_invalid_config_exits_1(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _home_with(tmp_path, "synthetic_bad_negative_cost.yaml")
-    monkeypatch.setenv("VNSTRATLAB_HOME", str(tmp_path))
+    monkeypatch.setenv("APP_HOME", str(tmp_path))
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 1
     assert "config: INVALID" in result.output
@@ -235,7 +235,7 @@ def test_doctor_unreadable_config_exits_1_without_traceback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     (tmp_path / "config.yaml").write_bytes(b"\xff\xfe\x00bad")
-    monkeypatch.setenv("VNSTRATLAB_HOME", str(tmp_path))
+    monkeypatch.setenv("APP_HOME", str(tmp_path))
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 1
     assert "config: INVALID" in result.output
@@ -281,7 +281,7 @@ def test_doctor_reports_user_holiday_override(
         "        - {date: 2026-03-09, name: synthetic, status: provisional, source: s}\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("VNSTRATLAB_HOME", str(tmp_path))
+    monkeypatch.setenv("APP_HOME", str(tmp_path))
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0
     assert "holidays 2026: user override" in result.output
@@ -296,7 +296,7 @@ def test_doctor_reports_empty_days_override(
     (tmp_path / "config.yaml").write_text(
         "market: {holidays: {2026: {coverage: partial, days: []}}}\n", encoding="utf-8"
     )
-    monkeypatch.setenv("VNSTRATLAB_HOME", str(tmp_path))
+    monkeypatch.setenv("APP_HOME", str(tmp_path))
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0
     assert "holidays 2026: user override" in result.output
@@ -345,7 +345,7 @@ def test_config_path_that_is_not_a_file(monkeypatch: pytest.MonkeyPatch, tmp_pat
     (tmp_path / "config.yaml").mkdir()
     with pytest.raises(ConfigError, match="not a file"):
         load_config(tmp_path)
-    monkeypatch.setenv("VNSTRATLAB_HOME", str(tmp_path))
+    monkeypatch.setenv("APP_HOME", str(tmp_path))
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 1
     assert "config: INVALID" in result.output
