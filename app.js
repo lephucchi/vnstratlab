@@ -16,7 +16,7 @@ function setLang(lang) {
   store.set("vnstratlab-lang", lang);
 }
 setLang(store.get("vnstratlab-lang") || "vi");
-langBtn.addEventListener("click", () => { setLang(root.lang === "vi" ? "en" : "vi"); renderStatus(); });
+langBtn.addEventListener("click", () => { setLang(root.lang === "vi" ? "en" : "vi"); renderStatus(); renderStrategies(); });
 
 // ---------------------------------------------------------------- theme
 function isDark() {
@@ -160,9 +160,8 @@ const io = new IntersectionObserver((entries) => {
     io.unobserve(e.target);
   }
 }, { threshold: 0.2 });
-document.querySelectorAll(".sec-head, .features, .pipe, .graph-wrap, .gate-grid, .kpis, .timeline, .install, .mascot-sec")
+document.querySelectorAll(".sec-head, .features, .pipe, .funnel, .kpis, .timeline, .install, .mascot-sec")
   .forEach((el) => { el.classList.add("reveal"); io.observe(el); });
-io.observe(document.getElementById("graph"));
 io.observe(document.getElementById("term"));
 
 // ---------------------------------------------------------------- strategy tabs
@@ -256,3 +255,62 @@ fetch("data/status.json", { cache: "no-store" })
   .then((r) => (r.ok ? r.json() : null))
   .then((s) => { status = s; renderStatus(); })
   .catch(() => { status = null; renderStatus(); });
+
+// ---------------------------------------------------------------- strategy cards + detail dialog
+const L = () => (root.lang === "en" ? "en" : "vi");
+const tr = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v[L()] : v);
+const UI = {
+  vi: { more: "Xem chi tiết →", idea: "Ý tưởng", rule: "Quy tắc", params: "Tham số đề xuất (chưa đóng băng)", basis: "Cơ sở", risk: "Lưu ý", horizons: "Khung", data: "Dữ liệu", card: "Card", none: "Không có tham số", blocked: "đang tắt",
+        h: { short: "ngắn", medium: "trung", long: "dài" } },
+  en: { more: "Details →", idea: "Idea", rule: "Rule", params: "Proposed parameters (not frozen)", basis: "Basis", risk: "Note", horizons: "Horizons", data: "Data", card: "Card", none: "No parameters", blocked: "disabled",
+        h: { short: "short", medium: "medium", long: "long" } },
+};
+function node(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+
+function renderStrategies() {
+  const u = UI[L()];
+  for (const panel of document.querySelectorAll("[data-panel]")) {
+    const h = panel.dataset.panel;
+    const grid = node("div", "strat-grid");
+    for (const s of window.STRATEGIES.filter((x) => x.horizons.includes(h))) {
+      const b = node("button", `strat-card${s.blocked ? " blocked" : ""}`);
+      b.type = "button";
+      b.dataset.id = s.id;
+      const top = node("span", "top");
+      top.append(node("span", "sid", s.id), node("span", "sname", tr(s.name)));
+      b.append(top, node("span", "sidea", tr(s.idea)), node("span", "smore", s.blocked ? `${u.blocked} · ${u.more}` : u.more));
+      b.addEventListener("click", () => openStrategy(s.id));
+      grid.append(b);
+    }
+    panel.replaceChildren(node("p", "hnote", tr(window.HORIZON_NOTES[h])), grid);
+  }
+}
+
+const dlg = document.getElementById("strat-dlg");
+function openStrategy(id) {
+  const s = window.STRATEGIES.find((x) => x.id === id);
+  const u = UI[L()];
+  document.getElementById("dlg-id").textContent = s.id;
+  document.getElementById("dlg-title").textContent = tr(s.name);
+  const body = document.getElementById("dlg-body");
+  const out = [node("h4", null, u.idea), node("p", "lead-idea", tr(s.idea)), node("h4", null, u.rule)];
+  const ol = node("ol");
+  for (const r of tr(s.rule)) ol.append(node("li", null, r));
+  out.push(ol, node("h4", null, u.params));
+  const chips = node("div", "chips");
+  if (s.params.length) for (const p of s.params) chips.append(node("span", null, p));
+  else chips.append(node("span", null, u.none));
+  out.push(chips, node("h4", null, u.basis), node("p", null, tr(s.basis)));
+  if (s.risk) out.push(node("h4", null, u.risk), node("p", "warn", tr(s.risk)));
+  const meta = node("div", "dlg-meta");
+  for (const [k, v] of [[u.horizons, s.horizons.map((h) => u.h[h]).join(" · ")], [u.data, s.data], [u.card, s.card]]) {
+    const d = node("div"); d.append(node("small", null, k), node("span", null, v)); meta.append(d);
+  }
+  out.push(meta);
+  body.replaceChildren(...out);
+  body.scrollTop = 0;
+  if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+}
+document.getElementById("dlg-close").addEventListener("click", () => dlg.close());
+dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); }); // click on the backdrop
+renderStrategies();
