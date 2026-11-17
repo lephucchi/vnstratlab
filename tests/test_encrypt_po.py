@@ -31,7 +31,7 @@ ep = _load()
 
 
 def _settings(monkeypatch: pytest.MonkeyPatch, user: str | None, pw: str | None) -> Settings:
-    for name, value in (("VNSTRATLAB_PO_USER", user), ("VNSTRATLAB_PO_PASSWORD", pw)):
+    for name, value in (("PO_USERNAME", user), ("PO_PASSWORD", pw)):
         if value is None:
             monkeypatch.delenv(name, raising=False)
         else:
@@ -91,8 +91,52 @@ def test_main_missing_input(tmp_path: Path) -> None:
     assert ep.main(["--in", str(tmp_path / "nope.json"), "--out", str(tmp_path / "o")]) == 1
 
 
-def test_secret_status_reports_po(monkeypatch: pytest.MonkeyPatch) -> None:
-    status = _settings(monkeypatch, "po", "pw").secret_status()
-    assert status["po_user"] is True
-    assert status["po_password"] is True
-    assert "pw" not in repr(_settings(monkeypatch, "po", "pw"))
+# Fixed vector: also decrypted by the PO page's WebCrypto code (Node check in PR #1).
+VECTOR = {
+    "v": 1,
+    "alg": "AES-256-GCM",
+    "kdf": "PBKDF2-SHA256",
+    "iter": 1000,
+    "salt": "AAECAwQFBgcICQoLDA0ODw==",
+    "iv": "AAECAwQFBgcICQoL",
+    "data": "Z/HACvy/Qb8yOZqnDAogHlIfDZ2jzPQASJP+",
+}
+
+
+def test_known_vector() -> None:
+    env = ep.encrypt(
+        b'{"ok":true}', "po", "Zx9-tr\u00e2u", 1000, salt=bytes(range(16)), iv=bytes(range(12))
+    )
+    assert env == VECTOR
+
+
+@pytest.mark.parametrize(
+    ("user", "pw"),
+    [
+        ("po", "Zx9-tr\u00e2u"),
+        (" po ", "Zx9-tr\u00e2u\n"),  # secret saved with a trailing newline
+        ("po", "Zx9-tra\u0302u"),  # NFD form of the same password
+    ],
+)
+def test_normalised_credentials_decrypt(user: str, pw: str) -> None:
+    assert ep.decrypt(VECTOR, user, pw) == b'{"ok":true}'
+
+
+def test_publish_never_writes_plaintext(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    po_dir = tmp_path / "po"
+    assert ep.publish(b'{"cards": []}', po_dir, _settings(monkeypatch, "po", "Zx9-unique"), 1000)
+    assert [f.name for f in po_dir.iterdir()] == ["data.enc.json"]
+
+
+def test_publish_without_credentials_warns(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert ep.publish(b"{}", tmp_path, _settings(monkeypatch, None, None)) is False
+    assert "::warning::" in capsys.readouterr().out
+    assert not any(tmp_path.iterdir())
+
+
+def test_po_login_not_in_doctor_and_hidden_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = _settings(monkeypatch, "po", "Zx9-unique")
+    assert "po_password" not in settings.secret_status()
+    assert "Zx9-unique" not in repr(settings)

@@ -5,14 +5,20 @@ dashboard data is published only as an AES-256-GCM envelope whose key is derived
 PBKDF2-HMAC-SHA256 from the PO user name and password. The browser derives the same key
 from what the user types (WebCrypto) and can only decrypt with the right credentials.
 
-Credentials come only from `vnstratlab.settings.Settings`:
-VNSTRATLAB_PO_USER and VNSTRATLAB_PO_PASSWORD (environment / `.env`; GitHub secrets in CI).
-They are never printed or written anywhere.
+Threat model: the envelope is public, so anyone can try passwords offline. 600k PBKDF2
+iterations slow that down, but protection rests on the password: use a random one of 16+
+characters. The data itself is assembled from public repository and GitHub API content;
+encryption hides the dashboard view, not confidential facts.
 
-The plaintext input is always deleted. If the credentials are not set, nothing is
-published and the dashboard shows that it is not configured.
+Credentials come only from `vnstratlab.settings.Settings`: PO_USERNAME and PO_PASSWORD
+(environment / `.env`; GitHub secrets in CI). They are never printed or written anywhere.
+Both are NFC-normalised and stripped of surrounding whitespace, exactly as the PO page does
+with what the user types, so a secret saved with a trailing newline still works.
 
-Usage:
+`tools/build_status.py` calls `publish()` directly, so plaintext PO data is never written,
+whichever version of pages.yml runs. Without credentials nothing is published under /po/.
+
+Usage (re-encrypt an existing file):
   python tools/encrypt_po.py --in _site/po/data.json --out _site/po/data.enc.json
 """
 
@@ -24,6 +30,7 @@ import hashlib
 import json
 import os
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -32,18 +39,26 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from vnstratlab.settings import Settings, load_settings
 
 ENVELOPE_VERSION = 1
+ALG = "AES-256-GCM"
+KDF = "PBKDF2-SHA256"
 KDF_ITERATIONS = 600_000
 SALT_BYTES = 16
 IV_BYTES = 12
+ENC_NAME = "data.enc.json"
 
 
 def _b64(raw: bytes) -> str:
     return base64.b64encode(raw).decode("ascii")
 
 
+def normalise(value: str) -> str:
+    """Same rule as the PO page: Unicode NFC, surrounding whitespace removed."""
+    return unicodedata.normalize("NFC", value).strip()
+
+
 def key_material(user: str, password: str) -> bytes:
-    """What the browser feeds to PBKDF2: user and password joined by a newline."""
-    return f"{user}\n{password}".encode()
+    """What both sides feed to PBKDF2: normalised user and password joined by a newline."""
+    return f"{normalise(user)}\n{normalise(password)}".encode()
 
 
 def derive_key(user: str, password: str, salt: bytes, iterations: int) -> bytes:
@@ -51,15 +66,22 @@ def derive_key(user: str, password: str, salt: bytes, iterations: int) -> bytes:
 
 
 def encrypt(
-    plaintext: bytes, user: str, password: str, iterations: int = KDF_ITERATIONS
+    plaintext: bytes,
+    user: str,
+    password: str,
+    iterations: int = KDF_ITERATIONS,
+    *,
+    salt: bytes | None = None,
+    iv: bytes | None = None,
 ) -> dict[str, Any]:
-    salt = os.urandom(SALT_BYTES)
-    iv = os.urandom(IV_BYTES)
+    """Build the envelope. `salt`/`iv` are random unless given (test vectors only)."""
+    salt = salt if salt is not None else os.urandom(SALT_BYTES)
+    iv = iv if iv is not None else os.urandom(IV_BYTES)
     key = derive_key(user, password, salt, iterations)
     return {
         "v": ENVELOPE_VERSION,
-        "alg": "AES-256-GCM",
-        "kdf": "PBKDF2-SHA256",
+        "alg": ALG,
+        "kdf": KDF,
         "iter": iterations,
         "salt": _b64(salt),
         "iv": _b64(iv),
@@ -77,10 +99,26 @@ def decrypt(envelope: dict[str, Any], user: str, password: str) -> bytes:
 
 
 def credentials(settings: Settings) -> tuple[str, str] | None:
-    if not settings.po_user or settings.po_password is None:
-        return None
-    password = settings.po_password.get_secret_value()
-    return (settings.po_user, password) if password else None
+    user = normalise(settings.po_username or "")
+    password = normalise(settings.po_password.get_secret_value()) if settings.po_password else ""
+    return (user, password) if user and password else None
+
+
+def publish(
+    plaintext: bytes, po_dir: Path, settings: Settings, iterations: int = KDF_ITERATIONS
+) -> bool:
+    """Write `<po_dir>/data.enc.json`, or nothing without credentials. Never plaintext."""
+    dst = po_dir / ENC_NAME
+    dst.unlink(missing_ok=True)
+    creds = credentials(settings)
+    if creds is None:
+        # GitHub Actions annotation, visible in the run summary
+        print("::warning::PO_USERNAME / PO_PASSWORD not set: PO dashboard data not published.")
+        return False
+    po_dir.mkdir(parents=True, exist_ok=True)
+    dst.write_text(json.dumps(encrypt(plaintext, *creds, iterations=iterations)), encoding="utf-8")
+    print(f"PO dashboard data encrypted -> {dst}")
+    return True
 
 
 def run(src: Path, dst: Path, settings: Settings, iterations: int = KDF_ITERATIONS) -> bool:
@@ -88,16 +126,10 @@ def run(src: Path, dst: Path, settings: Settings, iterations: int = KDF_ITERATIO
     plaintext = src.read_bytes()
     src.unlink()
     dst.unlink(missing_ok=True)
-    creds = credentials(settings)
-    if creds is None:
-        print(
-            "PO credentials not set (VNSTRATLAB_PO_USER / VNSTRATLAB_PO_PASSWORD): "
-            "dashboard data not published."
-        )
-        return False
-    dst.write_text(json.dumps(encrypt(plaintext, *creds, iterations=iterations)), encoding="utf-8")
-    print(f"PO dashboard data encrypted -> {dst}")
-    return True
+    written = publish(plaintext, dst.parent, settings, iterations)
+    if written and dst.name != ENC_NAME:
+        (dst.parent / ENC_NAME).replace(dst)
+    return written
 
 
 def main(argv: list[str] | None = None) -> int:

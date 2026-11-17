@@ -48,11 +48,19 @@ Settings → Environments → `github-pages` → Deployment branches: allow **`m
 `pages.yml` runs from `develop` (pushes and the `site`/`po` dispatches); with only `main`
 allowed, its `deploy` job is rejected by the environment protection rule.
 
-PO dashboard login: Settings → Secrets and variables → Actions → add `VNSTRATLAB_PO_USER` and
-`VNSTRATLAB_PO_PASSWORD` (or `gh secret set VNSTRATLAB_PO_PASSWORD`). The build publishes the
-dashboard data only as `po/data.enc.json`, AES-256-GCM with a PBKDF2 key derived from that
-login; without the secrets nothing is published under `/po/`. Changing the password takes
-effect on the next Pages build.
+PO dashboard login: Settings → Secrets and variables → Actions → add `PO_USERNAME` and
+`PO_PASSWORD` (`gh secret set PO_PASSWORD` prompts for the value, so it stays out of shell
+history). `tools/build_status.py` publishes the dashboard data only as `po/data.enc.json`
+(AES-256-GCM, key from PBKDF2-SHA256 with 600k iterations over the login); plaintext is never
+written, whichever version of `pages.yml` runs. Without the secrets nothing is published under
+`/po/` and the run shows a warning. A new password takes effect on the next Pages build; every
+build rotates the salt, so PO users log in again after each build.
+
+Threat model: the encrypted file is public, so anyone can try passwords offline. Use a random
+password of **16+ characters** (or a long passphrase). Usernames and passwords are
+NFC-normalised and stripped of surrounding spaces on both sides. The dashboard is assembled
+from public repository and GitHub API content: encryption hides the aggregated view, it does
+not protect confidential facts, so never put confidential data into it.
 
 `pages.yml` is the only workflow that deploys Pages (on pushes to `develop`/`main`, daily, and
 when the orphan `site`/`po` branches change). `docs.yml` only checks that the docs build.
@@ -61,8 +69,8 @@ when the orphan `site`/`po` branches change). `docs.yml` only checks that the do
 
 - Settings → Code security: enable **private vulnerability reporting**, Dependabot alerts and
   security updates, secret scanning and push protection.
-- CI needs no repository secrets. The Pages build needs two: `VNSTRATLAB_PO_USER` and
-  `VNSTRATLAB_PO_PASSWORD` (section 5).
+- CI needs no repository secrets. The Pages build needs two: `PO_USERNAME` and
+  `PO_PASSWORD` (section 5).
 
 ## 7. Labels
 

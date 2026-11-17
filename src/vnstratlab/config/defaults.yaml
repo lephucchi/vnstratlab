@@ -64,4 +64,4 @@ news:
 
 notify:
   console: true
-  telegram: false              # token and chat id come from env (VNSTRATLAB_TELEGRAM_*)
+  telegram: false              # token and chat id come from env (TELEGRAM_*)

@@ -12,7 +12,7 @@ All user files live in one directory:
 | macOS | `~/Library/Application Support/vnstratlab` |
 | Linux | `~/.local/share/vnstratlab` |
 
-Override with `VNSTRATLAB_HOME`. `vnstratlab doctor` prints the active paths.
+Override with `APP_HOME`. `vnstratlab doctor` prints the active paths.
 
 ```
 <home>/
@@ -83,15 +83,18 @@ trial and counts it in the Deflated Sharpe Ratio, so changing parameters raises 
 Read by [`settings.py`](../src/vnstratlab/settings.py) from environment variables or a `.env`
 file. Template: [`.env.example`](../.env.example).
 
+Names are plain and conventional, without a project prefix.
+
 | Variable | Used for | Needed |
 |---|---|---|
-| `VNSTRATLAB_HOME` | App home override | Optional |
-| `VNSTRATLAB_LOG_LEVEL` | Logging | Optional |
-| `VNSTRATLAB_DATA_API_KEY` | Market data provider, if it needs a key | Depends on source |
-| `VNSTRATLAB_TELEGRAM_BOT_TOKEN` | Telegram report | Optional |
-| `VNSTRATLAB_TELEGRAM_CHAT_ID` | Telegram report | Optional |
-| `VNSTRATLAB_LLM_API_KEY` | News scoring (Phase 2) | Optional |
-| `VNSTRATLAB_PO_USER`, `VNSTRATLAB_PO_PASSWORD` | PO dashboard login; the Pages build encrypts the dashboard data with them (`tools/encrypt_po.py`) | Pages build only |
+| `APP_HOME` | App home override (not `HOME`, which belongs to the OS) | Optional |
+| `LOG_LEVEL` | Logging: `DEBUG`, `INFO`, `WARNING`, `ERROR` | Optional |
+| `VNSTOCK_API_KEY` | vnstock, only if the installed version asks for a key (source review in P1-T03) | Depends on source |
+| `TELEGRAM_BOT_TOKEN` | Telegram report: the token BotFather gives you | Optional |
+| `TELEGRAM_CHAT_ID` | Telegram report: the id of the chat the bot posts to (your private chat or a group) | Optional |
+| `PO_USERNAME`, `PO_PASSWORD` | PO dashboard login; the Pages build encrypts the dashboard data with them (`tools/encrypt_po.py`) | Pages build only |
+
+A key for news/LLM scoring is added with the Phase 2 card that needs it.
 
 Rules: never commit `.env` (it is git-ignored); secrets are held as `SecretStr`, never logged,
 printed or sent to the dashboard; `vnstratlab doctor` shows only *set / not set*.

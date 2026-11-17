@@ -2,7 +2,7 @@
 
 User data (market data, lab results, journal, logs, user config) never lives in
 the repository. It lives in a per-user directory chosen by `platformdirs`, which
-can be overridden with the `VNSTRATLAB_HOME` environment variable.
+can be overridden with the `APP_HOME` environment variable.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 from platformdirs import user_data_dir
 
 APP_NAME = "vnstratlab"
-HOME_ENV = "VNSTRATLAB_HOME"
+HOME_ENV = "APP_HOME"
 
 
 @dataclass(frozen=True)
@@ -66,7 +66,7 @@ class AppPaths:
 
 
 def default_home() -> Path:
-    """Return the app home: `$VNSTRATLAB_HOME` if set, else the platform user-data dir."""
+    """Return the app home: `$APP_HOME` if set, else the platform user-data dir."""
     override = os.environ.get(HOME_ENV)
     if override:
         return Path(override).expanduser().resolve()
