@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794923663863,
+  "lastUpdate": 1794924446685,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -124,6 +124,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0020788083482122855",
             "extra": "mean: 9.485081818180095 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "aafea65817b31a11fe1d315b054b10d4178edb9e",
+          "message": "docs(readme): website link, site preview and architecture diagram (#5)\n\nSame change as the docs PR into main, so develop stays in sync.\n\nCo-authored-by: Le Phuc Chi <lephucchi@users.noreply.github.com>",
+          "timestamp": "2026-11-17T21:07:04+07:00",
+          "tree_id": "21c068326c4efffb5a1e9d27ac8b82eba87309f8",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/aafea65817b31a11fe1d315b054b10d4178edb9e"
+        },
+        "date": 1794924446169,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 205.0282191158774,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00006287081021327206",
+            "extra": "mean: 4.8773773888891965 msec\nrounds: 18"
           }
         ]
       }
