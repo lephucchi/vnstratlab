@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794909176007,
+  "lastUpdate": 1794909617268,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -62,6 +62,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00012484866304584256",
             "extra": "mean: 6.780849461538725 msec\nrounds: 13"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "lephucchi@users.noreply.github.com",
+            "name": "Le Phuc Chi",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "lephucchi@users.noreply.github.com",
+            "name": "Le Phuc Chi",
+            "username": "lephucchi"
+          },
+          "distinct": true,
+          "id": "aa76fed0dee0b3e3c1cf6dd166a079840bb943b6",
+          "message": "feat(config): typed config loader and trading calendar (P1-T02)\n\n- load_config / load_config_with_info: packaged defaults + market + universe,\n  deep-merged user config.yaml, strict frozen pydantic models, ConfigError with\n  dotted.path messages; holiday year keys normalised to int\n- TradingCalendar (config holidays or observed sessions), decision_days for\n  short (weekly) and medium/long (monthly, ADR-005); truncated periods on\n  observed-session calendars yield no decision day\n- doctor reports config status, holiday coverage and user holiday overrides\n- HOSE holidays 2026 (complete, VERIFY) and 2027 (partial, provisional)\n\nG2: two review rounds, all findings fixed; final re-review skipped on owner\ninstruction to push to develop.",
+          "timestamp": "2026-11-17T16:51:32+07:00",
+          "tree_id": "a9c8120909b96b93695cad0cf78001fc242140e2",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/aa76fed0dee0b3e3c1cf6dd166a079840bb943b6"
+        },
+        "date": 1794909616501,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 149.06099928494356,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00012874895286751428",
+            "extra": "mean: 6.708662928580062 msec\nrounds: 14"
           }
         ]
       }
