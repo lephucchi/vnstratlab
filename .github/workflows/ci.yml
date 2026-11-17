@@ -5,6 +5,7 @@ on:
   push:
     branches: [main, develop, "release/**", "hotfix/**"]
   pull_request:
+    branches: [develop, main, "release/**", "hotfix/**"]   # not the orphan site/po/bench-data branches
     types: [opened, synchronize, reopened, edited]
 
 permissions:

@@ -7,6 +7,7 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Pages: single deployment (`pages.yml`) combining intro site (`site` branch), docs (from `main`) and PO dashboard (`po` branch); `tools/build_status.py` generates public status data; `docs.yml` is build-only.
 - Project scaffold (P1-T01): `src/` layout package, Typer CLI with `doctor` and stubs for all
   planned commands, per-user app home via `platformdirs` (`VNSTRATLAB_HOME` override),
   env-only secrets via `pydantic-settings`, packaged default config (HOSE rules, VN30 banks).

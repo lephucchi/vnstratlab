@@ -1,0 +1,100 @@
+# Single GitHub Pages deployment for the whole project (docs/git-branching.md §9):
+#   /        intro site      ← orphan branch `site`
+#   /docs/   documentation   ← mkdocs built from `main` (released docs)
+#   /po/     PO dashboard    ← orphan branch `po`
+#   /data/status.json, /po/data.json ← generated here from develop + GitHub API (public facts only)
+# This is the ONLY workflow that deploys Pages. The orphan branches trigger it via workflow_dispatch.
+name: Pages
+
+on:
+  push:
+    branches: [develop, main]
+  schedule:
+    - cron: "0 11 * * *"   # 18:00 Vietnam, after the evening loop window
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout develop (tools, docs source, tests)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          path: dev
+
+      - name: Checkout main (released docs)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+
+      - name: Checkout site and po branches (if they exist)
+        run: |
+          for b in site po bench-data; do
+            if git -C dev ls-remote --exit-code --heads origin "$b" >/dev/null; then
+              git -C dev worktree add "../$b" "origin/$b"
+            else
+              mkdir -p "$b"; echo "branch $b not found"
+            fi
+          done
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: dev/pyproject.toml
+
+      - name: Measure tests and coverage on develop
+        working-directory: dev
+        run: |
+          pip install -e ".[dev]"
+          pytest -m "not slow and not network" --cov-report=json:../coverage.json \
+            --junitxml=../junit.xml || echo "tests failed; status will show it"
+
+      - name: Build docs from main
+        working-directory: main
+        run: |
+          pip install "mkdocs-material>=9.5"
+          mkdocs build --strict --site-dir ../_site/docs
+
+      - name: Assemble site and dashboard
+        run: |
+          mkdir -p _site/po
+          if [ -f site/index.html ]; then cp -r site/. _site/; rm -rf _site/.git _site/.github; fi
+          if [ -f po/index.html ]; then cp -r po/. _site/po/; rm -rf _site/po/.git _site/po/.github; fi
+          [ -f _site/index.html ] || echo '<meta http-equiv="refresh" content="0; url=docs/">' > _site/index.html
+          touch _site/.nojekyll
+
+      - name: Generate status data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python dev/tools/build_status.py --repo dev --out _site \
+            --coverage coverage.json --junit junit.xml --bench bench-data/bench/data.js
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

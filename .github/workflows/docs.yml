@@ -1,21 +1,18 @@
-# Docs site on GitHub Pages, deployed from main. PRs only build (strict) to catch broken links.
+# Docs build check only (strict, catches broken links). Deployment is done by pages.yml,
+# which serves the docs under /docs/ together with the intro site and the PO dashboard.
 name: Docs
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
+    paths: ["docs/**", "mkdocs.yml", "README.md"]
   pull_request:
+    branches: [develop, main, "release/**", "hotfix/**"]
     paths: ["docs/**", "mkdocs.yml", "README.md"]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   build:
@@ -26,20 +23,5 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -e ".[docs]"
+      - run: pip install "mkdocs-material>=9.5"
       - run: mkdocs build --strict
-      - if: github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-  deploy:
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
