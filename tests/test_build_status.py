@@ -1,11 +1,13 @@
-"""tools/build_status.py never writes plaintext PO data, whichever workflow runs it."""
+"""tools/build_status.py: PO data never in plaintext; gap register and card due dates."""
 
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -42,3 +44,160 @@ def test_publish_po_never_plaintext(
     bs.publish_po(b'{"cards": []}', po_dir)
     names = sorted(f.name for f in po_dir.iterdir())
     assert names == (["data.enc.json"] if creds else [])
+
+
+GAPS_YAML = """\
+version: 1
+source: synthetic
+gaps:
+  - id: GAP-01
+    title: First gap
+    title_vi: Khoảng trống một
+    status: open
+    severity: high
+    missing: >-
+      Something is missing.
+    affects: [table_a, P1-T99]
+    workaround: Use a fallback.
+    close_by: A new card.
+    since: 2026-01-02
+  - id: GAP-02
+    title: Second gap
+    title_vi: Khoảng trống hai
+    status: mitigated
+    severity: low
+    missing: Less.
+    affects: [table_b]
+    workaround: Wait.
+    close_by: Later.
+    since: 2026-01-03
+  - id: GAP-03
+    title: Third gap
+    title_vi: Khoảng trống ba
+    status: closed
+    severity: high
+    missing: Nothing now.
+    affects: []
+    workaround: None needed.
+    close_by: Done.
+    since: 2026-01-04
+"""
+
+
+def _write_gaps(repo: Path, text: str = GAPS_YAML) -> None:
+    path = repo / "src" / "vnstratlab" / "data" / "gaps.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def test_gap_register_from_checkout(tmp_path: Path) -> None:
+    _write_gaps(tmp_path)
+    gaps = bs.gap_register(tmp_path)
+    assert gaps["available"] is True
+    assert gaps["origin"] == "develop"
+    assert gaps["source"] == "synthetic"
+    assert gaps["version"] == 1
+    assert gaps["counts"] == {
+        "open": 1,
+        "mitigated": 1,
+        "closed": 1,
+        "high": 1,  # the closed high-severity gap is not counted
+        "medium": 0,
+        "low": 1,
+    }
+    assert gaps["items"][0] == {
+        "id": "GAP-01",
+        "title": "First gap",
+        "title_vi": "Khoảng trống một",
+        "status": "open",
+        "severity": "high",
+        "missing": "Something is missing.",
+        "affects": ["table_a", "P1-T99"],
+        "workaround": "Use a fallback.",
+        "close_by": "A new card.",
+        "since": "2026-01-02",  # YAML date coerced to text
+    }
+    json.dumps(gaps)  # serialisable
+
+
+def test_gap_register_falls_back_to_newest_work_branch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def fake_git(repo: Path, *args: str) -> str:
+        if args[0] == "for-each-ref":
+            assert "--sort=-committerdate" in args
+            return "origin/develop\norigin/feat/P1-T38-x\norigin/feat/P1-T36-y\norigin/po\n"
+        if args == ("show", f"origin/feat/P1-T38-x:{bs.GAPS_PATH}"):
+            return ""  # newest branch without the file
+        if args == ("show", f"origin/feat/P1-T36-y:{bs.GAPS_PATH}"):
+            return GAPS_YAML
+        raise AssertionError(args)
+
+    monkeypatch.setattr(bs, "git", fake_git)
+    gaps = bs.gap_register(tmp_path)
+    assert gaps["available"] is True
+    assert gaps["origin"] == "feat/P1-T36-y"
+    assert len(gaps["items"]) == 3
+
+
+def test_gap_register_missing(tmp_path: Path) -> None:
+    assert bs.gap_register(tmp_path) == {"available": False, "reason": "gaps.yaml not found"}
+
+
+def test_gap_register_without_pyyaml(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _write_gaps(tmp_path)
+    monkeypatch.setitem(sys.modules, "yaml", None)  # import yaml -> ImportError
+    assert bs.gap_register(tmp_path) == {"available": False, "reason": "PyYAML not installed"}
+
+
+@pytest.mark.parametrize("text", ["gaps: [unclosed", "just text", "gaps: 3"])
+def test_gap_register_bad_yaml(tmp_path: Path, text: str) -> None:
+    _write_gaps(tmp_path, text)
+    gaps = bs.gap_register(tmp_path)
+    assert gaps["available"] is False
+    assert gaps["reason"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("2026-11-21", "2026-11-21"), ("", ""), ("2026-02-30", ""), ("next week", "")],
+)
+def test_parse_due(raw: str, expected: str) -> None:
+    assert bs.parse_due(raw) == expected
+
+
+def test_card_due_from_front_matter(tmp_path: Path) -> None:
+    cards = tmp_path / "docs" / "cards"
+    cards.mkdir(parents=True)
+    (cards / "P1-T90-a.md").write_text(
+        "---\nid: P1-T90\ntitle: A\nstatus: todo\ndue: 2026-11-21\n---\nbody\n", encoding="utf-8"
+    )
+    (cards / "P1-T91-b.md").write_text(
+        "---\nid: P1-T91\ntitle: B\nstatus: done\ndue: soon\n---\nbody\n", encoding="utf-8"
+    )
+    found = bs.card_files(tmp_path)
+    assert found["P1-T90"]["due"] == "2026-11-21"
+    assert found["P1-T91"]["due"] == ""
+
+
+def test_build_po_data_has_gaps_and_due(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs" / "cards").mkdir(parents=True)
+    (repo / "docs" / "plan").mkdir()
+    (repo / "docs" / "plan" / "plan.md").write_text("# Plan\n", encoding="utf-8")
+    (repo / "docs" / "cards" / "P1-T90-a.md").write_text(
+        "---\nid: P1-T90\ntitle: A\nstatus: todo\ndue: 2026-11-21\n---\n", encoding="utf-8"
+    )
+    _write_gaps(repo)
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)  # no network
+    captured: dict[str, Any] = {}
+
+    def fake_publish(plaintext: bytes, po_dir: Path) -> None:
+        captured.update(json.loads(plaintext.decode("utf-8")))
+
+    monkeypatch.setattr(bs, "publish_po", fake_publish)
+    bs.build(repo, tmp_path / "out", None, None, None)
+    assert captured["gaps"]["counts"]["open"] == 1
+    assert captured["cards"][0]["due"] == "2026-11-21"
+    status = json.loads((tmp_path / "out" / "data" / "status.json").read_text(encoding="utf-8"))
+    assert "gaps" not in status  # public status.json carries measured facts only

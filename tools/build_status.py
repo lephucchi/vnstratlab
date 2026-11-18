@@ -1,5 +1,9 @@
 """Build public status data for the project websites (stdlib only).
 
+PyYAML is optional: it is imported lazily to read the data gap register
+(src/vnstratlab/data/gaps.yaml, ADR-007); without it the PO data says the register is
+unavailable. The Pages workflow installs `.[dev]` (which includes PyYAML) before this script.
+
 Outputs
 - <out>/po/data.enc.json : project-management data for the PO dashboard (branch `po`),
                            encrypted with the PO login (tools/encrypt_po.py); never plaintext
@@ -141,6 +145,30 @@ def parse_roadmap_cards(text: str) -> list[dict[str, Any]]:
     return cards
 
 
+def parse_due(value: str) -> str:
+    """A card's planned due date as YYYY-MM-DD, or "" when absent or not a valid date."""
+    value = value.strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return ""
+    try:
+        dt.date.fromisoformat(value)
+    except ValueError:
+        return ""
+    return value
+
+
+def remote_work_refs(repo: Path) -> list[str]:
+    """Remote feat/ and fix/ branches, most recently committed first."""
+    refs = git(
+        repo,
+        "for-each-ref",
+        "--sort=-committerdate",
+        "--format=%(refname:short)",
+        "refs/remotes/origin",
+    ).split()
+    return [r for r in refs if r.removeprefix("origin/").startswith(("feat/", "fix/"))]
+
+
 def card_files(repo: Path) -> dict[str, dict[str, Any]]:
     """Task cards with front matter, from develop and from every remote feature branch.
 
@@ -159,6 +187,7 @@ def card_files(repo: Path) -> dict[str, dict[str, Any]]:
                 "release": meta.get("release", ""),
                 "status": status if status in CARD_STATUSES else "todo",
                 "branch": meta.get("branch") or None,
+                "due": parse_due(meta.get("due", "")),
                 "source": origin,
             }
 
@@ -175,6 +204,81 @@ def card_files(repo: Path) -> dict[str, dict[str, Any]]:
             if name.endswith(".md"):
                 add(git(repo, "show", f"{ref}:{name}"), branch)
     return found
+
+
+# ------------------------------------------------------------------ data gap register
+
+
+GAPS_PATH = "src/vnstratlab/data/gaps.yaml"
+GAP_TEXT_FIELDS = (
+    "id",
+    "title",
+    "title_vi",
+    "status",
+    "severity",
+    "missing",
+    "workaround",
+    "close_by",
+    "since",
+)
+GAP_STATUSES = ("open", "mitigated", "closed")
+GAP_SEVERITIES = ("high", "medium", "low")
+
+
+def _text(value: Any) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def parse_gaps(text: str, origin: str) -> dict[str, Any]:
+    """The gap register as PO data; `{"available": False, ...}` if it cannot be read."""
+    try:
+        import yaml  # optional: this script is otherwise stdlib only
+    except ImportError:
+        return {"available": False, "reason": "PyYAML not installed"}
+    try:
+        register = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return {"available": False, "reason": "gaps.yaml could not be parsed"}
+    if not isinstance(register, dict) or not isinstance(register.get("gaps"), list):
+        return {"available": False, "reason": "gaps.yaml has no gap list"}
+
+    items: list[dict[str, Any]] = []
+    for gap in register["gaps"]:
+        if not isinstance(gap, dict):
+            continue
+        item: dict[str, Any] = {key: _text(gap.get(key)) for key in GAP_TEXT_FIELDS}
+        affects = gap.get("affects") or []
+        item["affects"] = [_text(a) for a in (affects if isinstance(affects, list) else [affects])]
+        items.append(item)
+    counts = {s: sum(1 for g in items if g["status"] == s) for s in GAP_STATUSES}
+    # severity counts cover only gaps not yet closed (open or mitigated)
+    counts |= {
+        s: sum(1 for g in items if g["severity"] == s and g["status"] != "closed")
+        for s in GAP_SEVERITIES
+    }
+    return {
+        "available": True,
+        "origin": origin,
+        "source": _text(register.get("source")),
+        "version": register.get("version"),
+        "items": items,
+        "counts": counts,
+    }
+
+
+def gap_register(repo: Path) -> dict[str, Any]:
+    """Read gaps.yaml from the checkout, else from the newest remote feat/ or fix/ branch.
+
+    The fallback lets the dashboard show the register while the card that adds it is in review.
+    """
+    path = repo / GAPS_PATH
+    if path.exists():
+        return parse_gaps(path.read_text(encoding="utf-8"), "develop")
+    for ref in remote_work_refs(repo):
+        text = git(repo, "show", f"{ref}:{GAPS_PATH}")
+        if text:
+            return parse_gaps(text, ref.removeprefix("origin/"))
+    return {"available": False, "reason": "gaps.yaml not found"}
 
 
 # ------------------------------------------------------------------ progress, ADRs
@@ -415,6 +519,7 @@ def build(
         "adrs": adrs,
         "waiting_for_owner": waiting,
         "verify_items": count_verify(repo),
+        "gaps": gap_register(repo),
         "quality": {"tests": tests, "coverage": cov, "benchmarks": benches},
         "github": gh,
     }
