@@ -52,8 +52,15 @@ is an optional extra and needs no account or key:
 
 ```bash
 pip install -e ".[dev,yahoo]"
-vnstratlab ingest --from 2015-01-01          # first backfill; later runs resume after the last date
+vnstratlab ingest --from 2015-01-01          # first backfill
+vnstratlab ingest                            # refresh (see below)
 ```
+
+A refresh resumes per ticker: it starts `data.yahoo.overlap_sessions` (default 5) stored sessions
+before each ticker's latest date, so a ticker that failed last time is fetched again. If Yahoo has
+rescaled history (after a split) or reports a new stock event, that ticker is re-downloaded from
+`project.backfill_start` and its earlier rows are revised (the run says so). Exit code 3 means some
+tickers failed: just run `vnstratlab ingest` again.
 
 The first run shows a notice (Vietnamese and English): Yahoo's terms restrict automated access,
 the data is for your own research and you are responsible for following those terms. Confirm

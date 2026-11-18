@@ -20,6 +20,7 @@ from vnstratlab import __version__
 from vnstratlab.calendar import holiday_coverage
 from vnstratlab.config.loader import ConfigError, load_config, load_config_with_info
 from vnstratlab.data.pipeline import (
+    VN_TZ,
     IngestReport,
     default_start,
     record_terms_acceptance,
@@ -142,10 +143,20 @@ def _echo_ingest_report(report: IngestReport) -> None:
     )
     for warning in report.warnings:
         typer.echo(f"warning: {warning}", err=True)
+    if report.refetched:
+        typer.echo(
+            f"rescale detected, full refetch: {', '.join(report.refetched)} "
+            "(earlier rows were revised)"
+        )
     if report.status != "ok":
         typer.echo(f"status {report.status}: {len(report.failed)} ticker(s) failed", err=True)
         for ticker, message in sorted(report.failed.items()):
             typer.echo(f"  {ticker}: {message}", err=True)
+        typer.echo(
+            "re-run `vnstratlab ingest` to retry: each ticker resumes from its own latest date, "
+            "so the failed tickers are fetched again.",
+            err=True,
+        )
     if report.dry_run:
         typer.echo("dry run: nothing was written")
         for name, frame in report.preview.items():
@@ -214,7 +225,7 @@ def ingest(
 ) -> None:
     """Download or refresh market data into the local data directory."""
     start = _parse_date(from_date, "--from")
-    end = _parse_date(to_date, "--to") or date.today()
+    end = _parse_date(to_date, "--to") or utc_now().astimezone(VN_TZ).date()  # Vietnam today
     if start is not None and start > end:
         raise typer.BadParameter(f"--from {start} is after --to {end}")
     paths = get_paths()

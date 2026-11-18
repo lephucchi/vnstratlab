@@ -10,6 +10,10 @@ Yahoo's factor (1.1 for a 10% bonus issue); it is stored as the bonus fraction
 sources. Factors of 1 or less (reverse splits) are not stored; they are logged and listed in
 ``warnings``. The fetch function and the sleep
 function are injectable, so tests never touch the network or wait.
+
+Retries: every exception raised by the fetch function (network, rate limit, parsing) is retried
+``retries`` times with exponential backoff, except the missing-extra error. Open, high, low and
+close are rounded to 4 decimals so float noise from Yahoo's rescaling never causes revisions.
 """
 
 from __future__ import annotations
@@ -83,6 +87,8 @@ class YahooSource:
 
     # Hooks read by the pipeline (source-agnostic duck typing).
     drop_filler_rows = True
+    rescale_refetch = True  # a rescaled history or a new split triggers a full refetch
+    empty_is_failure = True  # an empty answer over expected sessions is a failure
 
     def __init__(
         self,
@@ -103,10 +109,12 @@ class YahooSource:
         self._retries = opts.retries
         self._backoff = opts.backoff_seconds
         self.final_after = parse_clock(opts.final_after)
+        self.overlap_sessions = opts.overlap_sessions
         self._fetch = fetch or yfinance_fetch
         # Module the pipeline must find before asking for terms (None when a fetch is injected).
         self.required_module: str | None = "yfinance" if fetch is None else None
         self._sleep = sleep
+        self._requested = False
         self._cache: dict[tuple[tuple[str, ...], date, date], _Fetched] = {}
         self.failures: dict[str, str] = {}
         self.warnings: list[str] = []
@@ -135,8 +143,9 @@ class YahooSource:
         daily: list[pd.DataFrame] = []
         actions: list[pd.DataFrame] = []
         for position, (ticker, symbol) in enumerate(self.symbols(tickers).items()):
-            if position:
+            if position or self._requested:  # also between separate loads (a refetch)
                 self._sleep(self._interval)
+            self._requested = True
             try:
                 history = self._fetch_with_retries(symbol, start, end)
                 prices, events, warns = _convert(ticker, history, start, end)
@@ -198,6 +207,8 @@ def _convert(
     frame = frame[[start <= d <= end for d in dates]].reset_index(drop=True)
     prices = frame[["date", *_PRICE_MAP]].rename(columns=_PRICE_MAP)
     prices.insert(0, "ticker", ticker)
+    for column in ("open", "high", "low", "close"):
+        prices[column] = pd.to_numeric(prices[column]).round(4)
     rows: list[tuple[str, date, str, float]] = []
     warns: list[str] = []
     for column, kind in (("Dividends", "cash"), ("Stock Splits", "stock")):

@@ -62,6 +62,7 @@ data:                          # market data pipeline (docs/data-pipeline.md)
     max_requests_per_minute: 30
     retries: 3
     backoff_seconds: 2.0
+    overlap_sessions: 5          # refresh re-fetches the last N stored sessions to detect rescales
     final_after: "16:00"       # Asia/Ho_Chi_Minh; today's bar is dropped before this time
   synthetic:
     seed: 20261118

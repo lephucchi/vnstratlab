@@ -99,7 +99,7 @@ Interim price source: **yahoo**. Each gap is a known shortfall that is worked ar
 - Status: mitigated · severity: medium · since 2026-11-18
 - Missing: A new split rescales all earlier prices at the source.
 - Affects: prices_daily, data/raw, reproducibility of past runs
-- Workaround now: Raw snapshot per ingest run is kept; ingest upserts and records a revision count, so a past lab run can be reproduced from its snapshot.
+- Workaround now: Each refresh re-reads the last data.yahoo.overlap_sessions stored sessions per ticker; if an overlapping close differs (relative 1e-6) or a new stock event appears, that ticker is re-fetched in full from project.backfill_start and upserted, so earlier rows get revisions (counted in ingest_runs). A raw snapshot per run is kept, so a past lab run can be reproduced from its snapshot.
 - Closed by: Raw-price source (GAP-01).
 
 ## GAP-09

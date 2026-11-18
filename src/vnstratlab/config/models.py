@@ -239,6 +239,7 @@ class YahooConfig(_Model):
     max_requests_per_minute: PositiveInt
     retries: NonNegInt
     backoff_seconds: PositiveFloat
+    overlap_sessions: NonNegInt
     final_after: Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]  # Asia/Ho_Chi_Minh
 
 

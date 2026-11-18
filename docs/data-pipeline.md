@@ -101,9 +101,27 @@ vnstratlab data status                                              # stores, ru
 vnstratlab data gaps                                                # gap register only
 ```
 
+Refresh and resume (Yahoo): `vnstratlab ingest` without `--from` starts at the earliest per-ticker
+start over the universe. A ticker's start is its `data.yahoo.overlap_sessions`-th most recent
+stored session (default 5; `0` = the day after its latest date) or `project.backfill_start` when
+it has no rows, so a ticker that failed in a `partial` run is fetched again next time. `--to`
+defaults to today in Asia/Ho_Chi_Minh.
+
+Rescale rule: for sources with `rescale_refetch` (Yahoo), a ticker is re-fetched from
+`project.backfill_start` in the same run, and its rows replaced as a whole (earlier rows get
+`revision + 1`, `rescale detected, full refetch` is logged and shown in the report), when any
+fetched close on a stored date differs from the stored close by more than a relative 1e-6, or the
+response holds a `stock` event not yet stored. If that refetch fails the ticker is written
+nowhere (no mixed scales) and counts as failed. Split-adjusted OHLC is rounded to 4 decimals.
+
+Empty answers: for sources with `empty_is_failure` (Yahoo) a ticker with no rows at all counts as
+failed (`partial`) when it has no stored rows yet or the window holds a weekday after its first
+stored date. Retries: every exception from the fetch function is retried with exponential
+backoff, not only network errors.
+
 Exit codes of `vnstratlab ingest`: `0` ok, `1` error (including a missing extra, refused
 terms, every ticker failing), `2` usage error (bad date, unknown source), `3` partial (some
-tickers failed; the others were written, failed tickers are printed). Before the terms prompt
+tickers failed; the others were written, failed tickers are printed with a re-run hint). Before the terms prompt
 the command checks that the adapter's library is importable and, if not, exits `1` with the
 install hint without asking for or storing acceptance.
 
