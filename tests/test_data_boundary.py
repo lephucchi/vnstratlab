@@ -107,3 +107,81 @@ def test_importing_data_package_pulls_no_source_library() -> None:
         [sys.executable, "-I", "-c", code], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stderr
+
+
+ENGINE_FORBIDDEN_IMPORTS = (
+    "duckdb",
+    "pyarrow",
+    "vnstratlab.data",
+    "vnstratlab.config.loader",
+    "httpx",
+    "requests",
+    "socket",
+    "urllib",
+    "sqlite3",
+    "pathlib",
+    "os",
+    "shutil",
+    "tempfile",
+    "io",
+)
+ENGINE_FORBIDDEN_CALLS = {
+    "open",
+    "read_csv",
+    "read_parquet",
+    "read_json",
+    "read_sql",
+    "read_pickle",
+    "read_feather",
+    "to_csv",
+    "to_parquet",
+    "to_json",
+    "to_pickle",
+    "to_sql",
+    "to_feather",
+    "read_text",
+    "write_text",
+}
+
+
+def _engine_violations(path: Path, root: Path = SRC) -> list[str]:
+    """Forbidden imports and file/DB/network helper calls in one engine module."""
+    bad = [
+        name
+        for name in _imports(path, root)
+        if any(name == f or name.startswith(f + ".") for f in ENGINE_FORBIDDEN_IMPORTS)
+    ]
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Call):
+            func = node.func
+            called = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+            if called in ENGINE_FORBIDDEN_CALLS:
+                bad.append(f"call {called}()")
+    return bad
+
+
+def test_engine_stays_pure() -> None:
+    files = list((SRC / "engine").rglob("*.py"))
+    assert len(files) >= 6  # rules, costs, ledger, orders, loop, __init__
+    offenders = [f"{p.name}: {v}" for p in files for v in _engine_violations(p)]
+    assert offenders == []
+
+
+def test_engine_purity_checker_detects_violations(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.py"
+    bad.write_text(
+        "import duckdb\nimport socket\nfrom pathlib import Path\n"
+        "from vnstratlab.data import store\nimport pandas as pd\n"
+        "f = open('x')\npd.read_csv('x')\ndf.to_parquet('y')\n"
+    )
+    found = _engine_violations(bad, tmp_path)
+    for expected in (
+        "duckdb",
+        "socket",
+        "pathlib",
+        "vnstratlab.data.store",
+        "call open()",
+        "call read_csv()",
+        "call to_parquet()",
+    ):
+        assert expected in found

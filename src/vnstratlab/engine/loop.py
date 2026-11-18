@@ -164,7 +164,7 @@ class SimResult:
         for name, frame in self.frames().items():
             h.update(name.encode())
             h.update("|".join(map(str, frame.columns)).encode())
-            h.update(frame.astype(str).to_csv(index=False).encode())
+            h.update(repr(frame.astype(str).to_numpy().tolist()).encode())
         return h.hexdigest()
 
 
@@ -482,11 +482,14 @@ class Simulator:
         if remaining <= EPS:
             self._drop(order)
             return
-        reason = "insufficient cash" if not p.lots or p.odd_lots else "odd lots disabled"
         wanted = order.qty
         order.qty = remaining
-        self._log(order, today, "blocked_cash", f"{reason}: filled {filled} of {wanted}")
-        self._unfilled(order, today, reason)
+        if p.lots and not p.odd_lots and remaining < p.rules.round_lot:
+            self._log(order, today, "cancelled", "odd lots disabled: remainder below one lot")
+            self._drop(order)
+            return
+        self._log(order, today, "blocked_cash", f"insufficient cash: filled {filled} of {wanted}")
+        self._unfilled(order, today, "insufficient cash")
 
     def _fill_buy(self, order: Order, today: date, bar: _Bar, piece: Piece) -> None:
         price = self.params.costs.fill_price(bar.open, "buy", piece.lot)

@@ -10,7 +10,6 @@ import pandas as pd
 
 from vnstratlab.calendar import TradingCalendar
 from vnstratlab.engine import SimParams, SimResult, Simulator, run_simulation
-from vnstratlab.engine.loop import TRADE_COLUMNS
 from vnstratlab.engine.rules import Side
 
 
@@ -48,16 +47,15 @@ class SimExecutor:
     def fills(self, trade_date: str) -> pd.DataFrame:
         """Process sessions up to ``trade_date`` and return that session's trades."""
         target = date.fromisoformat(trade_date)
-        trades: list[tuple[object, ...]] = []
         while self._done < len(self._sim.sessions) and self._sim.sessions[self._done] <= target:
             day = self._sim.sessions[self._done]
-            trades = self._sim.open_session(day)
+            self._sim.open_session(day)
             self._sim.mark(day)
             self._sim.record(day)
             self._done += 1
             self._last = day
-        frame = pd.DataFrame(trades, columns=list(TRADE_COLUMNS))
-        return frame[frame["session"] == target].reset_index(drop=True)
+        trades = self._sim.result().trades
+        return trades[trades["session"] == target].reset_index(drop=True)
 
     def result(self) -> SimResult:
         return self._sim.result()

@@ -6,6 +6,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Simulator core (P1-T11, ADR-003):** pure `vnstratlab.engine` (HOSE ticks, limits, lots, 
+  settlement, costs, cash buckets, order lifecycle with `order_events`, session loop in ideal and
+  executable modes) and `SimExecutor` behind the `Executor` protocol. New config: `engine:` section
+  in `defaults.yaml`; `cash_proceeds_offset`, `cash_dividend_pay_lag_days`,
+  `stock_dividend_listing_lag_sessions` in `hose.yaml` (all `VERIFY`). Values are frozen by the owner
+  at merge.
+
 ### Changed
 - **Data source (ADR-007):** Yahoo Finance becomes the interim Phase 1 price source through an
   optional adapter (P1-T37); the data pipeline is a separate layer (`vnstratlab.data`); known
