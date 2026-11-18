@@ -18,14 +18,16 @@ from vnstratlab.calendar import TradingCalendar
 from vnstratlab.cli import app
 from vnstratlab.config.loader import load_config
 from vnstratlab.config.models import AppConfig
+from vnstratlab.data import pipeline
 from vnstratlab.data.pipeline import ingest
-from vnstratlab.data.protocol import SourceInfo, TickTable
+from vnstratlab.data.protocol import SourceError, SourceInfo, TickTable
 from vnstratlab.data.quality import (
     CHECK_NAMES,
     DQResult,
     build_calendar,
     check_duplicate_rows,
     final_status,
+    incomplete_years,
     run_checks,
 )
 from vnstratlab.data.store import MarketStore, RunRecord
@@ -313,8 +315,8 @@ def test_missing_ticker_is_a_warning_on_adjusted_or_derived(
         assert [f.severity for f in findings(store, "missing_ticker")] == ["warning"]
 
 
-def test_missing_ticker_passes_when_the_ticker_has_a_session_in_range(tmp_path: Path) -> None:
-    rows = [*bars("AAA"), *bars("BBB", days=[date(2026, 2, 27), DAYS[2]])]
+def test_missing_ticker_passes_when_the_ticker_has_a_row_on_every_session(tmp_path: Path) -> None:
+    rows = [*bars("AAA"), *bars("BBB", days=[date(2026, 2, 27), *DAYS])]
     with store_with(tmp_path, rows) as store:
         assert findings(store, "missing_ticker") == []
 
@@ -360,23 +362,20 @@ def test_a_holiday_is_not_a_missing_session(tmp_path: Path) -> None:
 # ------------------------------------------------------------------ calendar choice
 
 
-def test_build_calendar_uses_stored_sessions_without_complete_holidays(
-    tmp_path: Path,
-) -> None:
+def test_build_calendar_is_weekdays_minus_configured_holidays(tmp_path: Path) -> None:
     cfg = load_config(tmp_path / "home")
-    far = date(2031, 6, 2)  # a year with no configured holidays (GAP-05)
-    rows = bars(days=[far, far + timedelta(days=1)])
-    with store_with(tmp_path, rows, start=far, end=far + timedelta(days=1)) as store:
-        cal = build_calendar(cfg, store, "synthetic_fake", far, far + timedelta(days=1))
-    assert cal.observed_range == (far, far + timedelta(days=1))
-
-
-def test_build_calendar_uses_config_for_configured_years(tmp_path: Path) -> None:
-    cfg = load_config(tmp_path / "home")
-    with store_with(tmp_path, bars()) as store:
-        cal = build_calendar(cfg, store, "synthetic_fake", START, END)
-    assert cal.observed_range is None
+    cal = build_calendar(cfg)
+    assert cal.observed_range is None  # stored sessions are never the reference
     assert cal.trading_days(START, END) == DAYS
+    assert not cal.is_trading_day(date(2026, 4, 30))  # a listed 2026 holiday
+    far = date(2031, 6, 2)  # no holiday data for 2031: plain weekdays
+    assert cal.trading_days(far, far + timedelta(days=1)) == [far, far + timedelta(days=1)]
+
+
+def test_incomplete_years(tmp_path: Path) -> None:
+    cfg = load_config(tmp_path / "home")
+    assert incomplete_years(cfg, START, END) == frozenset()
+    assert incomplete_years(cfg, date(2026, 12, 28), date(2028, 1, 4)) == {2027, 2028}
 
 
 # ------------------------------------------------------------------ status combination
@@ -610,3 +609,219 @@ def test_doctor_prints_the_open_gap_counts(tmp_path: Path, monkeypatch: pytest.M
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0, result.output
     assert re.search(r"^gaps: \d+ open \(high \d+, medium \d+, low \d+\)$", result.output, re.M)
+
+
+# ------------------------------------------------------------------ G2 review fixes
+
+
+def test_missing_ticker_reports_holes_once_per_ticker(tmp_path: Path) -> None:
+    rows = [*bars("AAA"), *bars("BBB", days=[date(2026, 2, 27), DAYS[0], DAYS[3], DAYS[4]])]
+    with store_with(tmp_path, rows) as store:
+        found = findings(store, "missing_ticker")
+    assert [(f.ticker, f.date, f.severity) for f in found] == [("BBB", DAYS[1], "error")]
+    assert "2 session(s)" in found[0].detail
+    assert f"{DAYS[1]}..{DAYS[2]}" in found[0].detail
+
+
+@pytest.mark.parametrize(("basis", "derived"), SOFT)
+def test_holes_are_warnings_on_adjusted_or_derived_data(
+    tmp_path: Path, basis: str, derived: bool
+) -> None:
+    rows = [*bars("AAA"), *bars("BBB", days=[DAYS[0], DAYS[2], DAYS[3], DAYS[4]])]
+    with store_with(tmp_path, rows, basis=basis, derived=derived) as store:
+        assert [f.severity for f in findings(store, "missing_ticker")] == ["warning"]
+
+
+def test_holes_are_warnings_when_every_missing_session_is_in_an_incomplete_year(
+    tmp_path: Path,
+) -> None:
+    rows = [*bars("AAA"), *bars("BBB", days=[DAYS[0], DAYS[2], DAYS[3], DAYS[4]])]
+    with store_with(tmp_path, rows) as store:
+        found = findings(store, "missing_ticker", incomplete_years=frozenset({2026}))
+    assert [f.severity for f in found] == ["warning"]
+
+
+def test_stale_data_is_a_warning_in_an_incomplete_year(tmp_path: Path) -> None:
+    rows = bars(days=DAYS[:3])
+    with store_with(tmp_path, rows) as store:
+        found = findings(store, "stale_data", incomplete_years=frozenset({2026}))
+    assert [(f.date, f.severity) for f in found] == [(DAYS[2], "warning")]
+
+
+def test_stale_data_stays_an_error_for_a_complete_year_in_a_mixed_range(tmp_path: Path) -> None:
+    mon = date(2026, 12, 28)  # 28-31 December 2026 are complete-year sessions; 2027 is partial
+    days = [mon, mon + timedelta(days=1)]
+    with store_with(tmp_path, bars(days=days), start=mon, end=date(2027, 1, 8)) as store:
+        found = findings(store, "stale_data", incomplete_years=frozenset({2027}))
+    assert [f.severity for f in found] == ["error"]
+    assert found[0].detail.endswith("2026-12-31")
+    path = tmp_path / "ok"
+    path.mkdir()
+    days = [mon + timedelta(days=i) for i in range(4)]  # data reaches the last 2026 session
+    with store_with(path, bars(days=days), start=mon, end=date(2027, 1, 8)) as store:
+        found = findings(store, "stale_data", incomplete_years=frozenset({2027}))
+    assert [f.severity for f in found] == ["warning"]
+
+
+def test_ingest_into_an_incomplete_year_reports_stale_data_as_a_warning(
+    cfg: AppConfig, paths: AppPaths
+) -> None:
+    days = [date(2027, 1, 4), date(2027, 1, 5)]  # the store ends 5 Jan; the run reaches 8 Jan
+    report = ingest(
+        cfg, paths, FakeSource(bars(days=days)), days[0], date(2027, 1, 8), clock=lambda: NOW
+    )
+    stale = [r for r in report.dq if r.check == "stale_data"]
+    assert [(r.severity, r.date) for r in stale] == [("warning", days[1])]
+    assert report.status == "ok_with_warnings"
+    assert not [r for r in report.dq if r.severity == "error"]
+
+
+def test_ohlc_inconsistent_uses_the_limit_tolerance(tmp_path: Path) -> None:
+    noise = broken(0, high=20_000.0 - 5e-7, low=20_000.0 + 5e-7)  # below the 1e-6 tolerance
+    with store_with(tmp_path, noise) as store:
+        assert findings(store, "ohlc_inconsistent") == []
+    path = tmp_path / "real"
+    path.mkdir()
+    with store_with(path, broken(0, high=20_000.0 - 1e-3)) as store:
+        assert [f.severity for f in findings(store, "ohlc_inconsistent")] == ["error"]
+
+
+def weekdays(count: int) -> list[date]:
+    days: list[date] = []
+    day = date(2018, 1, 1)  # a Monday
+    while len(days) < count:
+        if day.weekday() < 5:
+            days.append(day)
+        day += timedelta(days=1)
+    return days
+
+
+def long_split_adjusted(days: list[date], ex_index: int, breach_index: int) -> list[dict[str, Any]]:
+    """Sessions before ``ex_index`` carry rescaled (off-grid) prices; one genuine breach later."""
+    rows: list[dict[str, Any]] = []
+    for i, day in enumerate(days):
+        base = 20_000.0 + 50.0 * (i % 2)
+        ref = 20_000.0 + 50.0 * ((i - 1) % 2)
+        ceiling, floor = TICKS.limits(pd.Series([ref]).to_numpy(dtype="float64"))
+        scale = 1.1 if i < ex_index else 1.0
+        close = 25_000.0 if i == breach_index else base
+        rows.append(
+            {
+                "ticker": "AAA",
+                "date": day,
+                "open": round(base / scale, 4),
+                "high": round((max(base, close) + 50.0) / scale, 4),
+                "low": round((min(base, close) - 50.0) / scale, 4),
+                "close": round(close / scale, 4),
+                "volume": 1_000 + i,
+                "ref_price": round(ref / scale, 4),
+                "ceiling": float(ceiling[0]) / scale,
+                "floor": float(floor[0]) / scale,
+            }
+        )
+    return rows
+
+
+def test_long_split_adjusted_history_gives_summaries_and_keeps_a_real_breach(
+    tmp_path: Path,
+) -> None:
+    days = weekdays(2_000)
+    rows = long_split_adjusted(days, ex_index=1_500, breach_index=1_800)
+    with store_with(
+        tmp_path, rows, basis="split_adjusted", derived=True, start=days[0], end=days[-1]
+    ) as store:
+        events = pd.DataFrame(
+            [{"ticker": "AAA", "ex_date": days[1_500], "type": "stock", "ratio_or_amount": 0.1}]
+        )
+        events["source"] = "synthetic_fake"
+        store.upsert_corporate_actions(events, "run-1", "real")
+        results = run_checks(store, "run-1", CAL, ticks=TICKS)
+    assert len(results) < 10  # not thousands of rows
+    off = [r for r in results if r.check == "off_tick"]
+    assert len(off) == 1
+    assert off[0].severity == "warning"
+    assert off[0].date == days[0]
+    assert "1500 session(s)" in off[0].detail
+    assert str(days[1_499]) in off[0].detail
+    outside = [r for r in results if r.check == "close_outside_limits"]
+    assert [(r.date, r.severity) for r in outside] == [(days[1_800], "warning")]
+    assert all(r.severity == "warning" for r in results)
+
+
+def test_rescaled_history_of_raw_data_is_still_reported_per_row(tmp_path: Path) -> None:
+    days = weekdays(30)
+    rows = long_split_adjusted(days, ex_index=20, breach_index=25)
+    with store_with(
+        tmp_path, rows, basis="raw", derived=False, start=days[0], end=days[-1]
+    ) as store:
+        results = run_checks(store, "run-1", CAL, ticks=TICKS)
+    assert len([r for r in results if r.check == "off_tick"]) >= 20  # hard rows: no summarising
+    assert all(r.severity == "error" for r in results if r.check == "off_tick")
+
+
+def test_dq_results_are_inserted_in_one_batch_and_atomically(tmp_path: Path) -> None:
+    from vnstratlab.data.store import DQRecord
+
+    with store_with(tmp_path, bars()) as store:
+        day = date(2026, 3, 2)
+        records = [
+            DQRecord("run-1", "off_tick", f"T{i:04d}", day, "warning", "x") for i in range(1_500)
+        ]
+        store.record_dq_results(records)
+        assert len(store.read_dq_results("run-1")) == 1_500
+        clash = [DQRecord("run-1", "zero_volume", "NEW", day, "warning", "x"), records[0]]
+        with pytest.raises(Exception, match=r"(?i)constraint|duplicate"):
+            store.record_dq_results(clash)
+        assert len(store.read_dq_results("run-1")) == 1_500  # all or nothing
+        store.record_dq_results([])
+
+
+def test_findings_and_status_are_written_in_one_transaction(
+    cfg: AppConfig, paths: AppPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = MarketStore.set_run_status
+
+    def failing(self: MarketStore, run_id: str, status: str) -> None:
+        if status != "dq_crashed":
+            raise RuntimeError("synthetic failure while setting the status")
+        real(self, run_id, status)
+
+    monkeypatch.setattr(MarketStore, "set_run_status", failing)
+    with pytest.raises(SourceError, match="dq_crashed"):
+        run_ingest(cfg, paths, FakeSource(broken(2, volume=0)))  # one finding to store
+    with MarketStore(paths.market_db, "real", read_only=True) as store:
+        assert store.connection.execute("SELECT count(*) FROM dq_results").fetchall() == [(0,)]
+        assert store.row_count() == 5  # data was committed
+    assert stored_status(paths) == [("dq_crashed",)]
+
+
+def test_a_crash_inside_the_checks_marks_dq_crashed_not_error(
+    cfg: AppConfig, paths: AppPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def crash(*args: Any, **kwargs: Any) -> list[DQResult]:
+        raise RuntimeError("synthetic check bug")
+
+    monkeypatch.setattr(pipeline, "run_checks", crash)
+    with pytest.raises(SourceError, match="dq_crashed") as caught:
+        run_ingest(cfg, paths, FakeSource(bars()))
+    assert isinstance(caught.value.__cause__, RuntimeError)
+    assert stored_status(paths) == [("dq_crashed",)]  # not "error": the data is committed
+    with MarketStore(paths.market_db, "real", read_only=True) as store:
+        assert store.row_count() == 5
+
+
+def test_cli_exits_1_when_the_checks_crash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
+
+    def crash(*args: Any, **kwargs: Any) -> list[DQResult]:
+        raise RuntimeError("synthetic check bug")
+
+    monkeypatch.setattr(pipeline, "run_checks", crash)
+    args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-06"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1, result.output
+    assert "dq_crashed" in result.output
+    with MarketStore(tmp_path / "home" / "data" / "market-synthetic.duckdb", "synthetic") as store:
+        assert store.connection.execute("SELECT status FROM ingest_runs").fetchall() == [
+            ("dq_crashed",)
+        ]

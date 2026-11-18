@@ -13,6 +13,7 @@ EXPECTED_COMMANDS = [
     "demo",
     "init",
     "ingest",
+    "data",
     "backtest",
     "lab",
     "meta-backtest",

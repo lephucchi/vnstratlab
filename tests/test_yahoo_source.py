@@ -111,7 +111,8 @@ def test_basic_ingest_writes_rows_actions_and_snapshot(cfg: AppConfig, paths: Ap
     source = YahooSource(cfg, fetch=csv_fetch("synthetic_yahoo_basic.csv", calls), sleep=Sleeps())
     report = ingest(cfg, paths, source, START, END, clock=lambda: LATER)
     assert (report.rows_in, report.rows_written, report.rows_dropped) == (10, 10, 0)
-    assert report.status == "ok"
+    assert report.status == "ok_with_warnings"  # the rescaled VCB history is off the tick grid
+    assert [(r.check, r.ticker, r.severity) for r in report.dq] == [("off_tick", "VCB", "warning")]
     assert report.db_path == paths.market_db
     assert {symbol for symbol, _, _ in calls} >= {"ACB.VN", "VCB.VN"}
     assert len(calls) == len({s for s, _, _ in calls})  # one request per symbol, actions included
@@ -139,7 +140,7 @@ def test_basic_ingest_writes_rows_actions_and_snapshot(cfg: AppConfig, paths: Ap
     raw = read_raw(report.raw_path)
     assert list(raw.columns) == ["ticker", "date", "open", "high", "low", "close", "volume"]
     assert len(raw) == 10
-    assert stored(paths, "SELECT status FROM ingest_runs") == [("ok",)]
+    assert stored(paths, "SELECT status FROM ingest_runs") == [("ok_with_warnings",)]
 
 
 def test_dates_are_vietnam_dates(cfg: AppConfig) -> None:
@@ -656,7 +657,9 @@ def test_refresh_after_rescale_refetches_full_history_and_revises_earlier_rows(
     start = default_start(cfg, paths, source)
     report = ingest(cfg, paths, source, start, date(2026, 3, 4), clock=lambda: clock(1))
     assert report.refetched == ("ACB",)
-    assert report.status == "ok"
+    assert report.status == "ok_with_warnings"  # rescaled pre-split history: one off_tick summary
+    assert [r for r in report.dq if r.check == "close_outside_limits"] == []  # nothing at 03-04
+    assert [(r.check, r.ticker) for r in report.dq] == [("off_tick", "ACB")]
     acb_calls = [c for c in world.calls if c[0] == "ACB.VN"]
     assert [c[1] for c in acb_calls] == [start, cfg.project.backfill_start]  # then full history
     assert len([c for c in world.calls if c[0] == "VCB.VN"]) == 1

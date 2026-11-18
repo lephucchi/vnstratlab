@@ -64,7 +64,7 @@ Plan §5.5 tables, with columns added by ADR-007:
 |---|---|---|
 | `prices_daily` | (ticker, date, source) | `price_basis` (`raw` / `split_adjusted` / `synthetic`), `derived_limits` (bool), `run_id`, `revision` |
 | `corporate_actions` | (ticker, ex_date, type, source) | `source`, `run_id` |
-| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_changed, rows_dropped, status (`ok`, `ok_with_warnings`, `partial`, `failed_dq`, `error`), raw_path |
+| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_changed, rows_dropped, status (`ok`, `ok_with_warnings`, `partial`, `failed_dq`, `dq_crashed`, `error`), raw_path |
 | `dq_results` | (run_id, check, ticker, date) | severity (`error` / `warning`), detail (P1-T38) |
 
 Rules: raw values are never overwritten silently; an upsert that changes a stored value
@@ -148,14 +148,31 @@ suspension is possible) only warn (GAP-01, GAP-02).
 | `ohlc_inconsistent` | error | error |
 | `zero_volume`, `repeated_bar`, `large_move` (> 15 %) | warning | warning |
 
-Sessions come from the configured holidays when every year of the run range has complete
-holiday data, else from the dates stored for the source (GAP-05). `stale_data` compares the
-newest stored date with the last completed session (the day before a partial-bar cutoff).
+Sessions are the weekdays minus every holiday listed in the config; stored sessions are never
+the reference (a missing day would otherwise count as a holiday). In a year whose holiday list is
+`partial` or `missing` (GAP-05) an absence may be an unlisted holiday, so `stale_data` and
+`missing_ticker` only warn for sessions of such years (an error stays an error for sessions of
+complete years). `stale_data` compares the newest stored date with the last completed session
+(the day before a partial-bar cutoff). `missing_ticker` reports a ticker with no row on any
+session of the range, and, once per ticker, holes: sessions after its first stored date with no
+row.
+
+`duplicate_rows` is defensive: the primary key (ticker, date, source) already prevents duplicates
+in the store, so it only fires on a damaged file. `ohlc_inconsistent` and `close_outside_limits`
+share one absolute tolerance of 1e-6.
+
+Rescaled history: for split-adjusted or derived-limit rows dated before the ticker's last `stock`
+event, `close_outside_limits` and `off_tick` give ONE summary warning per ticker and check per
+run (count and date range) instead of one finding per row; rows on or after the ex-date are
+reported individually, so a genuine breach after a split still shows. Findings are inserted in
+one batch.
 
 Run status after the checks (`ingest_runs.status`): any error gives `failed_dq` (exit 1, even
 if tickers also failed); otherwise a `partial` run stays `partial` (exit 3, warnings are still
 stored); otherwise warnings give `ok_with_warnings` (exit 0) and none gives `ok`. If the checks
-themselves crash, the run is marked `error`. `vnstratlab data status [--json]` prints stores,
+themselves crash, the run is marked `dq_crashed` (the data is committed, the checks are
+incomplete; exit code 1), not `error`, which means the write was rolled back. Findings and the
+final status are written in one transaction. `vnstratlab data status [--json]` prints stores,
 the last 5 runs, the last run's checks and the open gaps; `vnstratlab data gaps [--status ...]
 [--json]` prints the register.
 

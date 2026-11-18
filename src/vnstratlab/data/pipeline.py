@@ -26,7 +26,13 @@ from vnstratlab.data.protocol import (
     TickTable,
     universe_tickers,
 )
-from vnstratlab.data.quality import DQResult, build_calendar, final_status, run_checks
+from vnstratlab.data.quality import (
+    DQResult,
+    build_calendar,
+    final_status,
+    incomplete_years,
+    run_checks,
+)
 from vnstratlab.data.raw import write_raw
 from vnstratlab.data.store import Kind, MarketStore, RunRecord, kind_of_basis, kind_of_source
 
@@ -378,16 +384,34 @@ def ingest(
             except Exception as secondary:
                 original.add_note(f"also failed to record the error run row: {secondary!r}")
             raise
-        # The write committed; checks never roll it back (data stays for inspection).
+        # The write committed; checks never roll it back (data stays for inspection). Findings and
+        # the final status are written in ONE transaction. A crash inside the checks marks the
+        # run `dq_crashed` (data committed, checks incomplete); `error` means rolled back.
         try:
-            calendar = build_calendar(cfg, store, source.info.name, start, end)
+            calendar = build_calendar(cfg)
             through = end if cutoff is None else min(end, cutoff - timedelta(days=1))
-            dq = run_checks(store, run_id, calendar, ticks=ticks, through=through)
+            dq = run_checks(
+                store,
+                run_id,
+                calendar,
+                ticks=ticks,
+                through=through,
+                incomplete_years=incomplete_years(cfg, start, end),
+            )
             status = final_status(status, dq)
-            store.record_dq_results([r.to_record() for r in dq])
-            store.set_run_status(run_id, status)
-        except BaseException:
-            store.set_run_status(run_id, "error")
+            with store.transaction():
+                store.record_dq_results([r.to_record() for r in dq])
+                store.set_run_status(run_id, status)
+        except BaseException as crash:
+            try:
+                store.set_run_status(run_id, "dq_crashed")
+            except Exception as secondary:
+                crash.add_note(f"also failed to mark the run dq_crashed: {secondary!r}")
+            if isinstance(crash, Exception):
+                raise SourceError(
+                    f"data-quality checks crashed ({crash!r}); the data was written and run "
+                    f"{run_id} is marked dq_crashed (checks incomplete)"
+                ) from crash
             raise
     return IngestReport(
         run_id=run_id,

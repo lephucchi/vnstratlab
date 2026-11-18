@@ -360,16 +360,30 @@ class MarketStore:
         _run(self._con, "UPDATE ingest_runs SET status = ? WHERE run_id = ?", [status, run_id])
 
     def record_dq_results(self, records: list[DQRecord]) -> None:
-        """Insert findings atomically (a run id's findings are written once)."""
+        """Insert findings atomically with ONE ``INSERT ... SELECT`` over a registered frame."""
         if not records:
             return
-        with self.transaction():
-            for r in records:
+        frame = pd.DataFrame(
+            {
+                "run_id": [r.run_id for r in records],
+                "check": [r.check for r in records],
+                "ticker": [r.ticker for r in records],
+                "date": [r.date for r in records],
+                "severity": [r.severity for r in records],
+                "detail": [r.detail for r in records],
+            }
+        )
+        con = self._con
+        con.register("incoming_dq", frame)
+        try:
+            with self.transaction():
                 _run(
-                    self._con,
-                    "INSERT INTO dq_results VALUES (?, ?, ?, ?, ?, ?)",
-                    [r.run_id, r.check, r.ticker, r.date, r.severity, r.detail],
+                    con,
+                    'INSERT INTO dq_results SELECT run_id, "check", ticker, '
+                    "CAST(date AS DATE), severity, detail FROM incoming_dq",
                 )
+        finally:
+            con.unregister("incoming_dq")
 
     # ------------------------------------------------------------------ reads
 
@@ -423,13 +437,15 @@ class MarketStore:
         frame["date"] = [d.date() if isinstance(d, pd.Timestamp) else d for d in frame["date"]]
         return frame
 
-    def stored_sessions(self, source: str) -> list[date]:
+    def last_stock_event_dates(self, source: str) -> dict[str, date]:
+        """Ex-date of each ticker's latest ``stock`` event for one source."""
         rows = _run(
             self._con,
-            "SELECT DISTINCT date FROM prices_daily WHERE source = ? ORDER BY date",
+            "SELECT ticker, max(ex_date) FROM corporate_actions "
+            "WHERE type = 'stock' AND source = ? GROUP BY ticker",
             [source],
         )
-        return [r[0] for r in rows]
+        return {str(t): d for t, d in rows}
 
     def row_count(self) -> int:
         return _count(_run(self._con, "SELECT count(*) FROM prices_daily"))

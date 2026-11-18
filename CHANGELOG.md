@@ -23,6 +23,9 @@ All notable changes are documented here. The format follows
   `po/data.json` is no longer written.
 
 ### Added
+- Data-quality checks use a per-year calendar (warnings in years with incomplete holiday
+  lists), summarise findings on rescaled split-adjusted history, report per-ticker holes and mark
+  a crashed check run `dq_crashed` (P1-T38 review fixes).
 - Data quality (P1-T38): nine checks after every ingest stored in `dq_results`
   (`vnstratlab.data.quality`), run statuses `ok_with_warnings` and `failed_dq` (exit 1),
   `vnstratlab data status [--json]` and `vnstratlab data gaps`, a typed gap register loader
