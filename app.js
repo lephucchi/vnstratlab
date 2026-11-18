@@ -28,6 +28,14 @@ const GAP_STATUS = {
   "mitigated": ["Đã giảm thiểu", "info"],
   "closed": ["Đã đóng", "ok"],
 };
+// technical reasons from tools/build_status.py → Vietnamese
+const GAP_REASON = {
+  "PyYAML not installed": "bản build thiếu thư viện PyYAML",
+  "gaps.yaml not found": "không tìm thấy tệp gaps.yaml",
+  "gaps.yaml could not be parsed": "tệp gaps.yaml sai cú pháp",
+  "gaps.yaml has no gap list": "tệp gaps.yaml không có danh sách khoảng trống",
+  "gap register could not be serialised": "không chuyển được sổ khoảng trống sang JSON",
+};
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -114,7 +122,7 @@ function renderKpis(d) {
   if (d.cards.some((c) => c.due)) kpis.splice(2, 0, ["Card quá hạn", String(overdue), "theo hạn trên task card"]);
   if (d.gaps && d.gaps.available) {
     const c = d.gaps.counts || {};
-    kpis.push(["Khoảng trống dữ liệu", String(c.open || 0), `đang mở · ${c.high || 0} mức cao`]);
+    kpis.push(["Khoảng trống dữ liệu", String(c.open || 0), `đang mở · ${c.high || 0} mức cao (chưa đóng)`]);
   }
   $("#kpis").replaceChildren(
     ...kpis.map(([label, value, sub]) =>
@@ -200,10 +208,18 @@ function gapEmpty(text) {
 function renderGaps(d) {
   const g = d.gaps;
   if (!g) { gapEmpty("Bản dữ liệu này chưa có sổ khoảng trống (build cũ)."); return; }
-  if (!g.available) { gapEmpty(`Không đọc được sổ khoảng trống${g.reason ? ` (${g.reason})` : ""}.`); return; }
+  if (!g.available) {
+    const why = GAP_REASON[g.reason] || (g.reason ? `lý do kỹ thuật: ${g.reason}` : "");
+    gapEmpty(`Không đọc được sổ khoảng trống${why ? ` (${why})` : ""}.`);
+    return;
+  }
   const items = g.items || [];
   const c = g.counts || {};
-  const src = [g.source ? `Nguồn tạm: ${g.source}` : "", g.origin && g.origin !== "develop" ? `đọc từ nhánh ${g.origin}` : ""];
+  const origin = g.origin || "";
+  const src = [
+    g.source ? `${g.source === "synthetic" ? "Nguồn" : "Nguồn tạm"}: ${g.source}` : "",
+    origin.startsWith("branch:") ? `đọc từ nhánh ${origin.slice(7)} (chưa có trên develop)` : "",
+  ];
   $("#gap-src").textContent = src.filter(Boolean).join(" · ");
   const group = (label, entries) =>
     el("div", { class: "gap-group", role: "group", "aria-label": label },
@@ -222,19 +238,20 @@ function renderGaps(d) {
     ...items.map((x) => {
       const [sev, sevTone] = GAP_SEVERITY[x.severity] || [x.severity || "—", ""];
       const [st, stTone] = GAP_STATUS[x.status] || [x.status || "—", ""];
-      const detail = (k, v) => (v ? [el("dt", {}, k), el("dd", {}, v)] : []);
+      // register texts other than title_vi are English
+      const detail = (k, v, attrs = { lang: "en" }) => (v ? [el("dt", {}, k), el("dd", attrs, v)] : []);
       return el("tr", {},
         el("th", { scope: "row" }, x.id),
         el("td", {},
-          el("span", { class: "gap-title", lang: "vi" }, x.title_vi || x.title),
+          el("span", { class: "gap-title", lang: x.title_vi ? "vi" : "en" }, x.title_vi || x.title),
           x.title_vi && x.title ? el("span", { class: "muted small gap-en", lang: "en" }, x.title) : null,
           el("details", { class: "gap-more" },
             el("summary", {}, "Chi tiết"),
             el("dl", {},
               ...detail("Thiếu", x.missing),
               ...detail("Cách xử lý tạm", x.workaround),
-              ...detail("Đóng bằng", x.close_by),
-              ...detail("Ghi nhận từ", x.since)
+              ...detail("Cách khắc phục", x.close_by),
+              ...detail("Ghi nhận ngày", x.since, {})
             )
           )
         ),
