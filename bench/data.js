@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794982190438,
+  "lastUpdate": 1794982633115,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -403,6 +403,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00016746140356442292",
             "extra": "mean: 8.264441333337183 msec\nrounds: 12"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "27afb0e843a2ba532113522be439f059a79be6b4",
+          "message": "docs(engine): HTML architecture diagrams and Phase 1 data constraints (#18)\n\nNine engine figures in docs/diagrams/engine-architecture.html, embedded in engine.md; Phase 1 data constraints (P1-T06 reconstructs raw-like prices and limits from stock events, late actions applied once); GAP-01 wording; CLAUDE.md rule: no AI attribution watermarks. Merged on owner request.",
+          "timestamp": "2026-11-18T13:16:42+07:00",
+          "tree_id": "334038960c2e181502bbaa3122214b2819cd3716",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/27afb0e843a2ba532113522be439f059a79be6b4"
+        },
+        "date": 1794982632637,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 102.00991669009014,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00025017188435831134",
+            "extra": "mean: 9.802968499994336 msec\nrounds: 10"
           }
         ]
       }
