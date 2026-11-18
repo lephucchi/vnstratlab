@@ -7,6 +7,11 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- **Data source (ADR-007):** Yahoo Finance becomes the interim Phase 1 price source through an
+  optional adapter (P1-T37); the data pipeline is a separate layer (`vnstratlab.data`); known
+  shortfalls are tracked in a gap register (`src/vnstratlab/data/gaps.yaml`, `docs/data-gaps.md`).
+  New cards P1-T36 (scope extended), P1-T37, P1-T38; P1-T03 is replaced. Review:
+  `docs/reports/data-source-yahoo.md`.
 - **Data source (ADR-006):** plan decision D6 (`vnstock`) is superseded. Phase 1 runs on a
   synthetic market (new card P1-T36); real-data cards wait for the owner's source decision.
   Review: `docs/reports/data-source-vnstock.md`.

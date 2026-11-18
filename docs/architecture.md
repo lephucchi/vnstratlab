@@ -55,7 +55,7 @@
 | `vnstratlab.paths` | App home and file locations (`APP_HOME`) | P1-T01 |
 | `vnstratlab.settings` | Env-only secrets | P1-T01 |
 | `vnstratlab.config` | Packaged YAML defaults, loader and validation | P1-T02 |
-| `vnstratlab.data` | `DataSource` protocol, adapters, ingestion, DQ checks, corporate actions, fundamentals, universe membership | P1-T03 |
+| `vnstratlab.data` | Separate data pipeline ([data-pipeline.md](data-pipeline.md)): `DataSource` protocol, adapters (synthetic, Yahoo), raw snapshots, market store, DQ checks, gap register, corporate actions, fundamentals, universe membership. Only this package talks to a source | P1-T36 |
 | `vnstratlab.features` | `features_daily` | P1-T10 |
 | `vnstratlab.engine` | Simulator, cost model, settlement/limit/lot/tick rules | P1-T11 |
 | `vnstratlab.risk` | Sizing, stops, circuit breaker | P1-T12 |

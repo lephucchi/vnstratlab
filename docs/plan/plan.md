@@ -51,7 +51,7 @@ This document is research and engineering planning for an open-source project. I
 | D3 | Backend | FastAPI, bound to 127.0.0.1 in Phases 1–2 |
 | D4 | UI | Plain HTML, CSS, JavaScript. No framework, no build step, no chart library (charts are hand-written SVG) |
 | D5 | Notifications | One Telegram bot |
-| D6 | Data source (Phase 1) | ~~`vnstock` (free Community tier)~~ **Superseded by [ADR-006](../adr/ADR-006-synthetic-first.md):** synthetic data first (P1-T36); the external source is chosen later, behind the same adapter interface |
+| D6 | Data source (Phase 1) | ~~`vnstock` (free Community tier)~~ Superseded by [ADR-006](../adr/ADR-006-synthetic-first.md) and **[ADR-007](../adr/ADR-007-yahoo-interim-source.md)**: synthetic market for tests/CI/demo (P1-T36); **Yahoo Finance as interim user-side price source** (P1-T37); gaps tracked in `data/gaps.yaml` (P1-T38) |
 | D7 | News | **Not used in any signal in Phase 1.** Raw news is collected passively from Phase 1 so that Phase 2 has forward data |
 | D8 | Horizons | Short = 1 week (5 sessions), Medium = 3–6 months, Long = 1 year |
 | D9 | Capital | Three independent paper books, one per horizon, 11,000,000 VND each (section 4) |
@@ -351,12 +351,20 @@ News-based and ML strategies are excluded from the Phase 1 core. Each strategy h
 
 ### M1.1 — Data
 
-**P1-T36 — DataSource protocol and synthetic market** *(added by ADR-006)*
+**P1-T36 — DataSource protocol, market store and synthetic market** *(added by ADR-006)* · card: [P1-T36](../cards/P1-T36-datasource-synthetic.md)
 - Depends on: P1-T02
 - Goal: the `DataSource` protocol of P1-T03 plus `SyntheticSource`: a deterministic, seeded market for the default universe (daily OHLCV and volume, HOSE price limits and tick sizes, lots, suspensions, corporate-action events, regime changes), written to the same tables real data will use.
 - Acceptance: same seed → byte-identical output; every generated price respects the reference ±limit and the tick grid; corporate-action events are listed with their dates; data is labelled synthetic in tables and reports; no network access.
 
-**P1-T03 — Source adapter and price ingestion** · **blocked on the source decision (ADR-006)**
+**P1-T37 — YahooSource adapter** *(added by ADR-007)* · card: [P1-T37](../cards/P1-T37-yahoo-source.md)
+- Depends on: P1-T36
+- Goal: optional `[yahoo]` adapter for daily prices of the universe, labelled interim and `split_adjusted`; filler rows and partial bars dropped; terms notice; no Yahoo access from tests or CI.
+
+**P1-T38 — Data-quality checks v0, gap register, `data status`** *(added by ADR-007)* · card: [P1-T38](../cards/P1-T38-quality-gaps.md)
+- Depends on: P1-T37
+- Goal: quality checks after each ingest (severity by `price_basis`), `dq_results`, gap register loader, `vnstratlab data status` / `data gaps`.
+
+**P1-T03 — Source adapter and price ingestion** · **replaced by P1-T36 + P1-T37 (ADR-007)**
 - Depends on: P1-T02
 - Goal: `DataSource` protocol with a `VnstockSource` implementation; ingest daily OHLCV for the universe into `prices_daily`, raw responses saved to `data/raw/` as Parquet.
 - Acceptance: backfill from a configurable start date (default 2015-01-01) is idempotent (re-run creates no duplicates); rate limit respected (configurable, default 50 calls/min); network failures retried with backoff and logged; unit tests use recorded fixtures.
