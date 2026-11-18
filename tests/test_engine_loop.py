@@ -12,7 +12,13 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from engine_helpers import actions, bars, drive, frame, make_days
+from engine_helpers import (
+    drive,
+    make_days,
+    synthetic_actions,
+    synthetic_bars,
+    synthetic_prices,
+)
 from vnstratlab.calendar import TradingCalendar
 from vnstratlab.config.models import AppConfig
 from vnstratlab.engine import SimParams, make_params, period_returns, run_simulation
@@ -43,7 +49,7 @@ def events(result_events: pd.DataFrame, order_id: int | None = None) -> list[tup
 
 def test_settlement_queue_then_sell_costs(engine_cfg: AppConfig) -> None:
     days = make_days(8)  # idx0 Fri 10-30, idx1 Mon 11-02 ... idx4 Thu 11-05
-    prices = frame(bars("AAA", days, 50_000))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
     # Fri close: target 50 % of 100,000,000 = 50,000,000 -> 1,000 shares (cash is ample).
     # Tue close (idx2): empty target -> sell order for Wed.
     targets = {days[0]: weights(AAA=0.5), days[2]: NONE}
@@ -81,8 +87,8 @@ def test_settlement_queue_then_sell_costs(engine_cfg: AppConfig) -> None:
 def test_ceiling_open_blocks_buy_then_cancels(engine_cfg: AppConfig) -> None:
     days = make_days(3)
     # ref 50,000 -> ceiling 53,500; Monday opens at the ceiling.
-    over = {1: {"open": 53_500, "close": 53_500, "ceiling": 53_500}}
-    prices = frame(bars("AAA", days, 50_000, over=over))
+    over = {1: {"open": 53_500, "close": 53_500, "ref_price": 50_000, "ceiling": 53_500}}
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over))
     res = run_simulation(prices, None, {days[0]: weights(AAA=0.5)}, CAL, executable(engine_cfg))
     assert res.trades.empty
     assert events(res.order_events) == [
@@ -96,7 +102,7 @@ def test_ceiling_open_blocks_buy_then_cancels(engine_cfg: AppConfig) -> None:
 def test_buy_below_ceiling_is_not_blocked(engine_cfg: AppConfig) -> None:
     days = make_days(3)
     over = {1: {"open": 53_400, "close": 53_400, "ceiling": 53_500}}  # one tick below
-    prices = frame(bars("AAA", days, 50_000, over=over))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over))
     res = run_simulation(prices, None, {days[0]: weights(AAA=0.5)}, CAL, executable(engine_cfg))
     assert len(res.trades) >= 1
     assert res.order_events.empty
@@ -108,8 +114,11 @@ def test_buy_below_ceiling_is_not_blocked(engine_cfg: AppConfig) -> None:
 def test_floor_open_carries_sell_then_stale_after_five(engine_cfg: AppConfig) -> None:
     days = make_days(11)
     # Wed close (idx3): sell for Thu (idx4, first sellable session). Floor 46,500 on idx4..idx9.
-    over = {i: {"open": 46_500, "close": 46_500, "floor": 46_500} for i in range(4, 10)}
-    prices = frame(bars("AAA", days, 50_000, over=over))
+    over = {
+        i: {"open": 46_500, "close": 46_500, "ref_price": 50_000, "floor": 46_500}
+        for i in range(4, 10)
+    }
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over))
     targets = {days[0]: weights(AAA=0.5), days[3]: NONE}
     res = run_simulation(prices, None, targets, CAL, executable(engine_cfg))
     ev = res.order_events
@@ -123,15 +132,17 @@ def test_floor_open_carries_sell_then_stale_after_five(engine_cfg: AppConfig) ->
 
 def test_unfilled_sell_cancel_and_buy_carry_policies(engine_cfg: AppConfig) -> None:
     days = make_days(6)
-    over = {i: {"open": 46_500, "close": 46_500, "floor": 46_500} for i in (4, 5)}
-    prices = frame(bars("AAA", days, 50_000, over=over))
+    over = {
+        i: {"open": 46_500, "close": 46_500, "ref_price": 50_000, "floor": 46_500} for i in (4, 5)
+    }
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over))
     targets = {days[0]: weights(AAA=0.5), days[3]: NONE}
     params = dataclasses.replace(executable(engine_cfg), unfilled_sell="cancel")
     res = run_simulation(prices, None, targets, CAL, params)
     assert list(res.order_events["event"]) == ["blocked_floor", "cancelled"]
     # buy carry with a limit of 1 session: blocked, carried, blocked again, stale
     over_buy = {i: {"open": 53_500, "close": 53_500, "ceiling": 53_500} for i in (1, 2, 3)}
-    prices_buy = frame(bars("AAA", days, 50_000, over=over_buy))
+    prices_buy = synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over_buy))
     carry = dataclasses.replace(executable(engine_cfg), unfilled_buy="carry", max_carry=1)
     res2 = run_simulation(prices_buy, None, {days[0]: weights(AAA=0.5)}, CAL, carry)
     assert list(res2.order_events["event"]) == [
@@ -147,7 +158,7 @@ def test_unfilled_sell_cancel_and_buy_carry_policies(engine_cfg: AppConfig) -> N
 
 def test_lots_two_round_plus_odd_remainder(engine_cfg: AppConfig) -> None:
     days = make_days(3)
-    prices = frame(bars("AAA", days, 52_700))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 52_700))
     # Fri close: 11,000,000 / 52,700 = 208.7 -> 208 shares = 2 round lots + 8 odd (not 3 lots).
     res = run_simulation(
         prices, None, {days[0]: weights(AAA=1.0)}, CAL, executable(engine_cfg, 11_000_000)
@@ -166,7 +177,7 @@ def test_lots_two_round_plus_odd_remainder(engine_cfg: AppConfig) -> None:
 
 def test_lots_only_when_odd_lots_off(engine_cfg: AppConfig) -> None:
     days = make_days(3)
-    prices = frame(bars("AAA", days, 52_700))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 52_700))
     params = executable(engine_cfg, 11_000_000, odd_lots=False)
     res = run_simulation(prices, None, {days[0]: weights(AAA=1.0)}, CAL, params)
     assert list(res.trades["qty"]) == [200]
@@ -176,7 +187,7 @@ def test_lots_only_when_odd_lots_off(engine_cfg: AppConfig) -> None:
 
 def test_odd_lot_150_shares_each_with_own_slippage(engine_cfg: AppConfig) -> None:
     days = make_days(3)
-    prices = frame(bars("AAA", days, 50_000))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
     sim = drive(prices, executable(engine_cfg), {1: [("AAA", "buy", 150)]})
     t = sim.result().trades
     # 100 round at 50,000 x 1.001 = 50,050: notional 5,005,000, fee 7,507.5, slippage 5,000.
@@ -191,7 +202,7 @@ def test_odd_lot_150_shares_each_with_own_slippage(engine_cfg: AppConfig) -> Non
 
 def test_round_lot_sell_fills_with_odd_lots_off(engine_cfg: AppConfig) -> None:
     days = make_days(7)
-    prices = frame(bars("AAA", days, 50_000))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
     params = executable(engine_cfg, odd_lots=False)
     sim = drive(prices, params, {1: [("AAA", "buy", 300)], 4: [("AAA", "sell", 300)]})
     trades = sim.result().trades
@@ -204,7 +215,9 @@ def test_round_lot_sell_fills_with_odd_lots_off(engine_cfg: AppConfig) -> None:
 
 def _proceeds_setup(cfg: AppConfig, offset: int | None) -> pd.DataFrame:
     days = make_days(8)
-    prices = frame(bars("AAA", days, 50_000), bars("BBB", days, 90_000))
+    prices = synthetic_prices(
+        synthetic_bars("AAA", days, 50_000), synthetic_bars("BBB", days, 90_000)
+    )
     params = executable(cfg, 10_000_000, odd_lots=False)
     if offset is not None:
         params = dataclasses.replace(params, proceeds_offset=offset)
@@ -245,6 +258,27 @@ def test_sale_proceeds_fund_buys_only_after_the_offset(engine_cfg: AppConfig) ->
     assert mon["cash_available"] == pytest.approx(9_970_005 - 9_022_513.5)
 
 
+def test_monday_sell_proceeds_usable_from_wednesday(engine_cfg: AppConfig) -> None:
+    days = make_days(10)
+    prices = synthetic_prices(
+        synthetic_bars("AAA", days, 50_000), synthetic_bars("BBB", days, 90_000)
+    )
+    params = executable(engine_cfg, 10_000_000, odd_lots=False)
+    orders = {
+        1: [("AAA", "buy", 100)],  # Mon 11-02, sellable from Thu 11-05
+        6: [("AAA", "sell", 100)],  # Mon 11-09: net proceeds 4,982,512.5, released Wed 11-11
+        7: [("BBB", "buy", 100)],  # Tue 11-10: cash 4,987,492.5 < 9,022,513.5 -> blocked_cash
+        8: [("BBB", "buy", 100)],  # Wed 11-11: 4,987,492.5 + 4,982,512.5 = 9,970,005 -> fills
+    }
+    res = drive(prices, params, orders).result()
+    assert events(res.order_events) == [
+        (date(2026, 11, 10), "blocked_cash"),
+        (date(2026, 11, 10), "cancelled"),
+    ]
+    bbb = res.trades[res.trades["ticker"] == "BBB"]
+    assert list(bbb["session"]) == [date(2026, 11, 11)]
+
+
 def test_with_offset_zero_the_sell_funds_the_same_session_buy(engine_cfg: AppConfig) -> None:
     trades = _proceeds_setup(engine_cfg, 0)
     ev = trades.attrs["events"]
@@ -261,8 +295,8 @@ def test_with_offset_zero_the_sell_funds_the_same_session_buy(engine_cfg: AppCon
 
 def test_cash_dividend_receivable_then_available_on_pay_date(engine_cfg: AppConfig) -> None:
     days = make_days(30)
-    prices = frame(bars("AAA", days, 50_000))
-    div = actions(
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
+    div = synthetic_actions(
         {
             "ticker": "AAA",
             "ex_date": date(2026, 11, 4),
@@ -284,8 +318,8 @@ def test_cash_dividend_receivable_then_available_on_pay_date(engine_cfg: AppConf
 
 def test_cash_dividend_pay_lag_fallback_is_30_days(engine_cfg: AppConfig) -> None:
     days = make_days(30)
-    prices = frame(bars("AAA", days, 50_000))
-    div = actions(
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
+    div = synthetic_actions(
         {"ticker": "AAA", "ex_date": date(2026, 11, 4), "type": "cash", "ratio_or_amount": 1_000.0}
     )
     eq = drive(prices, executable(engine_cfg), {1: [("AAA", "buy", 1_000)]}, div).result().equity
@@ -295,11 +329,20 @@ def test_cash_dividend_pay_lag_fallback_is_30_days(engine_cfg: AppConfig) -> Non
     assert row[date(2026, 12, 4)].cash_pending == 0
 
 
-def _stock_dividend_run(cfg: AppConfig, listing: date | None) -> pd.DataFrame:
+def _stock_dividend_run(cfg: AppConfig, listing: date | None) -> tuple[pd.DataFrame, pd.DataFrame]:
     days = make_days(32)
     # Ex-date Monday 11-09 (idx6): ref 50,000 / 1.1 = 45,454.5 -> tick 50 down = 45,450.
-    over = {i: {"open": 45_450, "close": 45_450} for i in range(6, 32)}
-    prices = frame(bars("AAA", days, 50_000, over=over))
+    over = {
+        i: {
+            "open": 45_450,
+            "close": 45_450,
+            "ref_price": 45_450,
+            "ceiling": 48_600,
+            "floor": 42_300,
+        }
+        for i in range(6, 32)
+    }
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over))
     row: dict[str, object] = {
         "ticker": "AAA",
         "ex_date": date(2026, 11, 9),
@@ -308,12 +351,14 @@ def _stock_dividend_run(cfg: AppConfig, listing: date | None) -> pd.DataFrame:
     }
     if listing is not None:
         row["listing_date"] = listing
-    sim = drive(prices, executable(cfg), {1: [("AAA", "buy", 1_000)]}, actions(row))
-    return sim.result().positions
+    res = drive(
+        prices, executable(cfg), {1: [("AAA", "buy", 1_000)]}, synthetic_actions(row)
+    ).result()
+    return res.positions, res.equity
 
 
 def test_stock_dividend_shares_and_sellable_from_listing_date(engine_cfg: AppConfig) -> None:
-    pos = _stock_dividend_run(engine_cfg, date(2026, 11, 13))
+    pos, equity = _stock_dividend_run(engine_cfg, date(2026, 11, 13))
     row = {r.date: r for r in pos.itertuples()}
     before, ex = row[date(2026, 11, 6)], row[date(2026, 11, 9)]
     assert before.shares == 1_000
@@ -326,10 +371,15 @@ def test_stock_dividend_shares_and_sellable_from_listing_date(engine_cfg: AppCon
     assert before.value == pytest.approx(50_000_000)
     assert ex.value == pytest.approx(49_995_000)
     assert abs(before.value - ex.value) < 1_100 * 50
+    # The same on the equity frame: cash 49,874,925 is unchanged across the ex-date, so equity
+    # goes from 99,874,925 to 99,869,925 (-5,000, i.e. -0.005 %).
+    eq = {r.date: r.equity for r in equity.itertuples()}
+    assert eq[date(2026, 11, 6)] == pytest.approx(99_874_925)
+    assert eq[date(2026, 11, 9)] == pytest.approx(99_869_925)
 
 
 def test_stock_dividend_listing_lag_fallback_is_20_sessions(engine_cfg: AppConfig) -> None:
-    pos = _stock_dividend_run(engine_cfg, None)
+    pos, _ = _stock_dividend_run(engine_cfg, None)
     row = {r.date: r for r in pos.itertuples()}
     # ex 11-09 + 20 sessions (11-10 is #1 ... 12-04 is #19) = Monday 12-07.
     assert row[date(2026, 12, 4)].sellable == 1_000
@@ -342,10 +392,16 @@ def test_pending_sell_is_rescaled_and_partly_queued_on_stock_dividend(
     days = make_days(10)
     # ex-date limits from ref 45,450: ceiling 48,600, floor 42,300 (7 %, tick 50)
     over = {
-        i: {"open": 45_450, "close": 45_450, "ceiling": 48_600, "floor": 42_300}
+        i: {
+            "open": 45_450,
+            "close": 45_450,
+            "ref_price": 45_450,
+            "ceiling": 48_600,
+            "floor": 42_300,
+        }
         for i in range(6, 10)
     }
-    prices = frame(bars("AAA", days, 50_000, over=over))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over))
     row = {
         "ticker": "AAA",
         "ex_date": date(2026, 11, 9),
@@ -354,7 +410,7 @@ def test_pending_sell_is_rescaled_and_partly_queued_on_stock_dividend(
         "listing_date": date(2026, 11, 13),
     }
     orders = {1: [("AAA", "buy", 1_000)], 6: [("AAA", "sell", 1_000)]}
-    res = drive(prices, executable(engine_cfg), orders, actions(row)).result()
+    res = drive(prices, executable(engine_cfg), orders, synthetic_actions(row)).result()
     # Sell order of 1,000 (pre-event shares) becomes 1,100 on the ex-date; only 1,000 are
     # sellable, so 1,000 sell and 100 stay queued until the new shares list.
     sells = res.trades[res.trades["side"] == "sell"]
@@ -365,8 +421,8 @@ def test_pending_sell_is_rescaled_and_partly_queued_on_stock_dividend(
 
 def test_rights_are_ignored_by_policy(engine_cfg: AppConfig) -> None:
     days = make_days(5)
-    prices = frame(bars("AAA", days, 50_000))
-    rights = actions(
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
+    rights = synthetic_actions(
         {"ticker": "AAA", "ex_date": date(2026, 11, 4), "type": "rights", "ratio_or_amount": 0.2}
     )
     res = drive(prices, executable(engine_cfg), {1: [("AAA", "buy", 100)]}, rights).result()
@@ -378,7 +434,7 @@ def test_rights_are_ignored_by_policy(engine_cfg: AppConfig) -> None:
 
 def test_ideal_mode_is_fractional_with_large_capital(engine_cfg: AppConfig) -> None:
     days = make_days(4)
-    prices = frame(bars("AAA", days, 50_000))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
     params = make_params(engine_cfg, "ideal")
     assert (params.capital, params.lots, params.proceeds_offset) == (1.0e12, False, 0)
     res = run_simulation(prices, None, {days[0]: weights(AAA=0.5)}, CAL, params)
@@ -400,7 +456,9 @@ def test_make_params_requires_capital_for_executable(engine_cfg: AppConfig) -> N
 
 def test_determinism_same_inputs_same_digest(engine_cfg: AppConfig) -> None:
     days = make_days(8)
-    prices = frame(bars("AAA", days, 50_000), bars("BBB", days, 90_000))
+    prices = synthetic_prices(
+        synthetic_bars("AAA", days, 50_000), synthetic_bars("BBB", days, 90_000)
+    )
     targets = {days[0]: weights(AAA=0.4, BBB=0.4), days[3]: weights(AAA=0.2)}
     a = run_simulation(prices, None, targets, CAL, executable(engine_cfg))
     b = run_simulation(prices.copy(), None, targets, CAL, executable(engine_cfg))
@@ -413,22 +471,24 @@ def test_determinism_same_inputs_same_digest(engine_cfg: AppConfig) -> None:
 
 def test_split_adjusted_prices_are_refused(engine_cfg: AppConfig) -> None:
     days = make_days(3)
-    prices = frame(bars("AAA", days, 50_000, basis="split_adjusted"))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000, basis="split_adjusted"))
     with pytest.raises(ValueError, match=r"split_adjusted.*P1-T06"):
         run_simulation(prices, None, {}, CAL, executable(engine_cfg))
 
 
 def test_exec_reconstructed_prices_are_accepted(engine_cfg: AppConfig) -> None:
     days = make_days(3)
-    prices = frame(bars("AAA", days, 50_000, basis="exec_reconstructed"))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000, basis="exec_reconstructed"))
     res = run_simulation(prices, None, {days[0]: weights(AAA=0.5)}, CAL, executable(engine_cfg))
     assert len(res.trades) >= 1
 
 
 def test_every_unfilled_order_has_an_event_row(engine_cfg: AppConfig) -> None:
     days = make_days(12)
-    over = {1: {"open": 53_500, "close": 53_500, "ceiling": 53_500}}
-    prices = frame(bars("AAA", days, 50_000, over=over), bars("BBB", days, 40_000))
+    over = {1: {"open": 53_500, "close": 53_500, "ref_price": 50_000, "ceiling": 53_500}}
+    prices = synthetic_prices(
+        synthetic_bars("AAA", days, 50_000, over=over), synthetic_bars("BBB", days, 40_000)
+    )
     targets = {days[0]: weights(AAA=0.4, BBB=0.4), days[3]: weights(BBB=0.4)}
     res = run_simulation(prices, None, targets, CAL, executable(engine_cfg))
     ordered = {1, 2, 3}  # AAA buy, BBB buy, AAA sell
@@ -440,9 +500,11 @@ def test_every_unfilled_order_has_an_event_row(engine_cfg: AppConfig) -> None:
 
 def test_new_decision_supersedes_a_queued_order(engine_cfg: AppConfig) -> None:
     days = make_days(7)
-    prices = frame(bars("AAA", days, 50_000))
-    # Tue close: sell for Wed -> queued (unsettled). Wed close: hold 60 % -> a buy, so the
-    # queued sell is superseded.
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
+    # Tue close: sell for Wed -> queued (unsettled). Wed close: equity is 99,874,925 after fees,
+    # so a 50 % target would be floor(49,937,462 / 50,000) = 998 shares, i.e. a 2-share SELL that
+    # would keep the old order alive (same ticker and side). 60 % is 1,198 shares: a 198-share
+    # BUY, so the queued sell is superseded.
     targets = {days[0]: weights(AAA=0.5), days[2]: NONE, days[3]: weights(AAA=0.6)}
     res = run_simulation(prices, None, targets, CAL, executable(engine_cfg))
     ev = res.order_events
@@ -453,7 +515,9 @@ def test_new_decision_supersedes_a_queued_order(engine_cfg: AppConfig) -> None:
 
 def test_suspended_ticker_buy_is_cancelled(engine_cfg: AppConfig) -> None:
     days = make_days(7)
-    full = frame(bars("AAA", days, 50_000), bars("BBB", days, 40_000))
+    full = synthetic_prices(
+        synthetic_bars("AAA", days, 50_000), synthetic_bars("BBB", days, 40_000)
+    )
     prices = full[~((full["ticker"] == "BBB") & (full["date"] == days[1]))]  # no BBB Monday
     res = run_simulation(prices, None, {days[0]: weights(BBB=0.2)}, CAL, executable(engine_cfg))
     assert events(res.order_events) == [(days[1], "cancelled")]
@@ -463,7 +527,9 @@ def test_suspended_ticker_buy_is_cancelled(engine_cfg: AppConfig) -> None:
 
 def test_suspended_ticker_sell_is_carried_then_fills(engine_cfg: AppConfig) -> None:
     days = make_days(7)
-    full = frame(bars("AAA", days, 50_000), bars("BBB", days, 40_000))
+    full = synthetic_prices(
+        synthetic_bars("AAA", days, 50_000), synthetic_bars("BBB", days, 40_000)
+    )
     prices = full[~((full["ticker"] == "BBB") & (full["date"] == days[4]))]  # no BBB Thursday
     orders = {1: [("BBB", "buy", 100)], 4: [("BBB", "sell", 100)]}
     res = drive(prices, executable(engine_cfg), orders).result()
@@ -478,7 +544,7 @@ def test_suspended_ticker_sell_is_carried_then_fills(engine_cfg: AppConfig) -> N
 
 def test_invalid_inputs_raise_clear_errors(engine_cfg: AppConfig) -> None:
     days = make_days(4)
-    prices = frame(bars("AAA", days, 50_000))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
     params = executable(engine_cfg)
     with pytest.raises(ValueError, match="missing columns: ceiling"):
         run_simulation(prices.drop(columns=["ceiling"]), None, {}, CAL, params)
@@ -495,7 +561,9 @@ def test_invalid_inputs_raise_clear_errors(engine_cfg: AppConfig) -> None:
     saturday = prices.assign(date=date(2026, 11, 7))
     with pytest.raises(ValueError, match="not trading days"):
         run_simulation(saturday, None, {}, CAL, params)
-    bad = actions({"ticker": "AAA", "ex_date": days[1], "type": "warrant", "ratio_or_amount": 1.0})
+    bad = synthetic_actions(
+        {"ticker": "AAA", "ex_date": days[1], "type": "warrant", "ratio_or_amount": 1.0}
+    )
     with pytest.raises(ValueError, match="unknown corporate action type"):
         run_simulation(prices, bad, {}, CAL, params)
     with pytest.raises(ValueError, match="missing columns"):
@@ -508,7 +576,7 @@ def test_invalid_inputs_raise_clear_errors(engine_cfg: AppConfig) -> None:
 def test_returns_and_period_helper(engine_cfg: AppConfig) -> None:
     days = make_days(6)
     over = {2: {"close": 51_000}, 3: {"close": 52_020}}
-    prices = frame(bars("AAA", days, 50_000, over=over))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over))
     res = run_simulation(prices, None, {days[0]: weights(AAA=0.5)}, CAL, executable(engine_cfg))
     r = res.returns
     assert r.iloc[0] == 0  # nothing held before the first fill
@@ -523,7 +591,7 @@ def test_returns_and_period_helper(engine_cfg: AppConfig) -> None:
 
 def test_sim_executor_submit_and_fills(engine_cfg: AppConfig) -> None:
     days = make_days(6)
-    prices = frame(bars("AAA", days, 50_000))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
     ex: Executor = SimExecutor(prices, None, CAL, executable(engine_cfg))
     assert ex.fills("2026-10-30").empty
     out = ex.submit(pd.DataFrame({"ticker": ["AAA"], "side": ["buy"], "qty": [100]}))
@@ -539,7 +607,7 @@ def test_sim_executor_submit_and_fills(engine_cfg: AppConfig) -> None:
 
 def test_sim_executor_run_matches_run_simulation(engine_cfg: AppConfig) -> None:
     days = make_days(6)
-    prices = frame(bars("AAA", days, 50_000))
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
     params = executable(engine_cfg)
     targets = {days[0]: weights(AAA=0.5)}
     ex = SimExecutor(prices, None, CAL, params)

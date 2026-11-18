@@ -27,7 +27,7 @@ def make_days(n: int, start: date = date(2026, 10, 30)) -> list[date]:
     return days
 
 
-def bars(
+def synthetic_bars(
     ticker: str,
     days: list[date],
     open_: float,
@@ -35,7 +35,7 @@ def bars(
     over: Mapping[int, Mapping[str, float]] | None = None,
     basis: str = "synthetic",
 ) -> list[dict[str, Any]]:
-    """One row per day: constant prices; ceiling/floor = open +/- 7 % unless overridden.
+    """One row per day: constant prices; ref_price = open_, ceiling/floor = ref +/- 7 %.
 
     ``over`` maps a day index to column overrides (open, close, ceiling, floor).
     """
@@ -46,6 +46,7 @@ def bars(
             "date": day,
             "open": open_,
             "close": open_ if close is None else close,
+            "ref_price": open_,
             "ceiling": open_ * 1.07,
             "floor": open_ * 0.93,
             "price_basis": basis,
@@ -54,16 +55,15 @@ def bars(
         row["high"] = max(row["open"], row["close"])
         row["low"] = min(row["open"], row["close"])
         row["volume"] = 1_000_000
-        row["ref_price"] = row["open"]
         rows.append(row)
     return rows
 
 
-def frame(*parts: list[dict[str, Any]]) -> pd.DataFrame:
+def synthetic_prices(*parts: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame([row for part in parts for row in part])
 
 
-def actions(*rows: dict[str, Any]) -> pd.DataFrame:
+def synthetic_actions(*rows: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(list(rows))
 
 
