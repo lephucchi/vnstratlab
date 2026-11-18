@@ -1,0 +1,197 @@
+# Data gap register (ADR-007). Single source of truth for known data shortfalls.
+# Read by `vnstratlab data status` (P1-T38), rendered in docs/data-gaps.md (a test keeps both in
+# sync), and shown on the PO dashboard. Never put market data in this file.
+#
+# Fields
+#   id          GAP-NN, never reused
+#   title       short English title
+#   title_vi    short Vietnamese title (user-facing)
+#   status      open | mitigated | closed
+#   severity    high | medium | low   (high = blocks a Phase 1 exit criterion or biases results)
+#   missing     what the interim source does not provide
+#   affects     tables / cards / strategies / exit criteria touched
+#   workaround  what vnstratlab does until the gap is closed
+#   close_by    how and with which card the gap can be closed
+#   since       date the gap was registered
+
+version: 1
+source: yahoo
+gaps:
+  - id: GAP-01
+    title: No raw (unadjusted) prices
+    title_vi: Không có giá gốc chưa điều chỉnh
+    status: open
+    severity: high
+    missing: >-
+      Yahoo OHLC is split-adjusted (stock dividends and bonus shares are treated as splits),
+      so prices before a corporate action are scaled and off the HOSE tick grid.
+    affects: [prices_daily, prices_adjusted, P1-T06, P1-T08, P1-T11, exit-2]
+    workaround: >-
+      Rows carry price_basis=split_adjusted; P1-T06 never re-adjusts them; limit and tick checks
+      on such rows are warnings; the simulator applies limit/tick rules only approximately on
+      adjusted history.
+    close_by: A raw-price source (CafeF unadjusted EOD files via a FileSource, or a broker API) — new card.
+    since: 2026-11-18
+
+  - id: GAP-02
+    title: No reference, ceiling and floor prices
+    title_vi: Không có giá tham chiếu, trần, sàn
+    status: open
+    severity: medium
+    missing: Yahoo does not publish the exchange reference price or the daily limits.
+    affects: [prices_daily.ref_price, prices_daily.ceiling, prices_daily.floor, P1-T08, P1-T11]
+    workaround: >-
+      ref_price = previous stored close, ceiling/floor derived with the configured HOSE limit and
+      tick rules; flagged derived=true. Wrong on ex-dates.
+    close_by: Same raw source as GAP-01, or exchange publications.
+    since: 2026-11-18
+
+  - id: GAP-03
+    title: No VNINDEX / VN30 index series
+    title_vi: Không có chỉ số VNINDEX / VN30
+    status: open
+    severity: medium
+    missing: Index symbols are not available on Yahoo.
+    affects: [benchmarks.market_indices, P1-T10 market-context features, P1-T23, G3 benchmarks]
+    workaround: >-
+      Benchmarks use the equal-weight universe index computed from stored prices; the VN30 ETF
+      (E1VFVN30) may be ingested as an optional proxy, labelled as such.
+    close_by: An index source (exchange publications or another adapter) — new card.
+    since: 2026-11-18
+
+  - id: GAP-04
+    title: HOSE only; history starts at HOSE listing
+    title_vi: Chỉ có sàn HOSE; lịch sử bắt đầu từ ngày lên HOSE
+    status: open
+    severity: medium
+    missing: >-
+      No HNX/UPCoM symbols. ACB, LPB, VIB and SSB start in 2020-2021 (their HOSE listing), so
+      a 2015 backfill gives a ragged panel.
+    affects: [prices_daily, universe, P1-T10, P1-T20, lab statistics]
+    workaround: >-
+      A ticker is tradable only from its first stored session; lab reports state the effective
+      start per ticker and the number of tickers per period.
+    close_by: CafeF files (cover HNX/UPCoM history) or another source — new card.
+    since: 2026-11-18
+
+  - id: GAP-05
+    title: Historical holiday lists missing before 2026
+    title_vi: Thiếu lịch nghỉ lễ trước năm 2026
+    status: open
+    severity: medium
+    missing: >-
+      config/markets/hose.yaml lists holidays for 2026 (complete) and 2027 (partial) only;
+      Yahoo emits filler rows on holidays.
+    affects: [calendar, P1-T37, P1-T11, decision days before 2026]
+    workaround: >-
+      Filler rows (volume 0 and O=H=L=C=previous close) are dropped by rule and logged; history
+      uses TradingCalendar.from_sessions on the cleaned sessions.
+    close_by: Add HOSE holidays 2015-2025 with sources ([VERIFY]) — new card.
+    since: 2026-11-18
+
+  - id: GAP-06
+    title: Incomplete corporate actions
+    title_vi: Thiếu sự kiện doanh nghiệp
+    status: open
+    severity: medium
+    missing: >-
+      Only split factors (including stock dividends) and cash dividends; no rights issues,
+      record dates or announcement dates; amounts unverified.
+    affects: [corporate_actions, P1-T06, P1-T11 cash-dividend accounting]
+    workaround: Store what Yahoo gives with source=yahoo; no lookahead use of announcement dates.
+    close_by: Corporate-action source (company/exchange disclosures) — new card.
+    since: 2026-11-18
+
+  - id: GAP-07
+    title: Stale and duplicated sessions
+    title_vi: Phiên trùng lặp hoặc giá đứng yên bất thường
+    status: open
+    severity: low
+    missing: Occasional consecutive sessions with identical close/volume.
+    affects: [prices_daily, P1-T08, P1-T38]
+    workaround: Quality checks flag them (warning); they are kept but marked.
+    close_by: Cross-check with a second source.
+    since: 2026-11-18
+
+  - id: GAP-08
+    title: History is revised after each split
+    title_vi: Lịch sử giá bị Yahoo tính lại sau mỗi lần chia tách
+    status: mitigated
+    severity: medium
+    missing: A new split rescales all earlier prices at the source.
+    affects: [prices_daily, data/raw, reproducibility of past runs]
+    workaround: >-
+      Raw snapshot per ingest run is kept; ingest upserts and records a revision count, so a past
+      lab run can be reproduced from its snapshot.
+    close_by: Raw-price source (GAP-01).
+    since: 2026-11-18
+
+  - id: GAP-09
+    title: Unofficial access, user-side terms risk
+    title_vi: Truy cập không chính thức, người dùng tự chịu điều khoản
+    status: open
+    severity: medium
+    missing: >-
+      Yahoo ToS §2(d) prohibits automated collection without permission; endpoints may change
+      or block without notice.
+    affects: [P1-T37, nightly loop reliability]
+    workaround: >-
+      Optional extra, one-time notice, data only on the user's machine, never in CI; synthetic
+      source keeps the lab usable if Yahoo stops.
+    close_by: A licence-clean free source — new ADR.
+    since: 2026-11-18
+
+  - id: GAP-10
+    title: No foreign / proprietary flow data
+    title_vi: Không có dữ liệu khối ngoại / tự doanh
+    status: open
+    severity: low
+    missing: No flow data from Yahoo.
+    affects: [S06, P1-T04]
+    workaround: S06 stays disabled.
+    close_by: P1-T04.
+    since: 2026-11-18
+
+  - id: GAP-11
+    title: No bank fundamentals
+    title_vi: Không có báo cáo tài chính ngân hàng
+    status: open
+    severity: high
+    missing: No quarterly fundamentals with publish dates.
+    affects: [fundamentals_q, P1-T07, S10, S11, S12, S13, P1-T10 valuation features]
+    workaround: Value/quality strategies run only on synthetic data until a source exists.
+    close_by: P1-T07 with a source decision.
+    since: 2026-11-18
+
+  - id: GAP-12
+    title: No news source
+    title_vi: Chưa có nguồn tin tức
+    status: open
+    severity: low
+    missing: Raw news collection has no source yet.
+    affects: [news_raw, P1-T09, Phase 1 exit-7]
+    workaround: None; Phase 2 forward data starts when a source is chosen.
+    close_by: P1-T09 with a source decision.
+    since: 2026-11-18
+
+  - id: GAP-13
+    title: VN30 membership before 2026-08
+    title_vi: Thiếu lịch sử thành phần VN30 trước 08/2026
+    status: open
+    severity: medium
+    missing: Membership history before the 2026-08-03 review.
+    affects: [universe_membership, P1-T05, survivorship bias]
+    workaround: Current 13 + TPB with survivorship_warning (plan §3.1).
+    close_by: P1-T05.
+    since: 2026-11-18
+
+  - id: GAP-14
+    title: Exact price-board match not possible on adjusted history
+    title_vi: Không đối chiếu khớp tuyệt đối với bảng giá trên lịch sử đã điều chỉnh
+    status: open
+    severity: high
+    missing: Exit criterion 2 (20 closes match a public board exactly) needs raw closes.
+    affects: [exit-2, G3]
+    workaround: Spot-check only sessions after each ticker's last corporate action.
+    close_by: GAP-01.
+    since: 2026-11-18

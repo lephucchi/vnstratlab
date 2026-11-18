@@ -55,6 +55,14 @@ stress:                        # realism checks run by `vnstratlab stress` and Q
   param_perturbation_pct: 0.20
   regimes: []                  # list of {name, start, end}; filled per release
 
+data:                          # market data pipeline (docs/data-pipeline.md)
+  source: synthetic            # P1-T37 changes this to yahoo
+  synthetic:
+    seed: 20261118
+    start: 2015-01-01          # first synthetic session (also capped by --from)
+    corporate_actions_per_ticker_per_year: 1.0
+    suspension_probability: 0.002
+
 strategies: {}                 # filled by strategy cards P1-T14..P1-T19
 
 news:

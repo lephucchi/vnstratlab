@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from platformdirs import user_data_dir
 
@@ -42,6 +43,14 @@ class AppPaths:
     @property
     def market_db(self) -> Path:
         return self.data_dir / "market.duckdb"
+
+    @property
+    def synthetic_market_db(self) -> Path:
+        return self.data_dir / "market-synthetic.duckdb"
+
+    def market_db_for(self, kind: Literal["synthetic", "real"]) -> Path:
+        """Synthetic and real market data never share a file."""
+        return self.synthetic_market_db if kind == "synthetic" else self.market_db
 
     @property
     def lab_db(self) -> Path:

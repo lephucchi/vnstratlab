@@ -62,15 +62,29 @@ Plan §5.5 tables, with columns added by ADR-007:
 
 | Table | Key | Columns added |
 |---|---|---|
-| `prices_daily` | (ticker, date) | `price_basis` (`raw` / `split_adjusted` / `synthetic`), `derived_limits` (bool), `run_id`, `revision` |
-| `corporate_actions` | (ticker, ex_date, type) | `source`, `run_id` |
-| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_dropped, status, raw_path |
+| `prices_daily` | (ticker, date, source) | `price_basis` (`raw` / `split_adjusted` / `synthetic`), `derived_limits` (bool), `run_id`, `revision` |
+| `corporate_actions` | (ticker, ex_date, type, source) | `source`, `run_id` |
+| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_changed, rows_dropped, status, raw_path |
 | `dq_results` | (run_id, check, ticker, date) | severity (`error` / `warning`), detail (P1-T38) |
 
 Rules: raw values are never overwritten silently; an upsert that changes a stored value
 increments `revision` and is counted in `ingest_runs`. Synthetic rows are labelled
 `source = synthetic`, `price_basis = synthetic` and are never mixed with a real source in one
 database file (the store refuses it).
+
+Run integrity: the run id (UTC second plus a hash of source and window) is unique. The store
+is opened and validated first; an id already present in `ingest_runs`, or an existing raw
+snapshot file, makes `ingest` raise `SourceError` and nothing is overwritten (retry in a later
+second). Prices, corporate actions and the `ingest_runs` row are written in ONE transaction. If
+it fails, the transaction rolls back (no partial rows) and a single `ingest_runs` row with
+`status = "error"` is recorded; the raw snapshot is kept as evidence of what was fetched.
+The store also refuses rows whose `source` name or `price_basis` disagrees with its kind.
+
+One kind rule: a source's kind comes from its `SourceInfo`, and `kind_of_source(name)` and
+`kind_of_basis(price_basis)` must agree. The synthetic source is named `synthetic` and is the
+only source with `price_basis = synthetic`; any other combination is a configuration error and
+`ingest` raises `SourceError` before anything is written (no raw snapshot, no run row). Every
+corporate-action row's `source` is checked the same way, even when a kind is passed explicitly.
 
 ## 5. Commands
 
