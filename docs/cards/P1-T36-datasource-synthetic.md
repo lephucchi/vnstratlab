@@ -3,7 +3,7 @@ id: P1-T36
 title: DataSource protocol, market store and synthetic market
 milestone: M1.1 Data
 release: v0.1.0
-status: in-review
+status: done
 branch: feat/P1-T36-datasource-synthetic
 due: 2026-11-19
 ---
