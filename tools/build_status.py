@@ -159,18 +159,6 @@ def parse_due(value: str) -> str:
     return value
 
 
-def remote_work_refs(repo: Path) -> list[str]:
-    """Remote feat/ and fix/ branches, most recently committed first."""
-    refs = git(
-        repo,
-        "for-each-ref",
-        "--sort=-committerdate",
-        "--format=%(refname:short)",
-        "refs/remotes/origin",
-    ).split()
-    return [r for r in refs if r.removeprefix("origin/").startswith(("feat/", "fix/"))]
-
-
 def card_files(repo: Path) -> dict[str, dict[str, Any]]:
     """Task cards with front matter, from develop and from every remote feature branch.
 
@@ -274,27 +262,11 @@ def parse_gaps(text: str, origin: str) -> dict[str, Any]:
 
 
 def gap_register(repo: Path) -> dict[str, Any]:
-    """Read gaps.yaml from the checkout, else from the newest remote feat/ or fix/ branch.
-
-    `origin` is "checkout" for the working tree; a branch read is marked `fallback: true`
-    and warned about in the CI log.
-    """
+    """Read gaps.yaml from the checkout (develop); a missing file is reported as unavailable."""
     path = repo / GAPS_PATH
-    if path.exists():
-        return parse_gaps(path.read_text(encoding="utf-8"), "checkout")
-    # TODO(PR #15): remove this branch fallback once gaps.yaml is on develop (it is ignored by
-    # `data/` in .gitignore until P1-T36 lands). It only bridges the review period; after that a
-    # missing file on develop must show as unavailable, not silently come from a feature branch.
-    for ref in remote_work_refs(repo):
-        text = git(repo, "show", f"{ref}:{GAPS_PATH}")
-        if text:
-            branch = ref.removeprefix("origin/")
-            print(f"::warning::{GAPS_PATH} not in the checkout; gap register read from {branch}.")
-            gaps = parse_gaps(text, f"branch:{branch}")
-            if gaps.get("available"):
-                gaps["fallback"] = True
-            return gaps
-    return {"available": False, "reason": "gaps.yaml not found"}
+    if not path.exists():
+        return {"available": False, "reason": "gaps.yaml not found"}
+    return parse_gaps(path.read_text(encoding="utf-8"), "checkout")
 
 
 def safe_gap_register(repo: Path) -> dict[str, Any]:

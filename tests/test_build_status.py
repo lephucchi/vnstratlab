@@ -121,29 +121,7 @@ def test_gap_register_from_checkout(tmp_path: Path) -> None:
     json.dumps(gaps)  # serialisable
 
 
-def test_gap_register_falls_back_to_newest_work_branch(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    def fake_git(repo: Path, *args: str) -> str:
-        if args[0] == "for-each-ref":
-            assert "--sort=-committerdate" in args
-            return "origin/develop\norigin/feat/P1-T38-x\norigin/feat/P1-T36-y\norigin/po\n"
-        if args == ("show", f"origin/feat/P1-T38-x:{bs.GAPS_PATH}"):
-            return ""  # newest branch without the file
-        if args == ("show", f"origin/feat/P1-T36-y:{bs.GAPS_PATH}"):
-            return GAPS_YAML
-        raise AssertionError(args)
-
-    monkeypatch.setattr(bs, "git", fake_git)
-    gaps = bs.gap_register(tmp_path)
-    assert gaps["available"] is True
-    assert gaps["origin"] == "branch:feat/P1-T36-y"
-    assert gaps["fallback"] is True
-    assert len(gaps["items"]) == 3
-
-
-def test_gap_register_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(bs, "git", lambda repo, *args: "")  # no real refs
+def test_gap_register_missing(tmp_path: Path) -> None:
     assert bs.gap_register(tmp_path) == {"available": False, "reason": "gaps.yaml not found"}
 
 
