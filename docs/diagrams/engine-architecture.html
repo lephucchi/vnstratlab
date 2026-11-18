@@ -184,7 +184,7 @@
 <!-- 2 DATA TO ORDERS -->
 <section class="fig" id="f2">
   <h2><span class="num">02</span>From data to orders: two price bases</h2>
-  <p class="cap">Signals use <strong>adjusted</strong> prices (a dividend is not a crash). Execution uses <strong>raw</strong> traded prices (limits, ticks, lot cost). With the interim Yahoo source there is no raw series yet (GAP-01) and limits are derived (GAP-02), so in Phase 1 the simulator executes on the split-adjusted series, treats limit/tick checks as approximate and does <strong>not</strong> add stock-dividend shares to holdings (the price history already contains them). Every row carries <code>price_basis</code>, so nothing is adjusted twice.</p>
+  <p class="cap">Signals use <strong>adjusted</strong> prices (a dividend is not a crash). Execution uses <strong>raw</strong> traded prices (limits, ticks, lot cost). With the interim Yahoo source there is no raw series yet (GAP-01) and limits are derived (GAP-02), so in Phase 1 the simulator executes on the split-adjusted series, reconstructs raw-like execution prices by undoing Yahoo's split scaling with the stored stock events (<code>exec = adjusted × Π(1 + ratio)</code> for later events). Stock dividends are then applied to holdings as on raw data. Every row carries <code>price_basis</code>, so nothing is adjusted twice.</p>
   <div class="frame">
   <svg viewBox="0 0 960 380" role="img" aria-labelledby="f2t f2d">
     <title id="f2t">Data flow from sources to orders</title>
@@ -227,8 +227,8 @@
     <path d="M386 136 C 470 136, 470 304, 556 304" class="edge-strong" marker-end="url(#as)"/>
     <path d="M386 218 C 450 218, 450 296, 556 296" class="edge" marker-end="url(#a)"/>
     <text x="226" y="262" class="t-sm muted">execution path · raw →</text>
-    <text x="226" y="278" class="t-xs muted">stock events reach holdings</text>
-    <text x="226" y="291" class="t-xs muted">only on raw / synthetic rows</text>
+    <text x="226" y="278" class="t-xs muted">stock events: reconstruct exec</text>
+    <text x="226" y="291" class="t-xs muted">prices, then shares += ratio</text>
     <rect x="558" y="272" width="190" height="62" rx="8" class="box"/>
     <text x="653" y="295" text-anchor="middle" class="t-md">SimExecutor</text>
     <text x="653" y="311" text-anchor="middle" class="t-xs muted">fill at open t+1 · HOSE rules</text>
@@ -238,8 +238,8 @@
     <!-- gap callouts -->
     <rect x="490" y="156" width="290" height="62" rx="8" class="gapbox"/>
     <text x="504" y="180" class="t-sm gaptxt">Phase 1 (Yahoo): no raw series · GAP-01</text>
-    <text x="504" y="196" class="t-xs gaptxt">executes on split_adjusted; ref / ceiling / floor</text>
-    <text x="504" y="209" class="t-xs gaptxt">derived from prev. close · GAP-02 (approximate)</text>
+    <text x="504" y="196" class="t-xs gaptxt">exec = adjusted × Π(1 + later stock ratios)</text>
+    <text x="504" y="209" class="t-xs gaptxt">limits derived from prev. close · GAP-02</text>
     <path d="M615 216 V 270" class="edge-gap" marker-end="url(#ag)"/>
 
     <!-- outputs -->
@@ -346,7 +346,7 @@
     <!-- filled -->
     <path d="M300 136 C 360 100, 380 50, 438 46" class="edge-strong" marker-end="url(#as)"/>
     <rect x="440" y="22" width="150" height="48" rx="24" class="done"/><text x="515" y="43" text-anchor="middle" class="t-md donetxt">filled</text><text x="515" y="59" text-anchor="middle" class="t-xs muted">→ trades, ledger</text>
-    <text x="330" y="70" class="t-xs muted">checks pass</text>
+    <text x="300" y="64" class="t-xs muted">checks pass</text>
     <!-- buy blocked -->
     <path d="M300 144 H 438" class="edge" marker-end="url(#a)"/>
     <text x="318" y="138" class="t-xs muted">buy: ceiling / no cash</text>
@@ -532,7 +532,7 @@
     <path d="M740 172 C 758 172, 758 52, 788 52" class="edge" marker-end="url(#a)"/>
     <path d="M740 190 C 758 190, 760 222, 788 222" class="edge" marker-end="url(#a)"/>
     <path d="M440 182 H 468" class="edge" marker-end="url(#a)"/>
-    <path d="M440 196 C 600 232, 700 236, 788 230" class="edge" marker-end="url(#a)"/>
+    <path d="M440 198 C 520 240, 700 244, 788 230" class="edge" marker-end="url(#a)"/>
     <path d="M870 74 V 98" class="edge" marker-end="url(#a)"/>
     <path d="M215 304 V 318 H 870 V 246" class="edge-dash" marker-end="url(#a)"/>
     <text x="540" y="332" text-anchor="middle" class="t-xs muted">membership by date feeds the lab universe (survivorship, GAP-13)</text>

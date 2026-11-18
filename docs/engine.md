@@ -74,11 +74,11 @@ Until a raw source closes those gaps, the engine runs on Yahoo rows as follows:
 
 | Topic | Yahoo rows (`price_basis = split_adjusted`) | Engine behaviour in Phase 1 |
 |---|---|---|
-| Execution prices | Split-adjusted series; prices before a stock dividend / bonus issue are scaled down | Used as an approximation of raw prices. Lot cost and cash per lot are **understated** before each split event, and limit/tick checks are approximate. Results carry the source label and the open gaps |
+| Execution prices | Split-adjusted series; prices before a stock dividend / bonus issue are scaled down by `1 + ratio` | The engine **reconstructs an execution series**: `exec(t) = adjusted(t) × Π (1 + ratio_e)` over stock events `e` in `corporate_actions` with `ex_date > t` (ratio = bonus fraction). This undoes Yahoo's scaling, so lot cost, cash per lot, limits and ticks are close to raw (small rounding residue). Proposed for P1-T06 (`prices_exec` or a view) and consumed by P1-T11 |
 | `ref_price`, `ceiling`, `floor` | Derived from the previous stored close (`derived_limits = true`) | Limit checks run but are wrong on ex-dates. Logging limit-blocked fills with `derived_limits` in `order_events` is a **proposal for P1-T11** |
-| Stock dividend / bonus shares | Already reflected in the price history (Yahoo treats them as splits) | **Not applied to holdings** (no `shares += …`), otherwise the position would gain about the dividend ratio for free. Applied only on `raw` / `synthetic` rows |
-| Cash dividend | Not in `Close` (Yahoo `Close` is not dividend-adjusted) | Booked to cash as for raw rows |
-| `prices_adjusted` (P1-T06) | — | Split factors are **never re-applied** to `split_adjusted` rows; cash-dividend adjustment still applies |
+| Stock dividend / bonus shares | Yahoo rescales all earlier history; P1-T37 refetches the ticker's full history when it sees the new event (GAP-08), so the store stays in one scale | Because execution uses the reconstructed series, stock events are **applied to holdings exactly as for raw rows** (`shares += floor(shares × ratio)` on the ex-date). This is correct both for backtests over rescaled history and for paper books that hold a position across a new event; it never double counts and never loses the bonus shares |
+| Cash dividend | Not in `Close` (P1-T37 reads Yahoo with `auto_adjust=False`, so `Close` is split-adjusted only) | Booked to cash as for raw rows |
+| `prices_adjusted` (P1-T06) | — | For signals: split factors are **never re-applied** to `split_adjusted` rows (they are already split-continuous); cash-dividend adjustment still applies (ADR-007 §5) |
 | Tick grid | Historical prices are off-grid after scaling | Tick rounding applies only to recommended limit prices shown to the user (§5), as before |
 | Synthetic rows (`price_basis = synthetic`) | Raw-like, on the tick grid, with exact limits | Engine rule tests (§14) run on synthetic data, where every rule is exact |
 
@@ -287,7 +287,7 @@ replays a fixture run and compares hashes.
 | Lots | 52,700 VND × 3 lots unaffordable; odd-lot remainder; odd lots off |
 | Ticks | each tick band boundary, both rounding directions |
 | Costs | fee both sides; tax on loss; odd-lot slippage |
-| Corporate actions | 10% stock dividend (shares, no artificial gap in signals); cash dividend receivable → available; on `split_adjusted` rows a stock dividend changes neither shares nor equity (no double count) |
+| Corporate actions | 10% stock dividend (shares, no artificial gap in signals); cash dividend receivable → available; on `split_adjusted` rows the reconstructed execution price equals the raw price (synthetic round trip: raw → Yahoo-style scaling → reconstruction), and a book holding across a 10% stock dividend keeps its equity (1,000 sh × 50,000 = 50.0M before; 1,100 sh × 45,455 ≈ 50.0M after) with no −ratio step in signals |
 | Modes | executable == ideal with lots off and infinite capital (property test) |
 | Lookahead | strategy that peeks at `t+1` is impossible (features truncated) and detected |
 | Determinism | same manifest → identical outputs |
