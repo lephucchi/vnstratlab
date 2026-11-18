@@ -614,17 +614,17 @@ def test_doctor_prints_the_open_gap_counts(tmp_path: Path, monkeypatch: pytest.M
 # ------------------------------------------------------------------ G2 review fixes
 
 
-def test_missing_ticker_reports_holes_once_per_ticker(tmp_path: Path) -> None:
+def test_interior_hole_is_a_suspension_warning_even_on_raw_data(tmp_path: Path) -> None:
     rows = [*bars("AAA"), *bars("BBB", days=[date(2026, 2, 27), DAYS[0], DAYS[3], DAYS[4]])]
     with store_with(tmp_path, rows) as store:
         found = findings(store, "missing_ticker")
-    assert [(f.ticker, f.date, f.severity) for f in found] == [("BBB", DAYS[1], "error")]
-    assert "2 session(s)" in found[0].detail
+    assert [(f.ticker, f.date, f.severity) for f in found] == [("BBB", DAYS[1], "warning")]
+    assert "2 interior session(s)" in found[0].detail
     assert f"{DAYS[1]}..{DAYS[2]}" in found[0].detail
 
 
-@pytest.mark.parametrize(("basis", "derived"), SOFT)
-def test_holes_are_warnings_on_adjusted_or_derived_data(
+@pytest.mark.parametrize(("basis", "derived"), [STRICT, *SOFT])
+def test_interior_hole_is_a_warning_for_every_basis(
     tmp_path: Path, basis: str, derived: bool
 ) -> None:
     rows = [*bars("AAA"), *bars("BBB", days=[DAYS[0], DAYS[2], DAYS[3], DAYS[4]])]
@@ -632,13 +632,75 @@ def test_holes_are_warnings_on_adjusted_or_derived_data(
         assert [f.severity for f in findings(store, "missing_ticker")] == ["warning"]
 
 
-def test_holes_are_warnings_when_every_missing_session_is_in_an_incomplete_year(
-    tmp_path: Path,
-) -> None:
-    rows = [*bars("AAA"), *bars("BBB", days=[DAYS[0], DAYS[2], DAYS[3], DAYS[4]])]
+def test_trailing_gap_follows_the_severity_table(tmp_path: Path) -> None:
+    rows = [*bars("AAA"), *bars("BBB", days=DAYS[:3])]  # BBB stops after 4 March
     with store_with(tmp_path, rows) as store:
+        found = findings(store, "missing_ticker")
+    assert [(f.ticker, f.date, f.severity) for f in found] == [("BBB", DAYS[3], "error")]
+    assert "2 trailing session(s)" in found[0].detail
+    path = tmp_path / "adj"
+    path.mkdir()
+    with store_with(path, rows, basis="split_adjusted") as store:
+        assert [f.severity for f in findings(store, "missing_ticker")] == ["warning"]
+    path = tmp_path / "weak"
+    path.mkdir()
+    with store_with(path, rows) as store:
         found = findings(store, "missing_ticker", incomplete_years=frozenset({2026}))
     assert [f.severity for f in found] == ["warning"]
+
+
+def test_interior_and_trailing_gaps_give_two_findings(tmp_path: Path) -> None:
+    rows = [*bars("AAA"), *bars("BBB", days=[DAYS[0], DAYS[2]])]
+    with store_with(tmp_path, rows) as store:
+        found = findings(store, "missing_ticker")
+    assert [(f.date, f.severity) for f in found] == [(DAYS[3], "error"), (DAYS[1], "warning")]
+
+
+def test_multi_year_default_synthetic_ingest_does_not_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
+    args = ["ingest", "--source", "synthetic", "--from", "2015-01-01", "--to", "2020-12-31"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    with MarketStore(tmp_path / "home" / "data" / "market-synthetic.duckdb", "synthetic") as store:
+        rows = store.connection.execute("SELECT status FROM ingest_runs").fetchall()
+    assert rows[0][0] in {"ok", "ok_with_warnings"}
+
+
+def test_data_commands_survive_a_cp1252_pipe(tmp_path: Path) -> None:
+    import os
+    import subprocess
+    import sys
+
+    env = {
+        **os.environ,
+        "PYTHONIOENCODING": "cp1252",
+        "APP_HOME": str(tmp_path / "home"),
+        "PYTHONUTF8": "0",
+    }
+    status = subprocess.run(
+        [sys.executable, "-m", "vnstratlab", "data", "status", "--json"],
+        env=env,
+        capture_output=True,
+        check=False,
+    )
+    assert status.returncode == 0, status.stderr
+    assert json.loads(status.stdout.decode("ascii"))["gaps"]["counts"] is not None
+    gaps = subprocess.run(
+        [sys.executable, "-m", "vnstratlab", "data", "gaps"],
+        env=env,
+        capture_output=True,
+        check=False,
+    )
+    assert gaps.returncode == 0, gaps.stderr
+    text = subprocess.run(
+        [sys.executable, "-m", "vnstratlab", "data", "status"],
+        env=env,
+        capture_output=True,
+        check=False,
+    )
+    assert text.returncode == 0, text.stderr
 
 
 def test_stale_data_is_a_warning_in_an_incomplete_year(tmp_path: Path) -> None:

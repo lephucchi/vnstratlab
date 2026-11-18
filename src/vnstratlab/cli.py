@@ -256,6 +256,7 @@ def ingest(
     ] = False,
 ) -> None:
     """Download or refresh market data into the local data directory."""
+    _tolerant_output()
     start = _parse_date(from_date, "--from")
     end = _parse_date(to_date, "--to") or utc_now().astimezone(VN_TZ).date()  # Vietnam today
     if start is not None and start > end:
@@ -379,6 +380,15 @@ def _echo_store(entry: dict[str, Any]) -> None:
             typer.echo(f"    error {e['check']} {e['ticker'] or '-'} {e['date']}: {e['detail']}")
 
 
+def _tolerant_output() -> None:
+    """Never crash on Vietnamese text when stdout/stderr is a pipe or file with a legacy code
+    page (Windows cp1252): unencodable characters become '?'."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(errors="replace")
+
+
 def _echo_gap_list(gaps: list[Gap]) -> None:
     for severity in SEVERITIES:
         for gap in (g for g in gaps if g.severity == severity):
@@ -390,6 +400,7 @@ def data_status(
     as_json: Annotated[bool, typer.Option("--json", help="Print everything as JSON.")] = False,
 ) -> None:
     """Show stores, the last ingest runs, the last run's checks and open data gaps (offline)."""
+    _tolerant_output()
     paths = get_paths()
     register = _load_register_or_exit()
     stores = [
@@ -407,7 +418,7 @@ def data_status(
                 "open": [_gap_dict(g) for g in open_gaps],
             },
         }
-        typer.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+        typer.echo(json.dumps(payload, indent=2, ensure_ascii=True))
         return
     typer.echo(f"home {paths.home}")
     typer.echo("stores:")
@@ -426,10 +437,11 @@ def data_gaps(
     as_json: Annotated[bool, typer.Option("--json", help="Print as JSON.")] = False,
 ) -> None:
     """Print the data gap register (docs/data-gaps.md)."""
+    _tolerant_output()
     register = _load_register_or_exit()
     gaps = register.with_status(status)
     if as_json:
-        typer.echo(json.dumps([_gap_dict(g) for g in gaps], indent=2, ensure_ascii=False))
+        typer.echo(json.dumps([_gap_dict(g) for g in gaps], indent=2, ensure_ascii=True))
         return
     if not gaps:
         typer.echo("no gaps with that status")

@@ -224,10 +224,12 @@ def check_missing_ticker(
 ) -> list[DQResult]:
     """Sessions of the run range without a row, per ticker.
 
-    Two findings: a ticker with an earlier row but none on any session of the range, and holes
-    (one finding per ticker: sessions after its first stored date with no row). Severity: warning
-    for split-adjusted or derived-limit data (a suspension is possible) and when every missing
-    session is in a year with an incomplete holiday list (GAP-05), else error.
+    Two kinds of finding, each at most once per ticker. An interior hole (no row on sessions
+    before a later row of the same ticker in the range) is always a warning: a suspension is
+    the usual cause, for every price basis. A trailing gap (the ticker is behind at the end of
+    the range, or has no row on any session) follows the severity table: warning for
+    split-adjusted or derived-limit data and when every missing session is in a year with an
+    incomplete holiday list (GAP-05), else error.
     """
     if frame.empty or not sessions:
         return []
@@ -235,33 +237,48 @@ def check_missing_ticker(
     dates_of: dict[str, set[date]] = {}
     for t, d in zip(frame["ticker"], frame["date"], strict=True):
         dates_of.setdefault(str(t), set()).add(_as_date(d))
+    session_set = set(sessions)
     out: list[DQResult] = []
     for ticker, first_date in frame.groupby("ticker")["date"].min().items():
         present = dates_of[str(ticker)]
         soft = bool(_soft(latest.loc[[ticker]]).iloc[0])
-        if first_date < start and not present.intersection(sessions):
-            missing = sessions
-            date_, detail = (
-                sessions[-1],
-                (
-                    f"no row on any of {len(sessions)} session(s) {sessions[0]}..{sessions[-1]} "
-                    f"(last stored {_as_date(latest.at[ticker, 'date'])})"
-                ),
+        in_range = present & session_set
+        last_in = max(in_range) if in_range else None
+        if first_date < start and not in_range:
+            trailing = sessions
+            interior: list[date] = []
+            detail = (
+                f"no row on any of {len(sessions)} session(s) {sessions[0]}..{sessions[-1]} "
+                f"(last stored {_as_date(latest.at[ticker, 'date'])})"
             )
+            date_ = sessions[-1]
         else:
             missing = [s for s in sessions if s > first_date and s not in present]
-            if not missing:
-                continue
-            date_, detail = (
-                missing[0],
-                (
-                    f"{len(missing)} session(s) without a row after first stored {first_date}: "
-                    f"{missing[0]}..{missing[-1]}"
-                ),
+            interior = [s for s in missing if last_in is not None and s < last_in]
+            trailing = [s for s in missing if s not in interior]
+            detail = ""
+            date_ = trailing[0] if trailing else sessions[-1]
+            if trailing:
+                detail = (
+                    f"{len(trailing)} trailing session(s) without a row after "
+                    f"{last_in or first_date}: {trailing[0]}..{trailing[-1]}"
+                )
+        if interior:
+            out.append(
+                DQResult(
+                    run_id,
+                    "missing_ticker",
+                    str(ticker),
+                    interior[0],
+                    "warning",
+                    f"suspension? {len(interior)} interior session(s) without a row: "
+                    f"{interior[0]}..{interior[-1]}",
+                )
             )
-        weak = all(s.year in weak_years for s in missing)
-        severity = "warning" if soft or weak else "error"
-        out.append(DQResult(run_id, "missing_ticker", str(ticker), date_, severity, detail))
+        if trailing:
+            weak = all(s.year in weak_years for s in trailing)
+            severity = "warning" if soft or weak else "error"
+            out.append(DQResult(run_id, "missing_ticker", str(ticker), date_, severity, detail))
     return out
 
 

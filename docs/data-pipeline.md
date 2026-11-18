@@ -141,7 +141,8 @@ suspension is possible) only warn (GAP-01, GAP-02).
 | Check | raw / synthetic | split_adjusted or derived limits |
 |---|---|---|
 | `duplicate_rows` | error | error |
-| `missing_ticker` | error | warning |
+| `missing_ticker`, trailing gap | error | warning |
+| `missing_ticker`, interior hole | warning (suspension) | warning (suspension) |
 | `stale_data` | error | error |
 | `close_outside_limits` | error | warning |
 | `off_tick` | error | warning |
@@ -154,8 +155,9 @@ the reference (a missing day would otherwise count as a holiday). In a year whos
 `missing_ticker` only warn for sessions of such years (an error stays an error for sessions of
 complete years). `stale_data` compares the newest stored date with the last completed session
 (the day before a partial-bar cutoff). `missing_ticker` reports a ticker with no row on any
-session of the range, and, once per ticker, holes: sessions after its first stored date with no
-row.
+session of the range, and, once per ticker, an interior hole (sessions after its first stored date
+without a row, before a later row of that ticker in the range). An interior hole is always a
+warning (a suspension is the usual cause); only a trailing gap follows the severity table.
 
 `duplicate_rows` is defensive: the primary key (ticker, date, source) already prevents duplicates
 in the store, so it only fires on a damaged file. `ohlc_inconsistent` and `close_outside_limits`
