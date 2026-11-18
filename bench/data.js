@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794979690251,
+  "lastUpdate": 1794981931227,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -341,6 +341,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.012424594210522581",
             "extra": "mean: 8.621114473685504 msec\nrounds: 19"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d604d5aa145baefd9715e6ee9e28f207a3780dc3",
+          "message": "feat(data): YahooSource adapter, interim Phase 1 price source (P1-T37) (#19)\n\nOwner asked to merge without further review (2026-11-18). CI green.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-18T13:04:48+07:00",
+          "tree_id": "a541a6a22af12f4a28c2e3b409d6dc165f93e41c",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/d604d5aa145baefd9715e6ee9e28f207a3780dc3"
+        },
+        "date": 1794981930569,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 128.53913298312395,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005650608501238898",
+            "extra": "mean: 7.7797319523797555 msec\nrounds: 21"
           }
         ]
       }
