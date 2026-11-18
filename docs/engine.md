@@ -39,8 +39,9 @@ order lifecycle, one portfolio, lab selection, modes, build order) are in one HT
 
 **Dependency rule:** the domain core imports nothing from infrastructure or interfaces. It
 receives plain arrays / DataFrames and returns plain results. This keeps the engine fast,
-deterministic and testable without databases (enforced by an import-linter contract in CI,
-ADR-003 §1).
+deterministic and testable without databases. The data boundary is enforced today by
+`tests/test_data_boundary.py` (P1-T36); a full import-linter contract in CI is proposed in
+ADR-003 §1.
 
 ## 2. Inputs
 
@@ -58,22 +59,6 @@ price. Simulating fills on adjusted prices breaks the limit check (an adjusted o
 below a raw ceiling that was actually hit), the tick grid and the cash needed per lot.
 Signals use adjusted prices so that a dividend does not look like a crash.
 
-### Phase 1 data constraints (ADR-007)
-
-The interim Yahoo source has **no raw series** (GAP-01) and **no exchange limits** (GAP-02),
-so until a raw source closes those gaps the engine runs as follows:
-
-| Table column | Yahoo rows | Engine behaviour in Phase 1 |
-|---|---|---|
-| `prices_daily.price_basis` | `split_adjusted` | Execution uses this series as an approximation of raw prices; results are labelled with the source and open gaps |
-| `ref_price`, `ceiling`, `floor` | derived from the previous stored close (`derived_limits = true`) | Limit checks run, but are approximate (wrong on ex-dates); every limit-blocked fill is logged in `order_events` with `derived_limits` |
-| Tick grid | historical prices are off-grid after scaling | Tick rounding applies only to recommended limit prices shown to the user (§5), as before |
-| `prices_adjusted` | P1-T06 must **not** adjust `split_adjusted` rows again | Signals read the same series; cash dividends adjusted by P1-T06 only |
-| Synthetic rows (`price_basis = synthetic`) | raw-like, on the tick grid, with exact limits | Engine rule tests (§14) run on synthetic data, where every rule is exact |
-
-Hand-computed engine tests therefore always use the synthetic market; real-data runs are for
-research and are never evidence for the rule tests.
-
 Corporate actions are applied to the simulated portfolio on the ex-date:
 
 | Action | Effect on holdings | Status |
@@ -81,6 +66,25 @@ Corporate actions are applied to the simulated portfolio on the ex-date:
 | Cash dividend | Cash receivable booked at ex-date; becomes available on the payment date (`corporate_actions.pay_date`, fallback config `cash_dividend_pay_lag_days`) | [VERIFY] lag |
 | Stock dividend / bonus shares | `shares += floor(shares × ratio)`; new shares sellable from the listing date (fallback config lag) | [VERIFY] lag |
 | Rights issue | Not exercised by default (`rights_policy: ignore`); the position's value drop is real and recorded | Policy |
+
+### Phase 1 data constraints (ADR-007)
+
+The interim Yahoo source has **no raw series** (GAP-01) and **no exchange limits** (GAP-02).
+Until a raw source closes those gaps, the engine runs on Yahoo rows as follows:
+
+| Topic | Yahoo rows (`price_basis = split_adjusted`) | Engine behaviour in Phase 1 |
+|---|---|---|
+| Execution prices | Split-adjusted series; prices before a stock dividend / bonus issue are scaled down | Used as an approximation of raw prices. Lot cost and cash per lot are **understated** before each split event, and limit/tick checks are approximate. Results carry the source label and the open gaps |
+| `ref_price`, `ceiling`, `floor` | Derived from the previous stored close (`derived_limits = true`) | Limit checks run but are wrong on ex-dates. Logging limit-blocked fills with `derived_limits` in `order_events` is a **proposal for P1-T11** |
+| Stock dividend / bonus shares | Already reflected in the price history (Yahoo treats them as splits) | **Not applied to holdings** (no `shares += …`), otherwise the position would gain about the dividend ratio for free. Applied only on `raw` / `synthetic` rows |
+| Cash dividend | Not in `Close` (Yahoo `Close` is not dividend-adjusted) | Booked to cash as for raw rows |
+| `prices_adjusted` (P1-T06) | — | Split factors are **never re-applied** to `split_adjusted` rows; cash-dividend adjustment still applies |
+| Tick grid | Historical prices are off-grid after scaling | Tick rounding applies only to recommended limit prices shown to the user (§5), as before |
+| Synthetic rows (`price_basis = synthetic`) | Raw-like, on the tick grid, with exact limits | Engine rule tests (§14) run on synthetic data, where every rule is exact |
+
+Hand-computed engine tests therefore always use the synthetic market; real-data runs are for
+research and are never evidence for the rule tests.
+
 
 ## 3. Two clocks
 
@@ -283,7 +287,7 @@ replays a fixture run and compares hashes.
 | Lots | 52,700 VND × 3 lots unaffordable; odd-lot remainder; odd lots off |
 | Ticks | each tick band boundary, both rounding directions |
 | Costs | fee both sides; tax on loss; odd-lot slippage |
-| Corporate actions | 10% stock dividend (shares, no artificial gap in signals); cash dividend receivable → available |
+| Corporate actions | 10% stock dividend (shares, no artificial gap in signals); cash dividend receivable → available; on `split_adjusted` rows a stock dividend changes neither shares nor equity (no double count) |
 | Modes | executable == ideal with lots off and infinite capital (property test) |
 | Lookahead | strategy that peeks at `t+1` is impossible (features truncated) and detected |
 | Determinism | same manifest → identical outputs |
