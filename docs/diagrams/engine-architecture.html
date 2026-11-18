@@ -184,7 +184,7 @@
 <!-- 2 DATA TO ORDERS -->
 <section class="fig" id="f2">
   <h2><span class="num">02</span>From data to orders: two price bases</h2>
-  <p class="cap">Signals use <strong>adjusted</strong> prices (a dividend is not a crash). Execution uses <strong>raw</strong> traded prices (limits, ticks, lot cost). With the interim Yahoo source there is no raw series yet (GAP-01) and limits are derived (GAP-02), so in Phase 1 the simulator executes on the split-adjusted series, reconstructs raw-like execution prices by undoing Yahoo's split scaling with the stored stock events (<code>exec = adjusted × Π(1 + ratio)</code> for later events). Stock dividends are then applied to holdings as on raw data. Every row carries <code>price_basis</code>, so nothing is adjusted twice.</p>
+  <p class="cap">Signals use <strong>adjusted</strong> prices (a dividend is not a crash). Execution uses <strong>raw</strong> traded prices (limits, ticks, lot cost). With the interim Yahoo source there is no raw series yet (GAP-01) and limits are derived (GAP-02), so in Phase 1 P1-T06 reconstructs raw-like execution prices and limits by undoing Yahoo's split scaling with the stored stock events (<code>exec = adjusted × Π(1 + ratio)</code> for later events, rounded to the tick) and the simulator executes on that series. Stock dividends are then applied to holdings as on raw data. Every row carries <code>price_basis</code>, so nothing is adjusted twice.</p>
   <div class="frame">
   <svg viewBox="0 0 960 380" role="img" aria-labelledby="f2t f2d">
     <title id="f2t">Data flow from sources to orders</title>
@@ -280,9 +280,10 @@
     <g class="phase">
       <rect x="10" y="20" width="220" height="270" rx="10" class="box"/>
       <text x="26" y="46" class="t-lg">1 · Pre-open (t)</text>
-      <text x="26" y="76" class="t-sm">• corporate actions, ex_date = t</text>
-      <text x="26" y="98" class="t-sm">• release settled shares</text>
-      <text x="38" y="114" class="t-xs muted">bought t − offset → sellable</text>
+      <text x="26" y="76" class="t-sm">• corporate actions, ex_date ≤ t</text>
+      <text x="38" y="88" class="t-xs muted">not yet applied, once per book</text>
+      <text x="26" y="108" class="t-sm">• release settled shares</text>
+      <text x="38" y="122" class="t-xs muted">bought t − offset → sellable</text>
       <text x="26" y="136" class="t-sm">• release cash</text>
       <text x="38" y="152" class="t-xs muted">dividends paid, sale proceeds</text>
     </g>
