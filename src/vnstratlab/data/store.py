@@ -75,6 +75,11 @@ _SCHEMA = (
         started_at TIMESTAMP, finished_at TIMESTAMP, start_date DATE, end_date DATE,
         tickers VARCHAR, rows_in BIGINT, rows_written BIGINT, rows_changed BIGINT,
         rows_dropped BIGINT, status VARCHAR, raw_path VARCHAR)""",
+    # "check" is a reserved word in SQL; it is always quoted. ticker is '' for dataset-wide checks.
+    """CREATE TABLE IF NOT EXISTS dq_results (
+        run_id VARCHAR NOT NULL, "check" VARCHAR NOT NULL, ticker VARCHAR NOT NULL,
+        date DATE NOT NULL, severity VARCHAR NOT NULL, detail VARCHAR NOT NULL,
+        PRIMARY KEY (run_id, "check", ticker, date))""",
 )
 
 
@@ -103,6 +108,18 @@ class RunRecord:
     rows_dropped: int
     status: str
     raw_path: str | None
+
+
+@dataclass(frozen=True)
+class DQRecord:
+    """One data-quality finding as stored in ``dq_results``."""
+
+    run_id: str
+    check: str
+    ticker: str
+    date: date
+    severity: str
+    detail: str
 
 
 def _naive_utc(moment: datetime) -> datetime:
@@ -339,7 +356,83 @@ class MarketStore:
             ],
         )
 
+    def set_run_status(self, run_id: str, status: str) -> None:
+        _run(self._con, "UPDATE ingest_runs SET status = ? WHERE run_id = ?", [status, run_id])
+
+    def record_dq_results(self, records: list[DQRecord]) -> None:
+        """Insert findings atomically (a run id's findings are written once)."""
+        if not records:
+            return
+        with self.transaction():
+            for r in records:
+                _run(
+                    self._con,
+                    "INSERT INTO dq_results VALUES (?, ?, ?, ?, ?, ?)",
+                    [r.run_id, r.check, r.ticker, r.date, r.severity, r.detail],
+                )
+
     # ------------------------------------------------------------------ reads
+
+    def has_table(self, name: str) -> bool:
+        rows = _run(
+            self._con, "SELECT 1 FROM information_schema.tables WHERE table_name = ?", [name]
+        )
+        return bool(rows)
+
+    def get_run(self, run_id: str) -> RunRecord | None:
+        rows = _run(self._con, f"SELECT {_RUN_COLUMNS} FROM ingest_runs WHERE run_id = ?", [run_id])  # noqa: S608
+        return _to_run(rows[0]) if rows else None
+
+    def recent_runs(self, limit: int = 5) -> list[RunRecord]:
+        """Newest first (by ``started_at``)."""
+        rows = _run(
+            self._con,
+            f"SELECT {_RUN_COLUMNS} FROM ingest_runs "  # noqa: S608
+            "ORDER BY started_at DESC, run_id DESC LIMIT ?",
+            [limit],
+        )
+        return [_to_run(r) for r in rows]
+
+    def read_dq_results(self, run_id: str) -> list[DQRecord]:
+        """Findings of one run, errors first; empty if the store predates ``dq_results``."""
+        if not self.has_table("dq_results"):
+            return []
+        rows = _run(
+            self._con,
+            'SELECT run_id, "check", ticker, date, severity, detail FROM dq_results '
+            "WHERE run_id = ? ORDER BY CASE severity WHEN 'error' THEN 0 ELSE 1 END, "
+            '"check", ticker, date',
+            [run_id],
+        )
+        return [DQRecord(*r) for r in rows]
+
+    def summary(self) -> list[tuple[str, date, date, int]]:
+        """``(ticker, first date, last date, rows)`` per ticker, over all sources."""
+        rows = _run(
+            self._con,
+            "SELECT ticker, min(date), max(date), count(*) FROM prices_daily "
+            "GROUP BY ticker ORDER BY ticker",
+        )
+        return [(str(t), a, b, int(n)) for t, a, b, n in rows]
+
+    def read_source_prices(self, source: str) -> pd.DataFrame:
+        """All stored rows of one source, ordered by ticker and date (dates as ``date``)."""
+        frame = self._con.execute(
+            "SELECT * FROM prices_daily WHERE source = ? ORDER BY ticker, date", [source]
+        ).df()
+        frame["date"] = [d.date() if isinstance(d, pd.Timestamp) else d for d in frame["date"]]
+        return frame
+
+    def stored_sessions(self, source: str) -> list[date]:
+        rows = _run(
+            self._con,
+            "SELECT DISTINCT date FROM prices_daily WHERE source = ? ORDER BY date",
+            [source],
+        )
+        return [r[0] for r in rows]
+
+    def row_count(self) -> int:
+        return _count(_run(self._con, "SELECT count(*) FROM prices_daily"))
 
     def read_prices(self, tickers: list[str], start: date, end: date) -> pd.DataFrame:
         """Stored rows for ``tickers`` in ``[start, end]``, ordered by ticker and date."""
@@ -382,6 +475,16 @@ class MarketStore:
             )
         )
         return None if row is None or row[0] is None else float(row[0])
+
+
+_RUN_COLUMNS = (
+    "run_id, source, started_at, finished_at, start_date, end_date, tickers, rows_in, "
+    "rows_written, rows_changed, rows_dropped, status, raw_path"
+)
+
+
+def _to_run(row: tuple[Any, ...]) -> RunRecord:
+    return RunRecord(*row)
 
 
 _PRICE_KEY = "p.ticker = i.ticker AND p.date = CAST(i.date AS DATE) AND p.source = i.source"

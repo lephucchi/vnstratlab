@@ -64,7 +64,7 @@ Plan §5.5 tables, with columns added by ADR-007:
 |---|---|---|
 | `prices_daily` | (ticker, date, source) | `price_basis` (`raw` / `split_adjusted` / `synthetic`), `derived_limits` (bool), `run_id`, `revision` |
 | `corporate_actions` | (ticker, ex_date, type, source) | `source`, `run_id` |
-| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_changed, rows_dropped, status, raw_path |
+| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_changed, rows_dropped, status (`ok`, `ok_with_warnings`, `partial`, `failed_dq`, `error`), raw_path |
 | `dq_results` | (run_id, check, ticker, date) | severity (`error` / `warning`), detail (P1-T38) |
 
 Rules: raw values are never overwritten silently; an upsert that changes a stored value
@@ -122,11 +122,42 @@ failed (`partial`) when it has no stored rows yet or the window holds a weekday 
 stored date. Retries: every exception from the fetch function is retried with exponential
 backoff, not only network errors.
 
-Exit codes of `vnstratlab ingest`: `0` ok, `1` error (including a missing extra, refused
-terms, every ticker failing), `2` usage error (bad date, unknown source), `3` partial (some
-tickers failed; the others were written, failed tickers are printed with a re-run hint). Before the terms prompt
+Exit codes of `vnstratlab ingest`: `0` ok or ok_with_warnings, `1` error (including a missing
+extra, refused terms, every ticker failing) or failed_dq, `2` usage error (bad date, unknown
+source), `3` partial (some tickers failed; the others were written, failed tickers are printed with a re-run hint;
+no data-quality error). Before the terms prompt
 the command checks that the adapter's library is importable and, if not, exits `1` with the
 install hint without asking for or storing acceptance.
+
+## 5a. Data-quality checks (P1-T38)
+
+After the write transaction commits, every non-dry ingest runs the checks on the run's source
+and date range and stores the findings in `dq_results` (`run_id, check, ticker, date, severity,
+detail`; `ticker` is empty for dataset-wide findings). The data stays even when a check fails,
+so it can be inspected. Severity follows the row's provenance: for `price_basis =
+split_adjusted` or `derived_limits` rows the limit and tick checks (and `missing_ticker`, since a
+suspension is possible) only warn (GAP-01, GAP-02).
+
+| Check | raw / synthetic | split_adjusted or derived limits |
+|---|---|---|
+| `duplicate_rows` | error | error |
+| `missing_ticker` | error | warning |
+| `stale_data` | error | error |
+| `close_outside_limits` | error | warning |
+| `off_tick` | error | warning |
+| `ohlc_inconsistent` | error | error |
+| `zero_volume`, `repeated_bar`, `large_move` (> 15 %) | warning | warning |
+
+Sessions come from the configured holidays when every year of the run range has complete
+holiday data, else from the dates stored for the source (GAP-05). `stale_data` compares the
+newest stored date with the last completed session (the day before a partial-bar cutoff).
+
+Run status after the checks (`ingest_runs.status`): any error gives `failed_dq` (exit 1, even
+if tickers also failed); otherwise a `partial` run stays `partial` (exit 3, warnings are still
+stored); otherwise warnings give `ok_with_warnings` (exit 0) and none gives `ok`. If the checks
+themselves crash, the run is marked `error`. `vnstratlab data status [--json]` prints stores,
+the last 5 runs, the last run's checks and the open gaps; `vnstratlab data gaps [--status ...]
+[--json]` prints the register.
 
 ## 6. Running ingest on a schedule (interim)
 

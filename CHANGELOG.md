@@ -23,6 +23,10 @@ All notable changes are documented here. The format follows
   `po/data.json` is no longer written.
 
 ### Added
+- Data quality (P1-T38): nine checks after every ingest stored in `dq_results`
+  (`vnstratlab.data.quality`), run statuses `ok_with_warnings` and `failed_dq` (exit 1),
+  `vnstratlab data status [--json]` and `vnstratlab data gaps`, a typed gap register loader
+  (`vnstratlab.data.gaps`) and a `gaps: N open (...)` line in `doctor`.
 - Yahoo adapter (P1-T37): `YahooSource` (optional extra `pip install "vnstratlab[yahoo]"`,
   `data.source` default is now `yahoo`, new `data.yahoo` config), rate limit with retries and
   backoff, holiday filler-row and partial-bar rules, a one-time terms notice stored in

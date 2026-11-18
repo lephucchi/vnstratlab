@@ -26,6 +26,7 @@ from vnstratlab.data.protocol import (
     TickTable,
     universe_tickers,
 )
+from vnstratlab.data.quality import DQResult, build_calendar, final_status, run_checks
 from vnstratlab.data.raw import write_raw
 from vnstratlab.data.store import Kind, MarketStore, RunRecord, kind_of_basis, kind_of_source
 
@@ -66,6 +67,7 @@ class IngestReport:
     failed: dict[str, str] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
     refetched: tuple[str, ...] = ()
+    dq: tuple[DQResult, ...] = ()
 
 
 def source_kind(source: DataSource) -> Kind:
@@ -376,6 +378,17 @@ def ingest(
             except Exception as secondary:
                 original.add_note(f"also failed to record the error run row: {secondary!r}")
             raise
+        # The write committed; checks never roll it back (data stays for inspection).
+        try:
+            calendar = build_calendar(cfg, store, source.info.name, start, end)
+            through = end if cutoff is None else min(end, cutoff - timedelta(days=1))
+            dq = run_checks(store, run_id, calendar, ticks=ticks, through=through)
+            status = final_status(status, dq)
+            store.record_dq_results([r.to_record() for r in dq])
+            store.set_run_status(run_id, status)
+        except BaseException:
+            store.set_run_status(run_id, "error")
+            raise
     return IngestReport(
         run_id=run_id,
         source=source.info.name,
@@ -392,6 +405,7 @@ def ingest(
         failed=failed,
         warnings=got.warnings,
         refetched=got.refetched,
+        dq=tuple(dq),
     )
 
 
