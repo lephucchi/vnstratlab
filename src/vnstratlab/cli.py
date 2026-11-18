@@ -7,6 +7,7 @@ mistake a stub for success.
 
 from __future__ import annotations
 
+import importlib.util
 import platform
 import sys
 from datetime import date
@@ -139,6 +140,8 @@ def _echo_ingest_report(report: IngestReport) -> None:
         f"rows in {report.rows_in}, written {report.rows_written}, "
         f"changed {report.rows_changed}, dropped {report.rows_dropped}"
     )
+    for warning in report.warnings:
+        typer.echo(f"warning: {warning}", err=True)
     if report.status != "ok":
         typer.echo(f"status {report.status}: {len(report.failed)} ticker(s) failed", err=True)
         for ticker, message in sorted(report.failed.items()):
@@ -155,6 +158,18 @@ def _echo_ingest_report(report: IngestReport) -> None:
 
 def _is_interactive() -> bool:
     return sys.stdin.isatty()
+
+
+def _require_extra(adapter: DataSource) -> None:
+    """Exit 1 with the install hint, before any terms prompt, if the adapter's library is absent."""
+    module = getattr(adapter, "required_module", None)
+    extra = adapter.info.requires_extra
+    if module is None or extra is None:
+        return
+    if importlib.util.find_spec(module) is None:
+        raise SourceError(
+            f'{adapter.info.name.capitalize()} adapter needs: pip install "vnstratlab[{extra}]"'
+        )
 
 
 def _require_terms(paths: AppPaths, adapter: DataSource, accept: bool, dry_run: bool) -> None:
@@ -213,6 +228,7 @@ def ingest(
     name = source or cfg.data.source
     try:
         adapter = get_source(name, cfg)
+        _require_extra(adapter)
         _require_terms(paths, adapter, accept_source_terms, dry_run)
         start = start or default_start(cfg, paths, adapter)
         if start > end:
@@ -223,6 +239,8 @@ def ingest(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2 if name not in source_names() else 1) from None
     _echo_ingest_report(report)
+    if report.status == "partial":
+        raise typer.Exit(code=3)
 
 
 @app.command()

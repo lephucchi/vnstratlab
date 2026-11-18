@@ -117,7 +117,7 @@ def test_basic_ingest_writes_rows_actions_and_snapshot(cfg: AppConfig, paths: Ap
     )
     assert sorted(actions) == [
         ("ACB", date(2026, 3, 4), "cash", 500.0, "yahoo"),
-        ("VCB", date(2026, 3, 5), "stock", 1.1, "yahoo"),
+        ("VCB", date(2026, 3, 5), "stock", 0.1, "yahoo"),  # factor 1.1 -> bonus fraction
     ]
     assert report.raw_path is not None
     assert report.raw_path.is_file()
@@ -386,7 +386,7 @@ def test_cli_reports_partial_status(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     )
     args = _accept(["ingest", "--source", "yahoo", "--from", "2026-03-02", "--to", "2026-03-06"])
     result = runner.invoke(app, args)
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 3, result.output
     assert "status partial" in result.output
     assert "VCB" in result.output
 
@@ -424,7 +424,8 @@ def test_accept_flag_writes_state_and_second_run_does_not_ask(fake_yahoo: Path) 
     assert "legal.yahoo.com" in first.output
     state = fake_yahoo / "state" / "accepted_sources.json"
     assert "yahoo" in state.read_text(encoding="utf-8")
-    second = runner.invoke(app, INGEST)
+    again = [*INGEST[:-1], "2026-03-05"]  # another window: a new run id in the same second
+    second = runner.invoke(app, again)
     assert second.exit_code == 0, second.output
     assert "legal.yahoo.com" not in second.output
     assert (fake_yahoo / "data" / "market.duckdb").is_file()
@@ -489,3 +490,59 @@ def test_socket_guard_blocks_connections() -> None:
 
 def test_tests_run_without_yfinance_installed() -> None:
     assert sys.modules.get("yfinance") is None
+
+
+# ------------------------------------------------------------------ split factors, pre-flight
+
+
+def test_reverse_split_factor_is_not_stored_but_warned(cfg: AppConfig) -> None:
+    index = pd.to_datetime(["2026-03-02", "2026-03-03", "2026-03-04"])
+    history = pd.DataFrame(
+        {
+            "Open": 1.0,
+            "High": 1.0,
+            "Low": 1.0,
+            "Close": 1.0,
+            "Volume": 1,
+            "Dividends": 0.0,
+            "Stock Splits": [0.0, 0.5, 1.15],
+        },
+        index=index,
+    )
+    source = YahooSource(cfg, fetch=lambda s, a, b: history, sleep=Sleeps())
+    actions = source.fetch_corporate_actions(["ACB"], START, END)
+    assert [(a.type, a.ratio_or_amount) for a in actions.itertuples()] == [("stock", 0.15)]
+    assert len(source.warnings) == 1
+    assert "reverse split" in source.warnings[0]
+
+
+def test_cli_prints_reverse_split_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
+    inner = csv_fetch("synthetic_yahoo_basic.csv")
+
+    def with_reverse(symbol: str, start: date, end: date) -> pd.DataFrame:
+        frame = inner(symbol, start, end)
+        if symbol == "ACB.VN":
+            frame["Stock Splits"] = [0.0, 0.5, 0.0, 0.0, 0.0]
+        return frame
+
+    monkeypatch.setattr(
+        yahoo, "build", lambda cfg: YahooSource(cfg, fetch=with_reverse, sleep=Sleeps())
+    )
+    result = runner.invoke(app, _accept(INGEST))
+    assert result.exit_code == 0, result.output
+    assert "reverse split" in result.output
+
+
+def test_preflight_missing_module_exits_1_without_asking_or_storing_terms(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("APP_HOME", str(home))
+    monkeypatch.setitem(sys.modules, "yfinance", None)
+    monkeypatch.setattr(cli, "_is_interactive", lambda: True)
+    result = runner.invoke(app, INGEST, input="y" + chr(10))
+    assert result.exit_code == 1
+    assert INSTALL_HINT in result.output
+    assert "legal.yahoo.com" not in result.output
+    assert not (home / "state").exists()

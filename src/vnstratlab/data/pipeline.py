@@ -61,6 +61,7 @@ class IngestReport:
     preview: dict[str, pd.DataFrame] = field(default_factory=dict)
     status: str = "ok"
     failed: dict[str, str] = field(default_factory=dict)
+    warnings: tuple[str, ...] = ()
 
 
 def source_kind(source: DataSource) -> Kind:
@@ -116,13 +117,14 @@ def ingest(
         names = ", ".join(sorted(failed))
         raise SourceError(f"every ticker failed: {names}")
     status = "partial" if failed else "ok"
+    warnings = tuple(getattr(source, "warnings", ()))
     cutoff = partial_bar_cutoff(source, end, started)
     db_path = paths.market_db_for(kind)
     ticks = TickTable.from_config(cfg)
 
     if dry_run:
         report = _dry_run(source, db_path, kind, raw, actions, (start, end), ticks, run_id, cutoff)
-        return replace(report, status=status, failed=failed)
+        return replace(report, status=status, failed=failed, warnings=warnings)
 
     with MarketStore(db_path, kind) as store:  # validates the store kind before anything is written
         if store.has_run(run_id):
@@ -202,6 +204,7 @@ def ingest(
         raw_path=raw_path,
         status=status,
         failed=failed,
+        warnings=warnings,
     )
 
 

@@ -86,6 +86,11 @@ only source with `price_basis = synthetic`; any other combination is a configura
 `ingest` raises `SourceError` before anything is written (no raw snapshot, no run row). Every
 corporate-action row's `source` is checked the same way, even when a kind is passed explicitly.
 
+Stock events use one convention for every source: `ratio_or_amount` of a `stock` event is the
+bonus fraction (0.10 = 10 new shares per 100). The Yahoo adapter converts Yahoo's split factor
+(1.1) with `factor - 1`; factors of 1 or less (reverse splits) are not stored and are reported
+as run warnings. Cash events hold VND per share.
+
 ## 5. Commands
 
 ```bash
@@ -95,6 +100,12 @@ vnstratlab ingest                                                   # refresh to
 vnstratlab data status                                              # stores, runs, DQ, gaps
 vnstratlab data gaps                                                # gap register only
 ```
+
+Exit codes of `vnstratlab ingest`: `0` ok, `1` error (including a missing extra, refused
+terms, every ticker failing), `2` usage error (bad date, unknown source), `3` partial (some
+tickers failed; the others were written, failed tickers are printed). Before the terms prompt
+the command checks that the adapter's library is importable and, if not, exits `1` with the
+install hint without asking for or storing acceptance.
 
 ## 6. Running ingest on a schedule (interim)
 

@@ -2,7 +2,13 @@
 
 Prices are split-adjusted (``price_basis = split_adjusted``). The adapter returns frames only;
 it never writes files or the store. ``yfinance`` is imported only inside the default fetch
-function, so the core install and the tests work without it. The fetch function and the sleep
+function, so the core install and the tests work without it.
+
+Corporate actions: ``Dividends`` become ``cash`` events (VND per share). ``Stock Splits`` is
+Yahoo's factor (1.1 for a 10% bonus issue); it is stored as the bonus fraction
+``ratio_or_amount = factor - 1`` (0.10), the one convention of ``corporate_actions`` for all
+sources. Factors of 1 or less (reverse splits) are not stored; they are logged and listed in
+``warnings``. The fetch function and the sleep
 function are injectable, so tests never touch the network or wait.
 """
 
@@ -98,9 +104,12 @@ class YahooSource:
         self._backoff = opts.backoff_seconds
         self.final_after = parse_clock(opts.final_after)
         self._fetch = fetch or yfinance_fetch
+        # Module the pipeline must find before asking for terms (None when a fetch is injected).
+        self.required_module: str | None = "yfinance" if fetch is None else None
         self._sleep = sleep
         self._cache: dict[tuple[tuple[str, ...], date, date], _Fetched] = {}
         self.failures: dict[str, str] = {}
+        self.warnings: list[str] = []
 
     def symbols(self, universe: Sequence[str]) -> dict[str, str]:
         return {t: f"{t}{self._suffix}" for t in universe}
@@ -122,6 +131,7 @@ class YahooSource:
         if cached is not None:
             return cached
         self.failures = {}
+        self.warnings = []
         daily: list[pd.DataFrame] = []
         actions: list[pd.DataFrame] = []
         for position, (ticker, symbol) in enumerate(self.symbols(tickers).items()):
@@ -129,7 +139,7 @@ class YahooSource:
                 self._sleep(self._interval)
             try:
                 history = self._fetch_with_retries(symbol, start, end)
-                prices, events = _convert(ticker, history, start, end)
+                prices, events, warns = _convert(ticker, history, start, end)
             except MissingExtraError:
                 raise
             except Exception as exc:  # one bad ticker must not stop the others
@@ -138,6 +148,7 @@ class YahooSource:
                 continue
             daily.append(prices)
             actions.append(events)
+            self.warnings.extend(warns)
         result = _Fetched(_concat(daily, _DAILY_COLUMNS), _concat(actions, _ACTION_COLUMNS))
         self._cache[key] = result
         return result
@@ -174,10 +185,10 @@ def _to_dates(index: pd.Index) -> list[date]:
 
 def _convert(
     ticker: str, history: pd.DataFrame, start: date, end: date
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Yahoo history -> (source frame, corporate-action frame). ``Adj Close`` is ignored."""
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """Yahoo history -> (source frame, action frame, warnings). ``Adj Close`` is ignored."""
     if history.empty:
-        return _concat([], _DAILY_COLUMNS), _concat([], _ACTION_COLUMNS)
+        return _concat([], _DAILY_COLUMNS), _concat([], _ACTION_COLUMNS), []
     missing = [c for c in _PRICE_MAP if c not in history.columns]
     if missing:
         raise SourceError(f"yahoo frame for {ticker} is missing columns: {', '.join(missing)}")
@@ -188,15 +199,24 @@ def _convert(
     prices = frame[["date", *_PRICE_MAP]].rename(columns=_PRICE_MAP)
     prices.insert(0, "ticker", ticker)
     rows: list[tuple[str, date, str, float]] = []
+    warns: list[str] = []
     for column, kind in (("Dividends", "cash"), ("Stock Splits", "stock")):
         if column not in frame.columns:
             continue
         values = pd.to_numeric(frame[column]).fillna(0.0)
         for day, value in zip(frame["date"], values, strict=True):
-            if value > 0:
-                rows.append((ticker, day, kind, float(value)))
+            if value <= 0:
+                continue
+            if kind == "stock":
+                if value <= 1.0:  # reverse split: not a stock dividend, do not store it
+                    message = f"{ticker} {day}: ignored split factor {value} (reverse split)"
+                    log.warning("yahoo: %s", message)
+                    warns.append(message)
+                    continue
+                value = value - 1.0  # factor 1.1 -> bonus fraction 0.10
+            rows.append((ticker, day, kind, round(float(value), 10)))
     events = pd.DataFrame(rows, columns=list(_ACTION_COLUMNS))
-    return prices[list(_DAILY_COLUMNS)], events
+    return prices[list(_DAILY_COLUMNS)], events, warns
 
 
 def build(cfg: AppConfig) -> YahooSource:
