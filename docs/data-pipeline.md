@@ -1,0 +1,106 @@
+# Data pipeline
+
+The data pipeline is the only part of vnstratlab that talks to a data source. It turns a
+source's responses into point-in-time tables in `market.duckdb`; everything downstream
+(features, strategies, engine, lab, books) reads those tables and nothing else
+([ADR-007](adr/ADR-007-yahoo-interim-source.md) §3).
+
+## 1. Layers
+
+```
+ ┌───────────── vnstratlab.data (I/O allowed) ─────────────────────────────────────────┐
+ │                                                                                     │
+ │  DataSource adapters          raw snapshot            normalise         quality     │
+ │  ┌───────────────┐          ┌──────────────┐       ┌────────────┐    ┌──────────┐   │
+ │  │ SyntheticSource│ ──────► │ <home>/data/ │ ────► │ schema,    │ ─► │ DQ checks│   │
+ │  │ YahooSource    │         │ raw/<source>/│       │ calendar,  │    │ (P1-T38) │   │
+ │  │ (future: File, │         │ <run_id>.pq  │       │ price_basis│    └────┬─────┘   │
+ │  │  broker API…)  │         └──────────────┘       └────────────┘         │         │
+ │  └───────────────┘                                                         ▼         │
+ │                                                       market.duckdb (upsert, revisions)
+ └─────────────────────────────────────────────────────────────────────────┬───────────┘
+                                                                           │ tables only
+                     features · strategies · engine · lab · books ◄────────┘
+```
+
+| Step | Module (planned) | Card |
+|---|---|---|
+| `DataSource` protocol, `SourceInfo` | `vnstratlab/data/protocol.py` | P1-T36 |
+| Market store: DuckDB schema, upsert, revisions | `vnstratlab/data/store.py` | P1-T36 |
+| Raw snapshots (Parquet, one file per run and source) | `vnstratlab/data/raw.py` | P1-T36 |
+| Synthetic market | `vnstratlab/data/sources/synthetic.py` | P1-T36 |
+| Ingest orchestration (`vnstratlab ingest`) | `vnstratlab/data/pipeline.py` | P1-T36 |
+| Yahoo adapter (optional extra) | `vnstratlab/data/sources/yahoo.py` | P1-T37 |
+| Quality checks v0, `dq_results` | `vnstratlab/data/quality.py` | P1-T38 |
+| Gap register, `vnstratlab data status` | `vnstratlab/data/gaps.py`, `gaps.yaml` | P1-T38 |
+
+## 2. Boundary rule
+
+- Only `vnstratlab.data` may import a source adapter or a source library (`yfinance`, ...).
+- `engine`, `features`, `strategies`, `lab`, `risk`, `portfolio` never import
+  `vnstratlab.data.sources`; they receive DataFrames read from the store. A test
+  (`tests/test_data_boundary.py`, P1-T36) enforces this.
+- A source library is imported lazily inside its adapter, so the core install works without it.
+
+## 3. `DataSource` protocol (P1-T36)
+
+```python
+class DataSource(Protocol):
+    info: SourceInfo            # name, price_basis, interim: bool, terms_url, requires_extra
+    def symbols(self, universe: Sequence[str]) -> dict[str, str]: ...      # ticker -> source symbol
+    def fetch_daily(self, tickers: Sequence[str], start: date, end: date) -> pd.DataFrame: ...
+    def fetch_corporate_actions(self, tickers: Sequence[str], start: date, end: date) -> pd.DataFrame: ...
+```
+
+`fetch_daily` returns the **source frame** (columns `ticker, date, open, high, low, close,
+volume`, plus optional source columns). The pipeline, not the adapter, writes raw snapshots and
+normalises. Adapters never write to the store.
+
+## 4. Tables written
+
+Plan §5.5 tables, with columns added by ADR-007:
+
+| Table | Key | Columns added |
+|---|---|---|
+| `prices_daily` | (ticker, date) | `price_basis` (`raw` / `split_adjusted` / `synthetic`), `derived_limits` (bool), `run_id`, `revision` |
+| `corporate_actions` | (ticker, ex_date, type) | `source`, `run_id` |
+| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_dropped, status, raw_path |
+| `dq_results` | (run_id, check, ticker, date) | severity (`error` / `warning`), detail (P1-T38) |
+
+Rules: raw values are never overwritten silently; an upsert that changes a stored value
+increments `revision` and is counted in `ingest_runs`. Synthetic rows are labelled
+`source = synthetic`, `price_basis = synthetic` and are never mixed with a real source in one
+database file (the store refuses it).
+
+## 5. Commands
+
+```bash
+vnstratlab ingest --source synthetic --from 2020-01-01 --dry-run   # print, write nothing
+vnstratlab ingest --source yahoo --from 2015-01-01                  # backfill (needs [yahoo])
+vnstratlab ingest                                                   # refresh to the last session
+vnstratlab data status                                              # stores, runs, DQ, gaps
+vnstratlab data gaps                                                # gap register only
+```
+
+## 6. Running ingest on a schedule (interim)
+
+The nightly scheduler belongs in `vnstratlab serve` (P1-T30). Until then, schedule the refresh
+with the operating system, after the market data is final (suggested 18:00 Vietnam time):
+
+```powershell
+# Windows Task Scheduler, every weekday at 18:00
+schtasks /Create /TN vnstratlab-ingest /SC WEEKLY /D MON,TUE,WED,THU,FRI /ST 18:00 `
+  /TR "vnstratlab ingest --accept-source-terms"
+```
+
+```bash
+# cron (Linux/macOS), Asia/Ho_Chi_Minh
+0 18 * * 1-5  vnstratlab ingest --accept-source-terms >> ~/vnstratlab-ingest.log 2>&1
+```
+
+Do not run `ingest` while `serve` is running (DuckDB allows one writer).
+
+## 7. Known gaps
+
+The interim Yahoo source has documented gaps (raw prices, indices, HNX, holidays, ...). They
+are listed in [data-gaps.md](data-gaps.md) and printed by `vnstratlab data status`.

@@ -33,6 +33,8 @@ nav:
       - Getting started: getting-started.md
       - Configuration: configuration.md
       - Data sources: data-sources.md
+      - Data pipeline: data-pipeline.md
+      - Data gaps: data-gaps.md
       - Writing a strategy: writing-strategies.md
       - Benchmarks: benchmarks.md
   - Contributors:
@@ -51,8 +53,10 @@ nav:
           - ADR-004: adr/ADR-004-selection-method.md
           - ADR-005: adr/ADR-005-long-horizon-monthly.md
           - ADR-006: adr/ADR-006-synthetic-first.md
+          - ADR-007: adr/ADR-007-yahoo-interim-source.md
   - Project:
       - Roadmap: roadmap.md
       - Maintainer setup: maintainers.md
       - Progress: reports/progress.md
       - Data source review (vnstock): reports/data-source-vnstock.md
+      - Data source review (Yahoo): reports/data-source-yahoo.md

@@ -10,7 +10,8 @@ Only the owner moves an ADR to accepted.
 | [ADR-003](ADR-003-engine-architecture.md) | Engine and architecture refinements | Proposed |
 | [ADR-005](ADR-005-long-horizon-monthly.md) | Long horizon uses monthly decision days; threshold conversions proposed | Accepted / proposed |
 | [ADR-004](ADR-004-selection-method.md) | Recommendation follows the gated, weighted set; pre-registered rule for switching to #1 | Accepted |
-| [ADR-006](ADR-006-synthetic-first.md) | Synthetic data first; no external data source until the owner picks one (supersedes D6) | Accepted |
+| [ADR-006](ADR-006-synthetic-first.md) | Synthetic data first; no external data source until the owner picks one (supersedes D6) | Accepted (amended by ADR-007) |
+| [ADR-007](ADR-007-yahoo-interim-source.md) | Yahoo Finance as interim Phase 1 price source; separate data pipeline; gap register | Accepted |
 
 ## Template
 

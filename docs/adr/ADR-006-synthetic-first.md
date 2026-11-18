@@ -1,6 +1,6 @@
 # ADR-006: Synthetic data first; no external data source until the owner picks one
 
-- Status: **accepted**
+- Status: **accepted**, decision 1 amended by [ADR-007](ADR-007-yahoo-interim-source.md) (2026-11-18)
 - Date: 2026-11-17
 - Deciders: owner
 - Supersedes: plan decision **D6** (data source `vnstock`, free Community tier)
