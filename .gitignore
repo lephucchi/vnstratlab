@@ -52,3 +52,6 @@ site/
 Thumbs.db
 .idea/
 .vscode/
+
+# --- agent worktrees (Claude Code)
+.claude/worktrees/

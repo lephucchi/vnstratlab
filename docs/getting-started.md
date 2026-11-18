@@ -41,9 +41,34 @@ Nothing is required yet. See [configuration.md](configuration.md).
 ```bash
 vnstratlab demo                              # synthetic data, offline
 vnstratlab init                              # create your config
-vnstratlab ingest --from 2015-01-01          # download data to your machine
+vnstratlab ingest --source synthetic --from 2015-01-01   # offline synthetic data
 vnstratlab backtest --strategy S02_breakout20
 ```
+
+### Real prices from Yahoo Finance (interim source)
+
+Yahoo Finance is the interim price source ([ADR-007](adr/ADR-007-yahoo-interim-source.md)). It
+is an optional extra and needs no account or key:
+
+```bash
+pip install -e ".[dev,yahoo]"
+vnstratlab ingest --from 2015-01-01          # first backfill
+vnstratlab ingest                            # refresh (see below)
+```
+
+A refresh resumes per ticker: it starts `data.yahoo.overlap_sessions` (default 5) stored sessions
+before each ticker's latest date, so a ticker that failed last time is fetched again. If Yahoo has
+rescaled history (after a split) or reports a new stock event, that ticker is re-downloaded from
+`project.backfill_start` and its earlier rows are revised (the run says so). Exit code 3 means some
+tickers failed: just run `vnstratlab ingest` again.
+
+The first run shows a notice (Vietnamese and English): Yahoo's terms restrict automated access,
+the data is for your own research and you are responsible for following those terms. Confirm
+once; the answer is stored in `<app home>/state/accepted_sources.json`. For an OS scheduler
+(Task Scheduler / cron) accept up front with `vnstratlab ingest --accept-source-terms`.
+Prices are split-adjusted and Yahoo history starts at different dates per ticker; see
+[data-gaps.md](data-gaps.md). Data is written to `market.duckdb` in your data directory and is
+never part of the repository.
 
 ## 4. Daily use (planned for v0.3)
 

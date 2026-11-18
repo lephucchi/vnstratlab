@@ -21,6 +21,10 @@
 
 ## 2. Pipeline
 
+Drawn version with layers, price bases and card status:
+[engine-architecture.html](diagrams/engine-architecture.html) (figures 1, 2 and 9). Data layer
+detail: [data-pipeline.md](data-pipeline.md).
+
 ```
  DataSource adapters ──► ingest ──► data-quality checks ──► market.duckdb
  (free API first)                     │ fail → stop + alert      │
@@ -85,9 +89,11 @@ class Executor(Protocol):         # SimExecutor, PaperExecutor — nothing else
     def submit(self, orders: pd.DataFrame) -> pd.DataFrame: ...
     def fills(self, trade_date: str) -> pd.DataFrame: ...
 
-class DataSource(Protocol):       # P1-T03
-    name: str
-    def daily_prices(self, tickers: list[str], start: date, end: date) -> pd.DataFrame: ...
+class DataSource(Protocol):       # P1-T36, data-pipeline.md §3
+    info: SourceInfo              # name, price_basis, interim, terms_url, requires_extra
+    def symbols(self, universe: Sequence[str]) -> dict[str, str]: ...
+    def fetch_daily(self, tickers: Sequence[str], start: date, end: date) -> pd.DataFrame: ...
+    def fetch_corporate_actions(self, tickers: Sequence[str], start: date, end: date) -> pd.DataFrame: ...
 ```
 
 ## 5. Storage

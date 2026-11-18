@@ -207,7 +207,7 @@ class Executor(Protocol):
 | --- | --- | --- |
 | market.duckdb | `universe_membership` | ticker, index_code, effective_from, effective_to, source_url |
 | market.duckdb | `prices_daily` | ticker, date, open, high, low, close, volume, value, ref_price, ceiling, floor, source, ingested_at |
-| market.duckdb | `corporate_actions` | ticker, ex_date, type (cash/stock/bonus/rights), ratio_or_amount, source |
+| market.duckdb | `corporate_actions` | ticker, ex_date, type (cash/stock/bonus/rights), ratio_or_amount, source; optional `pay_date`, `listing_date` (ADR-003 §6, added by P1-T06) |
 | market.duckdb | `prices_adjusted` | ticker, date, adj_open … adj_close, adj_factor |
 | market.duckdb | `fundamentals_q` | ticker, fiscal_period, metric, value, **published_at**, ingested_at |
 | market.duckdb | `features_daily` | ticker, date, feature columns…, feature_version |
@@ -269,7 +269,7 @@ Full process: [workflow.md](../workflow.md). Agent definitions: `.claude/agents/
 
 1. **No lookahead.** A value used at date `t` must have been knowable at the close of `t`. Fundamentals use `published_at`; if missing, assume availability 45 days after quarter end and flag it. News published after 14:45 counts for the next trading day.
 2. **No invented data.** Never type prices, fundamentals or news into code or fixtures except clearly synthetic test fixtures named `synthetic_*`.
-3. **Parameters are frozen.** Strategy params, gate thresholds, λ, η and risk limits come from `config.yaml`. A worker never edits them to make a result look better. A new parameter set is a new row in `trial_registry`, registered **before** it is backtested.
+3. **Parameters are frozen.** Strategy params, gate thresholds, λ, η and risk limits come from `config.yaml`. A worker never edits them to make a result look better. A new parameter set is a new row in `trial_registry`, registered **before** it is backtested. Trial identity includes the strategy code hash, feature version and engine version (ADR-003 §3), so a code change is a new trial.
 4. **Count every trial.** Anything backtested is registered. Deflated Sharpe uses the total trial count.
 5. **Deterministic.** Fixed random seeds; bootstrap seeds in config; same inputs give the same outputs.
 6. **Tests.** pytest; unit tests use fixtures and never hit the network; engine rules (T+2/T+3, limits, lots, fees) each have hand-computed test cases.
@@ -413,7 +413,7 @@ News-based and ML strategies are excluded from the Phase 1 core. Each strategy h
 ### M1.3 — Engine
 
 **P1-T11 — Simulator core (SimExecutor)**
-- Depends on: P1-T02, P1-T36 (was P1-T06; ADR-006)
+- Depends on: P1-T02, P1-T36 (was P1-T06; ADR-006), ADR-003 (accepted in part) · card: [P1-T11](../cards/P1-T11-simulator-core.md)
 - Goal: event loop that turns target weights into orders and fills.
 - Rules: decision at close of t, fill at open of t+1; no buy fill if open at ceiling, no sell fill if open at floor; sell allowed only from the configured settlement offset; round to lots (odd lots per config with odd-lot slippage); tick rounding for limit prices; fees, sales tax, slippage per Appendix A.
 - Outputs: per-period ideal and executable returns, positions, turnover.

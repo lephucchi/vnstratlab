@@ -9,4 +9,10 @@ date       | card   | PR / commit      | summary                                
 2026-11-17 | chore  | PR #1 squash     | PO login (encrypted Pages data), plain env names, Pages deploy fix | 118 passed, 98% | G2 round 2 approve
 2026-11-18 | ADR-007 | PR #13 squash    | ADR-007 Yahoo interim source, data pipeline design, gap register (14), cards P1-T36..T38 | 118 passed, 98% | owner (docs only)
 2026-11-18 | P1-T36 | PR #15 squash    | DataSource protocol, DuckDB market store (raw snapshots, revisions, kind guard, atomic ingest), synthetic market, ingest CLI | 198 passed, 96.5% | G2 round 3 approve
+2026-11-18 | tools  | PR #16 squash    | PO data: gap register and card due dates (build_status.py) | 213 passed | G2 round 3 point verified by manager
+2026-11-18 | P1-T37 | PR #19 squash    | YahooSource (interim, optional [yahoo]); rescale refetch, per-ticker resume | 265 passed, 97.7% | G2 approve (round 3, after merge)
+2026-11-18 | P1-T38 | PR #20 squash    | DQ checks v0, gap register, data status / data gaps | 363 passed, 97.0% | owner override; open: trailing synthetic suspension gap fails DQ on some days
+2026-11-18 | docs   | PR #18 squash    | engine HTML diagrams, Phase 1 data constraints, CLAUDE.md no-watermark rule | docs | owner override after 4 G2 rounds
+2026-11-18 | ADR-003 | PR #21 squash   | ADR-003 accepted in part; card P1-T11 | docs | owner override after 2 G2 rounds
+2026-11-18 | P1-T11 | PR #23 squash    | simulator core (HOSE rules, ledger, order lifecycle, ideal/executable) | 456 passed | owner override; open: late-action entitlement, turnover denominator, pre-ex pending rescale (G2 request changes)
 ```

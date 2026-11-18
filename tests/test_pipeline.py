@@ -233,7 +233,7 @@ def test_second_run_with_existing_run_id_is_refused(cfg: AppConfig, paths: AppPa
             "SELECT run_id, rows_written, status FROM ingest_runs"
         ).fetchall()
         frame = store.read_prices(["AAA"], START, END).set_index("date")
-    assert rows == [(first.run_id, 10, "ok")]
+    assert rows == [(first.run_id, 10, "ok_with_warnings")]  # derived limits: tick warnings
     assert frame.loc[date(2026, 3, 4), "close"] != 9_999.0
     assert set(frame["revision"]) == {0}
 
@@ -326,7 +326,15 @@ def test_ingest_run_row_recorded(cfg: AppConfig, paths: AppPaths) -> None:
             [report.run_id],
         ).fetchone()
         actions = store.read_corporate_actions(["AAA"])
-    assert row == ("synthetic_fake", 10, 10, 0, 0, "ok", str(report.raw_path))
+    assert row == (
+        "synthetic_fake",
+        10,
+        10,
+        0,
+        0,
+        "ok_with_warnings",
+        str(report.raw_path),
+    )
     assert list(actions["type"]) == ["cash"]
     assert list(actions["source"]) == ["synthetic_fake"]
 
@@ -485,11 +493,20 @@ def test_cli_ingest_writes_synthetic_store(tmp_path: Path, monkeypatch: pytest.M
     assert "written" in second.output
 
 
+def _use_synthetic_by_default(home: Path) -> None:
+    """The shipped default is `yahoo`; these tests need the config default to be synthetic."""
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "config.yaml").write_text(
+        "data:" + chr(10) + "  source: synthetic" + chr(10), encoding="utf-8"
+    )
+
+
 def test_cli_default_source_and_resume_date(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = tmp_path / "home"
     monkeypatch.setenv("APP_HOME", str(home))
+    _use_synthetic_by_default(home)
     assert (
         runner.invoke(app, ["ingest", "--from", "2026-03-02", "--to", "2026-03-04"]).exit_code == 0
     )
@@ -501,6 +518,7 @@ def test_cli_default_source_and_resume_date(
 
 def test_cli_up_to_date_is_a_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
+    _use_synthetic_by_default(tmp_path / "home")
     runner.invoke(app, ["ingest", "--from", "2026-03-02", "--to", "2026-03-04"])
     result = runner.invoke(app, ["ingest", "--to", "2026-03-04"])
     assert result.exit_code == 0

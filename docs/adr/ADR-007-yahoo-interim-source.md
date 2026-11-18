@@ -48,9 +48,12 @@ without Yahoo's prior permission, with no personal-use exception; `yfinance` say
    [data-gaps.md](../data-gaps.md) and shown by `vnstratlab data status` (P1-T38). Each gap names
    the affected tables, cards and exit criteria, the workaround now, and how to close it.
 5. **Price basis is explicit.** Every `prices_daily` row records `source` and `price_basis`
-   (`raw` | `split_adjusted` | `synthetic`). Rows with `price_basis = split_adjusted` are never
-   adjusted again (P1-T06), and HOSE limit/tick checks on them are warnings, not failures
-   (P1-T08 / P1-T38).
+   (`raw` | `split_adjusted` | `synthetic`). Split factors are never re-applied to rows with
+   `price_basis = split_adjusted` (P1-T06); cash-dividend adjustment for signals still applies.
+   HOSE limit/tick checks on these rows are warnings, not failures (P1-T08 / P1-T38). For
+   execution, P1-T06 reconstructs raw-like prices and limits from the stock events and the
+   engine consumes them ([engine.md §2](../engine.md#phase-1-data-constraints-adr-007)).
+   *Clarification of this item acknowledged by the owner on 2026-11-18.*
 6. **Config.** New `data:` section in `defaults.yaml` (P1-T36): `data.source` (default
    `synthetic` in P1-T36, changed to `yahoo` by P1-T37 under this ADR), adapter options, rate
    limit. `project.backfill_start` stays 2015-01-01; tickers simply start when Yahoo history

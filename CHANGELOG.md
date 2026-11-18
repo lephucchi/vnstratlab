@@ -31,6 +31,21 @@ All notable changes are documented here. The format follows
   `po/data.json` is no longer written.
 
 ### Added
+- Data-quality checks use a per-year calendar (warnings in years with incomplete holiday
+  lists), summarise findings on rescaled split-adjusted history, report per-ticker holes and mark
+  a crashed check run `dq_crashed` (P1-T38 review fixes).
+- Data quality (P1-T38): nine checks after every ingest stored in `dq_results`
+  (`vnstratlab.data.quality`), run statuses `ok_with_warnings` and `failed_dq` (exit 1),
+  `vnstratlab data status [--json]` and `vnstratlab data gaps`, a typed gap register loader
+  (`vnstratlab.data.gaps`) and a `gaps: N open (...)` line in `doctor`.
+- Yahoo adapter (P1-T37): `YahooSource` (optional extra `pip install "vnstratlab[yahoo]"`,
+  `data.source` default is now `yahoo`, new `data.yahoo` config), rate limit with retries and
+  backoff, holiday filler-row and partial-bar rules, a one-time terms notice stored in
+  `<home>/state/accepted_sources.json` (`ingest --accept-source-terms` for schedulers), and a
+  `partial` run status when a ticker fails. Refreshes resume per ticker with an overlap
+  (`data.yahoo.overlap_sessions`, default 5, ADR-007) and re-download a ticker in full when Yahoo
+  rescales its history or reports a new split; terms acceptance is keyed by source and terms URL;
+  `--to` defaults to today in Vietnam time. `VNSTOCK_API_KEY` is removed.
 - Data pipeline (P1-T36): `DataSource` protocol and registry, DuckDB market store with raw
   Parquet snapshots, revisions and a `store_meta.kind` guard (synthetic data goes to
   `market-synthetic.duckdb`, real data to `market.duckdb`), deterministic synthetic market

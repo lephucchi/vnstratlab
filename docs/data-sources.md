@@ -23,7 +23,7 @@
 
 | Source | Type | Status | Notes |
 |---|---|---|---|
-| Yahoo Finance via `yfinance` (P1-T37) | Optional adapter `[yahoo]`, no account | **Interim Phase 1 price source** (ADR-007) | Split-adjusted prices, HOSE only, no indices; ToS restricts automated access, user's own responsibility. [Review](reports/data-source-yahoo.md) · [gaps](data-gaps.md) |
+| Yahoo Finance via `yfinance` (P1-T37) | Optional adapter `[yahoo]`, no account | **Interim Phase 1 price source** (ADR-007); adapter implemented (P1-T37) | Split-adjusted prices, HOSE only, no indices; ToS restricts automated access, user's own responsibility. [Review](reports/data-source-yahoo.md) · [gaps](data-gaps.md) |
 | CafeF EOD files (user download) | Files imported by the user | Candidate to close GAP-01/GAP-04 | Raw and adjusted, HOSE/HNX/UPCoM; manual download; terms not yet reviewed |
 | Synthetic market (P1-T36) | Seeded generator: OHLCV, limits, ticks, lots, corporate actions | **Used for tests, CI, `demo`** | Labelled synthetic everywhere; never evidence about the real market |
 | `vnstock` 6 | Proprietary library (vendor index, not PyPI) | **Rejected as a dependency** | Pre-v6 releases stopped working on 2026-11-10; v6 has expiring releases and a remote switch-off. [Review](reports/data-source-vnstock.md) |

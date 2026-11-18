@@ -1,6 +1,7 @@
 # ADR-003: Engine and architecture refinements
 
-- Status: **proposed** (owner decision required; plan §2 and §6 are unchanged until accepted)
+- Status: **accepted in part** (owner, 2026-11-18): proposals 1, 3, 4, 6–12 accepted; 2 and 5
+  deferred until benchmarks (P1-T20/P1-T21) show a need
 - Date: 2026-11-17
 - Deciders: owner
 - Related: [engine.md](../engine.md), [strategies.md](../strategies.md), plan D11, §6.4
@@ -29,15 +30,29 @@ that touch fixed decisions. Each item below can be accepted or rejected on its o
 
 ## Decision
 
-Pending. Proposed default: accept 1, 3, 4, 6–12 now (clarifications and safety); accept 2 and
-5 when benchmarks (P1-T20/T21) show a need.
+**2026-11-18, owner:** accept proposals 1, 3, 4, 6, 7, 8, 9, 10, 11 and 12 now. Proposals 2
+(vectorised fast path) and 5 (effective number of trials) stay open until benchmarks from
+P1-T20/P1-T21 show a need. New config keys arrive with the card that first uses them
+(P1-T11: 6, 7, 9, 12; P1-T12: 8; P1-T20+: 10); their default values are listed on that card and
+frozen by the owner when the card merges. Values marked [VERIFY] keep that status until checked
+against an official source (gate G3).
+
+Owner confirmations on 2026-11-18 for P1-T11: `cash_proceeds_offset = 3` [VERIFY] (consistent
+with shares sellable from the T+3 open; broker advances are never assumed) and the additional
+key `stock_dividend_listing_lag_sessions = 20` [VERIFY] (fallback when `listing_date` is missing),
+which was not in the original list of proposal 6. Proposal 1's enforcement starts with the AST
+boundary test (`tests/test_data_boundary.py`); an `import-linter` CI job is a later chore.
+
+With the interim Yahoo source (ADR-007), proposal 6 ("execution on raw prices") is served by
+raw-like execution prices reconstructed from split-adjusted rows and stored stock events
+([engine.md §2](../engine.md#phase-1-data-constraints-adr-007)).
 
 ## Consequences if accepted
 
-- plan §2 D11 gains a note on the guarded fast path (2); §6.4 rule 3 gains the code-hash rule (3).
+- ~~plan §2 D11 gains a note on the guarded fast path (2)~~ — deferred with proposal 2; §6.4 rule 3 gains the code-hash rule (3).
 - `defaults.yaml` / `hose.yaml` gain the keys in 6, 7, 8, 9 (owner freezes values); plan §5.5 `corporate_actions` gains `pay_date`, `listing_date` (6).
 - P1-T11, P1-T12, P1-T13, P1-T20–T23 acceptance criteria gain the corresponding tests.
-- New CI job: `import-linter` contracts (1).
+- New CI job: `import-linter` contracts (1) — a later chore; the AST boundary test enforces the data boundary now.
 
 ## Alternatives considered
 

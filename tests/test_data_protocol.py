@@ -28,7 +28,7 @@ def _arr(*values: float) -> np.ndarray:
 
 
 def test_data_section_defaults(cfg: AppConfig) -> None:
-    assert cfg.data.source == "synthetic"
+    assert cfg.data.source == "yahoo"
     syn = cfg.data.synthetic
     assert syn.seed == 20261118
     assert syn.start.isoformat() == "2015-01-01"
