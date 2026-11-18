@@ -50,7 +50,7 @@ nav:
       - Decision records:
           - Index: adr/README.md
           - ADR-001: adr/ADR-001-python-core-recommend-only.md
-          - ADR-003 (proposed): adr/ADR-003-engine-architecture.md
+          - ADR-003: adr/ADR-003-engine-architecture.md
           - ADR-004: adr/ADR-004-selection-method.md
           - ADR-005: adr/ADR-005-long-horizon-monthly.md
           - ADR-006: adr/ADR-006-synthetic-first.md

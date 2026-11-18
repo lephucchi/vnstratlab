@@ -2,13 +2,14 @@
 
 > **Status: design.** Nothing in this page runs yet. It specifies what cards P1-T10 (features),
 > P1-T11 (simulator), P1-T12 (risk), P1-T13 (strategy registry), P1-T20–T23 (lab) must build.
-> Proposed changes to fixed decisions are in [ADR-003](adr/ADR-003-engine-architecture.md).
+> Engine refinements are in [ADR-003](adr/ADR-003-engine-architecture.md) (accepted in part).
 > Strategy rules are in [strategies.md](strategies.md).
 >
-> **Config keys and table columns not yet in `defaults.yaml`, `hose.yaml` or plan §5.5 are
-> proposals of ADR-003** (e.g. `engine.*`, `cash_proceeds_offset`, `rights_policy`,
-> `cash_dividend_pay_lag_days`, `risk.stop_cooldown_sessions`, `corporate_actions.pay_date`
-> and `listing_date`). They become real only when ADR-003 is accepted and the owning card adds them.
+> **Config keys and table columns not yet in `defaults.yaml`, `hose.yaml` or plan §5.5** (e.g.
+> `engine.*`, `cash_proceeds_offset`, `rights_policy`, `cash_dividend_pay_lag_days`,
+> `risk.stop_cooldown_sessions`, `corporate_actions.pay_date` and `listing_date`) come from
+> ADR-003, **accepted in part on 2026-11-18**. They become real when the owning card adds them
+> (P1-T11 for the engine keys); proposals 2 (fast path) and 5 (effective trials) are deferred.
 
 The engine turns **target weights** produced by strategies into **simulated orders, fills,
 positions and returns** under HOSE rules. The same engine serves backtests, the lab, paper
@@ -220,14 +221,16 @@ One engine, three switches:
 | `capital_vnd` | very large | book capital (default 11,000,000) |
 | `costs` | on | on |
 | `limits_and_settlement` | on | on |
+| proceeds offset | 0 | `cash_proceeds_offset` (3, [VERIFY]) |
 
-Property test (must hold for random synthetic data): with `lots=off` and capital → ∞,
-executable returns equal ideal returns to 1e-10.
+Property test (must hold for random synthetic data): with `lots=off`, capital = `ideal_capital_vnd`
+and weights low enough that cash never binds, executable returns equal ideal returns to 1e-10
+(the proceeds offset differs, so equality is undefined when cash binds).
 
 **Speed.** The lab's heavy loop (all trials × all periods × bootstrap) needs ideal returns
 only. Paper books, meta-backtests and stress tests run executable mode. A vectorised fast path
-for ideal mode is allowed only if a CI property test proves it equals the event loop
-(ADR-003 §2).
+for ideal mode is **deferred** (ADR-003 §2): it may be added only after benchmarks show a need
+and the owner accepts it, behind a CI property test proving it equals the event loop.
 
 ## 11. Outputs per run
 
