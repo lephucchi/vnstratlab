@@ -5,10 +5,11 @@
 > Proposed changes to fixed decisions are in [ADR-003](adr/ADR-003-engine-architecture.md).
 > Strategy rules are in [strategies.md](strategies.md).
 >
-> **Config keys and table columns not yet in `defaults.yaml`, `hose.yaml` or plan §5.5 are
-> proposals of ADR-003** (e.g. `engine.*`, `cash_proceeds_offset`, `rights_policy`,
-> `cash_dividend_pay_lag_days`, `risk.stop_cooldown_sessions`, `corporate_actions.pay_date`
-> and `listing_date`). They become real only when ADR-003 is accepted and the owning card adds them.
+> **Config keys and table columns not yet in `defaults.yaml`, `hose.yaml` or plan §5.5** (e.g.
+> `engine.*`, `cash_proceeds_offset`, `rights_policy`, `cash_dividend_pay_lag_days`,
+> `risk.stop_cooldown_sessions`, `corporate_actions.pay_date` and `listing_date`) come from
+> ADR-003, **accepted in part on 2026-11-18**. They become real when the owning card adds them
+> (P1-T11 for the engine keys); proposals 2 (fast path) and 5 (effective trials) are deferred.
 
 The engine turns **target weights** produced by strategies into **simulated orders, fills,
 positions and returns** under HOSE rules. The same engine serves backtests, the lab, paper

@@ -1,6 +1,7 @@
 # ADR-003: Engine and architecture refinements
 
-- Status: **proposed** (owner decision required; plan §2 and §6 are unchanged until accepted)
+- Status: **accepted in part** (owner, 2026-11-18): proposals 1, 3, 4, 6–12 accepted; 2 and 5
+  deferred until benchmarks (P1-T20/P1-T21) show a need
 - Date: 2026-11-17
 - Deciders: owner
 - Related: [engine.md](../engine.md), [strategies.md](../strategies.md), plan D11, §6.4
@@ -29,8 +30,16 @@ that touch fixed decisions. Each item below can be accepted or rejected on its o
 
 ## Decision
 
-Pending. Proposed default: accept 1, 3, 4, 6–12 now (clarifications and safety); accept 2 and
-5 when benchmarks (P1-T20/T21) show a need.
+**2026-11-18, owner:** accept proposals 1, 3, 4, 6, 7, 8, 9, 10, 11 and 12 now. Proposals 2
+(vectorised fast path) and 5 (effective number of trials) stay open until benchmarks from
+P1-T20/P1-T21 show a need. New config keys arrive with the card that first uses them
+(P1-T11: 6, 7, 9, 12; P1-T12: 8; P1-T20+: 10); their default values are listed on that card and
+frozen by the owner when the card merges. Values marked [VERIFY] keep that status until checked
+against an official source (gate G3).
+
+With the interim Yahoo source (ADR-007), proposal 6 ("execution on raw prices") is served by
+raw-like execution prices reconstructed from split-adjusted rows and stored stock events
+([engine.md §2](../engine.md#phase-1-data-constraints-adr-007)).
 
 ## Consequences if accepted
 

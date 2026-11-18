@@ -56,7 +56,7 @@ This document is research and engineering planning for an open-source project. I
 | D8 | Horizons | Short = 1 week (5 sessions), Medium = 3–6 months, Long = 1 year |
 | D9 | Capital | Three independent paper books, one per horizon, 11,000,000 VND each (section 4) |
 | D10 | Strategy selection | Lab with two statistical gates, Model Confidence Set, Hedge weights shrunk toward equal weight. Never "pick the single best backtest" |
-| D11 | One engine | Backtest, lab and paper books use the same code path; only the `Executor` differs |
+| D11 | One engine | Backtest, lab and paper books use the same code path; only the `Executor` differs. A vectorised fast path for ideal mode is allowed only behind a CI equality test (ADR-003 §2, deferred) |
 | D12 | Execution | **None.** Recommend-only; only `SimExecutor` and `PaperExecutor` exist (ADR-001) |
 | D13 | Hardware | Runs on a normal laptop; GPU not required. Optional user VPS |
 | D14 | Comments and docs | English. User-facing UI text and Telegram messages in Vietnamese |
@@ -269,7 +269,7 @@ Full process: [workflow.md](../workflow.md). Agent definitions: `.claude/agents/
 
 1. **No lookahead.** A value used at date `t` must have been knowable at the close of `t`. Fundamentals use `published_at`; if missing, assume availability 45 days after quarter end and flag it. News published after 14:45 counts for the next trading day.
 2. **No invented data.** Never type prices, fundamentals or news into code or fixtures except clearly synthetic test fixtures named `synthetic_*`.
-3. **Parameters are frozen.** Strategy params, gate thresholds, λ, η and risk limits come from `config.yaml`. A worker never edits them to make a result look better. A new parameter set is a new row in `trial_registry`, registered **before** it is backtested.
+3. **Parameters are frozen.** Strategy params, gate thresholds, λ, η and risk limits come from `config.yaml`. A worker never edits them to make a result look better. A new parameter set is a new row in `trial_registry`, registered **before** it is backtested. Trial identity includes the strategy code hash, feature version and engine version (ADR-003 §3), so a code change is a new trial.
 4. **Count every trial.** Anything backtested is registered. Deflated Sharpe uses the total trial count.
 5. **Deterministic.** Fixed random seeds; bootstrap seeds in config; same inputs give the same outputs.
 6. **Tests.** pytest; unit tests use fixtures and never hit the network; engine rules (T+2/T+3, limits, lots, fees) each have hand-computed test cases.
@@ -413,7 +413,7 @@ News-based and ML strategies are excluded from the Phase 1 core. Each strategy h
 ### M1.3 — Engine
 
 **P1-T11 — Simulator core (SimExecutor)**
-- Depends on: P1-T02, P1-T36 (was P1-T06; ADR-006)
+- Depends on: P1-T02, P1-T36 (was P1-T06; ADR-006), ADR-003 (accepted) · card: [P1-T11](../cards/P1-T11-simulator-core.md)
 - Goal: event loop that turns target weights into orders and fills.
 - Rules: decision at close of t, fill at open of t+1; no buy fill if open at ceiling, no sell fill if open at floor; sell allowed only from the configured settlement offset; round to lots (odd lots per config with odd-lot slippage); tick rounding for limit prices; fees, sales tax, slippage per Appendix A.
 - Outputs: per-period ideal and executable returns, positions, turnover.
