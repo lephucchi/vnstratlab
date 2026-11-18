@@ -56,7 +56,7 @@ This document is research and engineering planning for an open-source project. I
 | D8 | Horizons | Short = 1 week (5 sessions), Medium = 3–6 months, Long = 1 year |
 | D9 | Capital | Three independent paper books, one per horizon, 11,000,000 VND each (section 4) |
 | D10 | Strategy selection | Lab with two statistical gates, Model Confidence Set, Hedge weights shrunk toward equal weight. Never "pick the single best backtest" |
-| D11 | One engine | Backtest, lab and paper books use the same code path; only the `Executor` differs. A vectorised fast path for ideal mode is allowed only behind a CI equality test (ADR-003 §2, deferred) |
+| D11 | One engine | Backtest, lab and paper books use the same code path; only the `Executor` differs |
 | D12 | Execution | **None.** Recommend-only; only `SimExecutor` and `PaperExecutor` exist (ADR-001) |
 | D13 | Hardware | Runs on a normal laptop; GPU not required. Optional user VPS |
 | D14 | Comments and docs | English. User-facing UI text and Telegram messages in Vietnamese |
@@ -207,7 +207,7 @@ class Executor(Protocol):
 | --- | --- | --- |
 | market.duckdb | `universe_membership` | ticker, index_code, effective_from, effective_to, source_url |
 | market.duckdb | `prices_daily` | ticker, date, open, high, low, close, volume, value, ref_price, ceiling, floor, source, ingested_at |
-| market.duckdb | `corporate_actions` | ticker, ex_date, type (cash/stock/bonus/rights), ratio_or_amount, source |
+| market.duckdb | `corporate_actions` | ticker, ex_date, type (cash/stock/bonus/rights), ratio_or_amount, source; optional `pay_date`, `listing_date` (ADR-003 §6, added by P1-T06) |
 | market.duckdb | `prices_adjusted` | ticker, date, adj_open … adj_close, adj_factor |
 | market.duckdb | `fundamentals_q` | ticker, fiscal_period, metric, value, **published_at**, ingested_at |
 | market.duckdb | `features_daily` | ticker, date, feature columns…, feature_version |
@@ -413,7 +413,7 @@ News-based and ML strategies are excluded from the Phase 1 core. Each strategy h
 ### M1.3 — Engine
 
 **P1-T11 — Simulator core (SimExecutor)**
-- Depends on: P1-T02, P1-T36 (was P1-T06; ADR-006), ADR-003 (accepted) · card: [P1-T11](../cards/P1-T11-simulator-core.md)
+- Depends on: P1-T02, P1-T36 (was P1-T06; ADR-006), ADR-003 (accepted in part) · card: [P1-T11](../cards/P1-T11-simulator-core.md)
 - Goal: event loop that turns target weights into orders and fills.
 - Rules: decision at close of t, fill at open of t+1; no buy fill if open at ceiling, no sell fill if open at floor; sell allowed only from the configured settlement offset; round to lots (odd lots per config with odd-lot slippage); tick rounding for limit prices; fees, sales tax, slippage per Appendix A.
 - Outputs: per-period ideal and executable returns, positions, turnover.

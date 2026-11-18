@@ -37,6 +37,12 @@ P1-T20/P1-T21 show a need. New config keys arrive with the card that first uses 
 frozen by the owner when the card merges. Values marked [VERIFY] keep that status until checked
 against an official source (gate G3).
 
+Owner confirmations on 2026-11-18 for P1-T11: `cash_proceeds_offset = 3` [VERIFY] (consistent
+with shares sellable from the T+3 open; broker advances are never assumed) and the additional
+key `stock_dividend_listing_lag_sessions = 20` [VERIFY] (fallback when `listing_date` is missing),
+which was not in the original list of proposal 6. Proposal 1's enforcement starts with the AST
+boundary test (`tests/test_data_boundary.py`); an `import-linter` CI job is a later chore.
+
 With the interim Yahoo source (ADR-007), proposal 6 ("execution on raw prices") is served by
 raw-like execution prices reconstructed from split-adjusted rows and stored stock events
 ([engine.md §2](../engine.md#phase-1-data-constraints-adr-007)).

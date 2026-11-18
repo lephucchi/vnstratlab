@@ -227,8 +227,8 @@ executable returns equal ideal returns to 1e-10.
 
 **Speed.** The lab's heavy loop (all trials × all periods × bootstrap) needs ideal returns
 only. Paper books, meta-backtests and stress tests run executable mode. A vectorised fast path
-for ideal mode is allowed only if a CI property test proves it equals the event loop
-(ADR-003 §2).
+for ideal mode is **deferred** (ADR-003 §2): it may be added only after benchmarks show a need
+and the owner accepts it, behind a CI property test proving it equals the event loop.
 
 ## 11. Outputs per run
 
