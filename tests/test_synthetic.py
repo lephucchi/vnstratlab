@@ -143,6 +143,14 @@ def test_ex_price_across_the_50000_boundary(cfg: AppConfig) -> None:
     assert ex_price("cash", 51_950.0, 2_000.0, ticks) == 49_950.0
 
 
+def test_ex_price_rounds_down_not_to_nearest(cfg: AppConfig) -> None:
+    ticks = TickTable.from_config(cfg)
+    # 57,590 / 1.15 = 50,078.26; tick is 100 at >= 50,000, so down -> 50,000 (nearest: 50,100)
+    assert ex_price("stock", 57_590.0, 0.15, ticks) == 50_000.0
+    # 52,090 - 2,000 = 50,090 -> down 50,000 (nearest: 50,100)
+    assert ex_price("cash", 52_090.0, 2_000.0, ticks) == 50_000.0
+
+
 def test_ex_price_hand_computed(cfg: AppConfig) -> None:
     ticks = TickTable.from_config(cfg)
     assert ex_price("cash", 25_300.0, 1_000.0, ticks) == 24_300.0

@@ -11,7 +11,7 @@ a mismatching open or write raises ``SourceError``.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -187,11 +187,12 @@ class MarketStore:
         self._in_tx = True
         try:
             yield
-        except BaseException:
-            _run(self._con, "ROLLBACK")
-            raise
-        else:
             _run(self._con, "COMMIT")
+        except BaseException:
+            # also reached when COMMIT itself raises: never leave a transaction open
+            with suppress(duckdb.Error):  # no transaction left to roll back
+                _run(self._con, "ROLLBACK")
+            raise
         finally:
             self._in_tx = False
 
@@ -204,14 +205,14 @@ class MarketStore:
         missing = [c for c in PRICE_COLUMNS if c not in frame.columns]
         if missing:
             raise SourceError(f"price frame is missing columns: {', '.join(missing)}")
-        if frame.empty:
-            return UpsertResult(0, 0)
-        if frame.duplicated(["ticker", "date", "source"]).any():
-            raise SourceError("price frame has duplicate (ticker, date, source) keys")
         for basis in frame["price_basis"].unique():
             self._require_kind(kind_of_basis(str(basis)), "price frame")
         for name in frame["source"].unique():
             self._require_kind(kind_of_source(str(name)), "price frame (source name)")
+        if frame.empty:
+            return UpsertResult(0, 0)
+        if frame.duplicated(["ticker", "date", "source"]).any():
+            raise SourceError("price frame has duplicate (ticker, date, source) keys")
         incoming = frame[list(PRICE_COLUMNS)]
         stamp = _naive_utc(now)
         con = self._con
@@ -259,15 +260,18 @@ class MarketStore:
     def upsert_corporate_actions(
         self, frame: pd.DataFrame, run_id: str, kind: Kind | None = None
     ) -> UpsertResult:
-        """Upsert actions; ``kind`` defaults to the kind implied by each row's source name."""
+        """Upsert actions. Every row's source name must match the store kind; ``kind`` is an
+        additional constraint, never a replacement for that check."""
         missing = [c for c in ACTION_COLUMNS if c not in frame.columns]
         if missing:
             raise SourceError(f"corporate-action frame is missing columns: {', '.join(missing)}")
-        if frame.empty:
-            return UpsertResult(0, 0)
-        kinds = {kind} if kind else {kind_of_source(str(s)) for s in frame["source"].unique()}
+        kinds = {kind_of_source(str(s)) for s in frame["source"].unique()}
+        if kind is not None:
+            kinds.add(kind)
         for found in kinds:
             self._require_kind(found, "corporate-action frame")
+        if frame.empty:
+            return UpsertResult(0, 0)
         incoming = frame[list(ACTION_COLUMNS)].drop_duplicates(
             ["ticker", "ex_date", "type", "source"]
         )

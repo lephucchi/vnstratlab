@@ -80,6 +80,12 @@ it fails, the transaction rolls back (no partial rows) and a single `ingest_runs
 `status = "error"` is recorded; the raw snapshot is kept as evidence of what was fetched.
 The store also refuses rows whose `source` name or `price_basis` disagrees with its kind.
 
+One kind rule: a source's kind comes from its `SourceInfo`, and `kind_of_source(name)` and
+`kind_of_basis(price_basis)` must agree. The synthetic source is named `synthetic` and is the
+only source with `price_basis = synthetic`; any other combination is a configuration error and
+`ingest` raises `SourceError` before anything is written (no raw snapshot, no run row). Every
+corporate-action row's `source` is checked the same way, even when a kind is passed explicitly.
+
 ## 5. Commands
 
 ```bash

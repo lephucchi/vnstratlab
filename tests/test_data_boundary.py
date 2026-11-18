@@ -72,13 +72,26 @@ def test_boundary_checker_resolves_relative_imports(tmp_path: Path) -> None:
     names = [n for n in _imports(bad, tmp_path) if _is_forbidden(n)]
     assert "vnstratlab.data.sources.synthetic" in names
     assert "vnstratlab.data.sources" in names
+    assert "vnstratlab.data.protocol" in _imports(bad, tmp_path)  # resolved, then not flagged
     assert not any(n.endswith("protocol") for n in names)
+    nested = pkg / "sub"
+    nested.mkdir()
+    deep = nested / "mod.py"
+    deep.write_text("from .. import data\nfrom . import sibling\n")
+    assert _imports(deep, tmp_path) == [
+        "vnstratlab.engine",
+        "vnstratlab.engine.data",
+        "vnstratlab.engine.sub",
+        "vnstratlab.engine.sub.sibling",
+    ]
 
 
 def test_downstream_scan_uses_the_relative_resolver() -> None:
-    for package in DOWNSTREAM:
-        for path in (SRC / package).rglob("*.py"):
-            _imports(path)  # must not raise for any downstream module
+    scanned = [p for package in DOWNSTREAM for p in (SRC / package).rglob("*.py")]
+    assert scanned  # the downstream packages exist and are scanned
+    assert all(_package_of(p)[1] in DOWNSTREAM for p in scanned)
+    for path in scanned:
+        assert [n for n in _imports(path) if _is_forbidden(n)] == []
 
 
 def test_importing_data_package_pulls_no_source_library() -> None:

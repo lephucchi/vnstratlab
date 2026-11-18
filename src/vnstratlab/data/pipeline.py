@@ -24,7 +24,7 @@ from vnstratlab.data.protocol import (
     universe_tickers,
 )
 from vnstratlab.data.raw import write_raw
-from vnstratlab.data.store import Kind, MarketStore, RunRecord
+from vnstratlab.data.store import Kind, MarketStore, RunRecord, kind_of_basis, kind_of_source
 
 if TYPE_CHECKING:
     from vnstratlab.config.models import AppConfig
@@ -56,7 +56,19 @@ class IngestReport:
 
 
 def source_kind(source: DataSource) -> Kind:
-    return "synthetic" if source.info.price_basis == "synthetic" else "real"
+    """Kind from ``SourceInfo``; the name and the price basis must agree (one rule).
+
+    The source named ``synthetic`` is the only one with ``price_basis = synthetic``. A
+    disagreement is a configuration error and is refused before anything is written.
+    """
+    info = source.info
+    by_basis = kind_of_basis(info.price_basis)
+    if kind_of_source(info.name) != by_basis:
+        raise SourceError(
+            f"source {info.name!r} with price_basis {info.price_basis!r} is inconsistent: only the "
+            "source named 'synthetic' may use price_basis 'synthetic'"
+        )
+    return by_basis
 
 
 def make_run_id(now: datetime, source: str, start: date, end: date) -> str:
@@ -135,26 +147,30 @@ def ingest(
                         raw_path=str(raw_path),
                     )
                 )
-        except BaseException:
+        except BaseException as original:
+            # BaseException on purpose: Ctrl-C mid-write also leaves an error audit row.
             # The transaction rolled back: no price, action or "ok" run row survives. Keep the
             # raw snapshot and leave one audit row with status="error".
-            store.record_run(
-                RunRecord(
-                    run_id=run_id,
-                    source=source.info.name,
-                    started_at=started,
-                    finished_at=clock(),
-                    start_date=start,
-                    end_date=end,
-                    tickers=",".join(tickers),
-                    rows_in=len(raw),
-                    rows_written=0,
-                    rows_changed=0,
-                    rows_dropped=0,
-                    status="error",
-                    raw_path=str(raw_path),
+            try:
+                store.record_run(
+                    RunRecord(
+                        run_id=run_id,
+                        source=source.info.name,
+                        started_at=started,
+                        finished_at=clock(),
+                        start_date=start,
+                        end_date=end,
+                        tickers=",".join(tickers),
+                        rows_in=len(raw),
+                        rows_written=0,
+                        rows_changed=0,
+                        rows_dropped=0,
+                        status="error",
+                        raw_path=str(raw_path),
+                    )
                 )
-            )
+            except Exception as secondary:
+                original.add_note(f"also failed to record the error run row: {secondary!r}")
             raise
     return IngestReport(
         run_id=run_id,

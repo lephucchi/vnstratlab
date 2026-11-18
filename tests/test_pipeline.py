@@ -147,6 +147,10 @@ def test_changed_close_bumps_revision(cfg: AppConfig, paths: AppPaths) -> None:
     assert frame.loc[date(2026, 3, 4), "revision"] == 1
     assert frame.loc[date(2026, 3, 4), "close"] == 9_999.0
     assert frame.loc[date(2026, 3, 2), "revision"] == 0
+    # the cascade: 03-05's ref_price is the changed close, 03-06 is untouched
+    assert frame.loc[date(2026, 3, 5), "revision"] == 1
+    assert frame.loc[date(2026, 3, 5), "ref_price"] == 9_999.0
+    assert frame.loc[date(2026, 3, 6), "revision"] == 0
 
 
 def test_exactly_one_changed_row_with_source_limits(cfg: AppConfig, paths: AppPaths) -> None:
@@ -232,6 +236,55 @@ def test_second_run_with_existing_run_id_is_refused(cfg: AppConfig, paths: AppPa
     assert rows == [(first.run_id, 10, "ok")]
     assert frame.loc[date(2026, 3, 4), "close"] != 9_999.0
     assert set(frame["revision"]) == {0}
+
+
+def test_synthetic_named_source_with_raw_basis_is_refused_before_any_write(
+    cfg: AppConfig, paths: AppPaths
+) -> None:
+    class Mislabelled(SyntheticFakeSource):
+        def __init__(self) -> None:
+            super().__init__(basis="raw")
+            self.info = SourceInfo("synthetic", "raw", True, None, None)  # type: ignore[arg-type]
+
+        def fetch_daily(self, tickers: Sequence[str], start: date, end: date) -> pd.DataFrame:
+            return super().fetch_daily(
+                tickers, date(2030, 1, 1), date(2030, 1, 2)
+            )  # none in window
+
+    with pytest.raises(SourceError, match="inconsistent"):
+        run(cfg, paths, Mislabelled())
+    assert not paths.home.exists()
+
+
+def test_other_name_with_synthetic_basis_is_refused_before_write_raw(
+    cfg: AppConfig, paths: AppPaths
+) -> None:
+    class V2(SyntheticFakeSource):
+        def __init__(self) -> None:
+            super().__init__(basis="synthetic")
+            self.info = SourceInfo("synthetic_v2", "synthetic", True, None, None)
+
+    with pytest.raises(SourceError, match="inconsistent"):
+        run(cfg, paths, V2())
+    assert not paths.raw_dir.exists()
+    assert not paths.synthetic_market_db.exists()
+    assert not paths.market_db.exists()
+
+
+def test_error_row_failure_reraises_the_original(
+    cfg: AppConfig, paths: AppPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*args: object, **kwargs: object) -> None:
+        raise SourceError("actions failed")
+
+    def also_boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("audit write failed")
+
+    monkeypatch.setattr(MarketStore, "upsert_corporate_actions", boom)
+    monkeypatch.setattr(MarketStore, "record_run", also_boom)
+    with pytest.raises(SourceError, match="actions failed") as info:
+        run(cfg, paths, SyntheticFakeSource())
+    assert any("audit write failed" in n for n in info.value.__notes__)
 
 
 def test_write_raw_refuses_to_overwrite(paths: AppPaths) -> None:

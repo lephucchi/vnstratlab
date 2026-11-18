@@ -145,6 +145,21 @@ def test_source_name_must_match_store_kind(tmp_path: Path) -> None:
         store.upsert_prices(synthetic_prices(basis="synthetic", source="yahoo"), "r", NOW)
 
 
+def test_actions_source_name_checked_even_when_kind_is_given(tmp_path: Path) -> None:
+    with MarketStore(tmp_path / "m.duckdb", "real") as store:
+        with pytest.raises(SourceError):
+            store.upsert_corporate_actions(synthetic_actions("synthetic"), "r", "real")
+        assert store.read_corporate_actions(["AAA"]).empty
+
+
+def test_commit_failure_rolls_back_and_clears_state(tmp_path: Path) -> None:
+    with MarketStore(tmp_path / "m.duckdb", "real") as store:
+        with pytest.raises(duckdb.Error), store.transaction():
+            store.connection.execute("COMMIT")  # the helper's own COMMIT then fails
+        with store.transaction():  # the store is usable again
+            pass
+
+
 def test_duplicate_run_id_is_not_replaced(tmp_path: Path) -> None:
     record = RunRecord(
         "r1", "s", NOW, NOW, date(2026, 3, 2), date(2026, 3, 3), "AAA", 1, 1, 0, 0, "ok", None
