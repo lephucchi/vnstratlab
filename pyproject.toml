@@ -31,6 +31,9 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "pyyaml>=6.0",
+    "duckdb>=1.1",
+    "pandas>=2.2",
+    "pyarrow>=16",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +44,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.10",
     "types-PyYAML",
+    "pandas-stubs",
     # tools/encrypt_po.py (Pages build): AES-GCM for the PO dashboard data
     "cryptography>=42",
 ]

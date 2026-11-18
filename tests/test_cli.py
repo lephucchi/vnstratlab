@@ -40,7 +40,6 @@ def test_version() -> None:
     [
         (["demo"], "P1-T32"),
         (["init"], "P1-T35"),
-        (["ingest", "--from", "2020-01-01"], "P1-T03"),
         (["backtest", "--strategy", "S02_breakout20"], "P1-T20"),
         (["lab", "--horizon", "short"], "P1-T22"),
         (["meta-backtest", "--horizon", "long"], "P1-T23"),

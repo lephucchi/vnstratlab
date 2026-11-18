@@ -227,6 +227,18 @@ class Notify(_Model):
     telegram: Flag
 
 
+class SyntheticConfig(_Model):
+    seed: StrictInt
+    start: dt.date
+    corporate_actions_per_ticker_per_year: Annotated[float, Field(ge=0, le=12, strict=True)]
+    suspension_probability: Pct
+
+
+class DataConfig(_Model):
+    source: Name
+    synthetic: SyntheticConfig
+
+
 # ------------------------------------------------------------------ markets/<name>.yaml
 
 
@@ -389,6 +401,7 @@ class AppConfig(_Model):
     strategies: Annotated[Mapping[str, Any], AfterValidator(_deep_freeze), PlainSerializer(_thaw)]
     news: News
     notify: Notify
+    data: DataConfig
     market: Market
     universe: Universe
 

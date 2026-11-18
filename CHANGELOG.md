@@ -23,6 +23,12 @@ All notable changes are documented here. The format follows
   `po/data.json` is no longer written.
 
 ### Added
+- Data pipeline (P1-T36): `DataSource` protocol and registry, DuckDB market store with raw
+  Parquet snapshots, revisions and a `store_meta.kind` guard (synthetic data goes to
+  `market-synthetic.duckdb`, real data to `market.duckdb`), deterministic synthetic market
+  (HOSE tick grid, daily limits, dividends, suspensions), derived price limits, and a working
+  `vnstratlab ingest [--source] [--from] [--to] [--dry-run]`. New `data:` config section;
+  runtime deps `duckdb`, `pandas`, `pyarrow`.
 - PO dashboard login: `PO_USERNAME` / `PO_PASSWORD` (GitHub secrets for the Pages build),
   `tools/encrypt_po.py` (AES-256-GCM, PBKDF2-SHA256 600k, NFC-normalised credentials).
 - Config loader and trading calendar (P1-T02): typed frozen config (`load_config`, `ConfigError`

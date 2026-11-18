@@ -17,7 +17,10 @@ import typer
 
 from vnstratlab import __version__
 from vnstratlab.calendar import holiday_coverage
-from vnstratlab.config.loader import ConfigError, load_config_with_info
+from vnstratlab.config.loader import ConfigError, load_config, load_config_with_info
+from vnstratlab.data.pipeline import IngestReport, default_start
+from vnstratlab.data.pipeline import ingest as ingest_data
+from vnstratlab.data.protocol import SourceError, get_source, source_names
 from vnstratlab.paths import get_paths
 from vnstratlab.settings import load_settings
 
@@ -114,17 +117,70 @@ def init() -> None:
     _not_implemented("P1-T35")
 
 
+def _parse_date(value: str | None, option: str) -> date | None:
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise typer.BadParameter(f"{value!r} is not a YYYY-MM-DD date", param_hint=option) from None
+
+
+def _echo_ingest_report(report: IngestReport) -> None:
+    typer.echo(f"run {report.run_id}  source {report.source}  {report.start} .. {report.end}")
+    typer.echo(
+        f"rows in {report.rows_in}, written {report.rows_written}, "
+        f"changed {report.rows_changed}, dropped {report.rows_dropped}"
+    )
+    if report.dry_run:
+        typer.echo("dry run: nothing was written")
+        for name, frame in report.preview.items():
+            typer.echo(f"{name} (first 5 of {len(frame)} rows):")
+            typer.echo(frame.head(5).to_string(index=False))
+    else:
+        typer.echo(f"store {report.db_path}")
+        typer.echo(f"raw   {report.raw_path}")
+
+
 @app.command()
 def ingest(
+    source: Annotated[
+        str | None, typer.Option("--source", help="Data source; default data.source in config.")
+    ] = None,
     from_date: Annotated[
-        str | None, typer.Option("--from", help="Backfill start date, YYYY-MM-DD.")
+        str | None,
+        typer.Option("--from", help="Start date YYYY-MM-DD; default: day after the latest stored."),
+    ] = None,
+    to_date: Annotated[
+        str | None, typer.Option("--to", help="End date YYYY-MM-DD; default: today.")
     ] = None,
     dry_run: DryRun = False,
 ) -> None:
     """Download or refresh market data into the local data directory."""
-    if from_date is not None:
-        date.fromisoformat(from_date)
-    _not_implemented("P1-T03")
+    start = _parse_date(from_date, "--from")
+    end = _parse_date(to_date, "--to") or date.today()
+    if start is not None and start > end:
+        raise typer.BadParameter(f"--from {start} is after --to {end}")
+    paths = get_paths()
+    try:
+        cfg = load_config(paths.home)
+    except ConfigError as exc:
+        typer.echo("config: INVALID", err=True)
+        for problem in exc.problems:
+            typer.echo(f"  {problem}", err=True)
+        raise typer.Exit(code=1) from None
+    name = source or cfg.data.source
+    try:
+        adapter = get_source(name, cfg)
+        start = start or default_start(cfg, paths, adapter)
+        if start > end:
+            typer.echo(f"{name}: up to date (latest stored session is on or after {end})")
+            return
+        report = ingest_data(cfg, paths, adapter, start, end, dry_run=dry_run)
+    except SourceError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2 if name not in source_names() else 1) from None
+    _echo_ingest_report(report)
 
 
 @app.command()

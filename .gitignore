@@ -6,7 +6,7 @@
 *.key
 
 # --- market data and local state: never commit (provider terms, privacy)
-data/
+/data/
 *.duckdb
 *.duckdb.wal
 *.sqlite

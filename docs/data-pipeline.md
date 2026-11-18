@@ -62,9 +62,9 @@ Plan §5.5 tables, with columns added by ADR-007:
 
 | Table | Key | Columns added |
 |---|---|---|
-| `prices_daily` | (ticker, date) | `price_basis` (`raw` / `split_adjusted` / `synthetic`), `derived_limits` (bool), `run_id`, `revision` |
-| `corporate_actions` | (ticker, ex_date, type) | `source`, `run_id` |
-| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_dropped, status, raw_path |
+| `prices_daily` | (ticker, date, source) | `price_basis` (`raw` / `split_adjusted` / `synthetic`), `derived_limits` (bool), `run_id`, `revision` |
+| `corporate_actions` | (ticker, ex_date, type, source) | `source`, `run_id` |
+| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_changed, rows_dropped, status, raw_path |
 | `dq_results` | (run_id, check, ticker, date) | severity (`error` / `warning`), detail (P1-T38) |
 
 Rules: raw values are never overwritten silently; an upsert that changes a stored value
