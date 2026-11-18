@@ -3,7 +3,7 @@ id: P1-T38
 title: Data-quality checks v0, gap register and `vnstratlab data status`
 milestone: M1.1 Data
 release: v0.1.0
-status: in-review
+status: done
 branch: feat/P1-T38-quality-gaps
 due: 2026-11-21
 ---
