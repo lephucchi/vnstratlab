@@ -74,10 +74,16 @@ function isOverdue(card) {
   return Boolean(card.due) && card.status !== "done" && card.due < todayIso();
 }
 
+// YYYY-MM-DD -> dd/mm/yyyy (other text is returned unchanged)
+function fmtDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso || "";
+}
+
 function dueChip(card) {
   if (!card.due) return null;
-  const [y, m, dd] = card.due.split("-");
-  const time = el("time", { datetime: card.due, title: `${dd}/${m}/${y}` }, `${dd}/${m}`);
+  const [, m, dd] = card.due.split("-");
+  const time = el("time", { datetime: card.due, title: fmtDate(card.due) }, `${dd}/${m}`);
   return isOverdue(card)
     ? el("span", { class: "chip bad" }, "Quá hạn: ", time)
     : el("span", { class: "chip" }, "Hạn: ", time);
@@ -199,28 +205,27 @@ function renderBoard(d) {
   $("#board").replaceChildren(...cols);
 }
 
-function gapEmpty(text) {
+function gapEmpty(...content) {
   $("#gap-counts").replaceChildren();
   $("#gap-src").textContent = "";
-  $("#gaps tbody").replaceChildren(el("tr", {}, el("td", { colspan: "5", class: "empty" }, text)));
+  $("#gaps tbody").replaceChildren(el("tr", {}, el("td", { colspan: "5", class: "empty" }, ...content)));
 }
 
 function renderGaps(d) {
   const g = d.gaps;
   if (!g) { gapEmpty("Bản dữ liệu này chưa có sổ khoảng trống (build cũ)."); return; }
   if (!g.available) {
-    const why = GAP_REASON[g.reason] || (g.reason ? `lý do kỹ thuật: ${g.reason}` : "");
-    gapEmpty(`Không đọc được sổ khoảng trống${why ? ` (${why})` : ""}.`);
+    // a known reason is shown in Vietnamese; an unknown one is the raw English text
+    const why = GAP_REASON[g.reason]
+      || (g.reason ? ["lý do kỹ thuật: ", el("span", { lang: "en" }, g.reason)] : null);
+    gapEmpty("Không đọc được sổ khoảng trống", why ? [" (", why, ")"].flat() : null, ".");
     return;
   }
   const items = g.items || [];
   const c = g.counts || {};
-  const origin = g.origin || "";
-  const src = [
-    g.source ? `${g.source === "synthetic" ? "Nguồn" : "Nguồn tạm"}: ${g.source}` : "",
-    origin.startsWith("branch:") ? `đọc từ nhánh ${origin.slice(7)} (chưa có trên develop)` : "",
-  ];
-  $("#gap-src").textContent = src.filter(Boolean).join(" · ");
+  $("#gap-src").textContent = g.source
+    ? `${g.source === "synthetic" ? "Nguồn" : "Nguồn tạm"}: ${g.source}`
+    : "";
   const group = (label, entries) =>
     el("div", { class: "gap-group", role: "group", "aria-label": label },
       el("span", { class: "muted small" }, label),
@@ -251,7 +256,7 @@ function renderGaps(d) {
               ...detail("Thiếu", x.missing),
               ...detail("Cách xử lý tạm", x.workaround),
               ...detail("Cách khắc phục", x.close_by),
-              ...detail("Ghi nhận ngày", x.since, {})
+              ...detail("Ghi nhận ngày", fmtDate(x.since), {})
             )
           )
         ),
