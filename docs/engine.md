@@ -15,6 +15,12 @@ positions and returns** under HOSE rules. The same engine serves backtests, the 
 books, meta-backtests and stress tests (plan D11). Only the `Executor` and a few mode flags
 differ.
 
+**Diagrams.** All figures for this page (layers, data to orders, two clocks, session loop,
+order lifecycle, one portfolio, lab selection, modes, build order) are in one HTML page:
+[engine-architecture.html](diagrams/engine-architecture.html).
+
+<iframe src="../diagrams/engine-architecture.html" title="Engine architecture diagrams" loading="lazy" style="width:100%;height:880px;border:1px solid #d9d9d9;border-radius:12px;"></iframe>
+
 ---
 
 ## 1. Layers
@@ -51,6 +57,22 @@ ADR-003 §1).
 price. Simulating fills on adjusted prices breaks the limit check (an adjusted open can sit
 below a raw ceiling that was actually hit), the tick grid and the cash needed per lot.
 Signals use adjusted prices so that a dividend does not look like a crash.
+
+### Phase 1 data constraints (ADR-007)
+
+The interim Yahoo source has **no raw series** (GAP-01) and **no exchange limits** (GAP-02),
+so until a raw source closes those gaps the engine runs as follows:
+
+| Table column | Yahoo rows | Engine behaviour in Phase 1 |
+|---|---|---|
+| `prices_daily.price_basis` | `split_adjusted` | Execution uses this series as an approximation of raw prices; results are labelled with the source and open gaps |
+| `ref_price`, `ceiling`, `floor` | derived from the previous stored close (`derived_limits = true`) | Limit checks run, but are approximate (wrong on ex-dates); every limit-blocked fill is logged in `order_events` with `derived_limits` |
+| Tick grid | historical prices are off-grid after scaling | Tick rounding applies only to recommended limit prices shown to the user (§5), as before |
+| `prices_adjusted` | P1-T06 must **not** adjust `split_adjusted` rows again | Signals read the same series; cash dividends adjusted by P1-T06 only |
+| Synthetic rows (`price_basis = synthetic`) | raw-like, on the tick grid, with exact limits | Engine rule tests (§14) run on synthetic data, where every rule is exact |
+
+Hand-computed engine tests therefore always use the synthetic market; real-data runs are for
+research and are never evidence for the rule tests.
 
 Corporate actions are applied to the simulated portfolio on the ex-date:
 

@@ -44,6 +44,7 @@ nav:
       - End-to-end flow: end-to-end-flow.md
       - Architecture: architecture.md
       - Engine specification: engine.md
+      - Engine diagrams: diagrams/engine-architecture.html
       - Strategy catalogue: strategies.md
       - Implementation plan: plan/plan.md
       - Decision records:
