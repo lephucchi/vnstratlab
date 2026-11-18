@@ -77,7 +77,8 @@ reason), `equity` (cash_available, cash_pending, cash_reserved, positions_value,
 
 #### Settled details (state them in docstrings; tests rely on them)
 - Fees and tax are charged on the **filled** value (price after slippage); amounts are not rounded
-  (VND floats); quantities are integers in executable mode, fractional in ideal mode.
+  (VND floats); quantities are integers when lots are on and fractional when lots are off (in
+  either mode).
 - Slippage tier: round-lot tier for every quantity when lots are off (ideal mode).
 - A new decision supersedes pending orders (same ticker and side keep id and carry count; others
   `cancelled`, reason "superseded").
@@ -86,7 +87,12 @@ reason), `equity` (cash_available, cash_pending, cash_reserved, positions_value,
   count toward the carry limit.
 - A ticker with no price row on a session (suspension): buys are cancelled, sells carried.
 - Dividend entitlement uses all shares held at pre-open of the ex-date (settled or not).
-- Pending order quantities scale by `1 + ratio` on a stock event.
+- Pending order quantities created **before** the ex-date scale by `1 + ratio` on a stock event
+  (floored to an integer when lots are on), also when no shares are held yet.
+- Entitlement for an action applied late (published after its ex-date) uses the shares held at
+  pre-open of the **ex-date**, not at the time it is applied: shares bought after the ex-date get
+  nothing; shares sold after the ex-date keep their entitlement.
+- Sells carried because of a suspension do not count toward `max_carry_sessions`.
 - `sales_tax_pct` authoritative source: `costs.sales_tax_pct` in defaults.yaml (hose.yaml's copy is
   informational and must equal it; a test asserts this).
 - Ideal mode uses proceeds offset 0 (engine.md §8); executable uses `cash_proceeds_offset`.
@@ -114,8 +120,9 @@ settlement offset 3.
 10. Stock dividend 10 % on 1,000 shares: `shares += 100` on the ex-date; the 100 new shares are
     sellable only from `listing_date` (or the lag); on a hand-built frame (close 50,000, ex-price
     45,450 = 50,000 / 1.1 rounded down to the tick) positions value goes 50,000,000 → 49,995,000:
-    the difference is below one tick × shares (100 × 1,100 = 110,000). An action published after its
-    ex-date is applied exactly once.
+    the difference is below one tick × shares (45,450 is in the 50-VND band: 50 × 1,100 = 55,000). An action published after its
+    ex-date is applied exactly once, with entitlement from the ex-date holdings (test: 1,000 shares
+    bought the day after the ex-date get no bonus shares and no equity jump).
 11. Limit-price helper: buy rounds down, sell rounds up: 49,973 → 49,950; 52,730 → 52,800; every
     tick band boundary tested.
 12. Ideal mode: fractional shares, `ideal_capital_vnd`; property test on ≥ 20 random synthetic

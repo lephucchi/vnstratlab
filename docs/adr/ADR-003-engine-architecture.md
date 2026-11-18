@@ -49,10 +49,10 @@ raw-like execution prices reconstructed from split-adjusted rows and stored stoc
 
 ## Consequences if accepted
 
-- plan §2 D11 gains a note on the guarded fast path (2); §6.4 rule 3 gains the code-hash rule (3).
+- ~~plan §2 D11 gains a note on the guarded fast path (2)~~ — deferred with proposal 2; §6.4 rule 3 gains the code-hash rule (3).
 - `defaults.yaml` / `hose.yaml` gain the keys in 6, 7, 8, 9 (owner freezes values); plan §5.5 `corporate_actions` gains `pay_date`, `listing_date` (6).
 - P1-T11, P1-T12, P1-T13, P1-T20–T23 acceptance criteria gain the corresponding tests.
-- New CI job: `import-linter` contracts (1).
+- New CI job: `import-linter` contracts (1) — a later chore; the AST boundary test enforces the data boundary now.
 
 ## Alternatives considered
 

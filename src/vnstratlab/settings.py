@@ -19,7 +19,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ENV_NAMES = (
     "APP_HOME",
     "LOG_LEVEL",
-    "VNSTOCK_API_KEY",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
     "PO_USERNAME",
@@ -41,9 +40,6 @@ class Settings(BaseSettings):
     app_home: Path | None = None
     log_level: str = "INFO"
 
-    # vnstock key, only if the installed vnstock version asks for one (source review: P1-T03).
-    vnstock_api_key: SecretStr | None = None
-
     # Optional Telegram report: the bot's token, and the id of the chat it posts to.
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
@@ -54,7 +50,6 @@ class Settings(BaseSettings):
 
     @field_validator(
         "app_home",
-        "vnstock_api_key",
         "telegram_bot_token",
         "telegram_chat_id",
         "po_username",
@@ -72,7 +67,6 @@ class Settings(BaseSettings):
         The PO login is maintainer-only (Pages build) and is not reported here.
         """
         return {
-            "vnstock_api_key": self.vnstock_api_key is not None,
             "telegram_bot_token": self.telegram_bot_token is not None,
             "telegram_chat_id": self.telegram_chat_id is not None,
         }

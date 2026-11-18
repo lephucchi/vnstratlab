@@ -64,7 +64,7 @@ Plan §5.5 tables, with columns added by ADR-007:
 |---|---|---|
 | `prices_daily` | (ticker, date, source) | `price_basis` (`raw` / `split_adjusted` / `synthetic`), `derived_limits` (bool), `run_id`, `revision` |
 | `corporate_actions` | (ticker, ex_date, type, source) | `source`, `run_id` |
-| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_changed, rows_dropped, status, raw_path |
+| `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_changed, rows_dropped, status (`ok`, `ok_with_warnings`, `partial`, `failed_dq`, `dq_crashed`, `error`), raw_path |
 | `dq_results` | (run_id, check, ticker, date) | severity (`error` / `warning`), detail (P1-T38) |
 
 Rules: raw values are never overwritten silently; an upsert that changes a stored value
@@ -86,6 +86,11 @@ only source with `price_basis = synthetic`; any other combination is a configura
 `ingest` raises `SourceError` before anything is written (no raw snapshot, no run row). Every
 corporate-action row's `source` is checked the same way, even when a kind is passed explicitly.
 
+Stock events use one convention for every source: `ratio_or_amount` of a `stock` event is the
+bonus fraction (0.10 = 10 new shares per 100). The Yahoo adapter converts Yahoo's split factor
+(1.1) with `factor - 1`; factors of 1 or less (reverse splits) are not stored and are reported
+as run warnings. Cash events hold VND per share.
+
 ## 5. Commands
 
 ```bash
@@ -95,6 +100,83 @@ vnstratlab ingest                                                   # refresh to
 vnstratlab data status                                              # stores, runs, DQ, gaps
 vnstratlab data gaps                                                # gap register only
 ```
+
+Refresh and resume (Yahoo): `vnstratlab ingest` without `--from` starts at the earliest per-ticker
+start over the universe. A ticker's start is its `data.yahoo.overlap_sessions`-th most recent
+stored session (default 5; `0` = the day after its latest date) or `project.backfill_start` when
+it has no rows, so a ticker that failed in a `partial` run is fetched again next time. `--to`
+defaults to today in Asia/Ho_Chi_Minh.
+
+Rescale rule: for sources with `rescale_refetch` (Yahoo), a ticker is re-fetched from
+`project.backfill_start` in the same run, and its rows replaced as a whole (earlier rows get
+`revision + 1`, `rescale detected, full refetch` is logged and shown in the report), when any
+fetched close on a stored date differs from the stored close by more than a relative 1e-6, or the
+response holds a `stock` event not yet stored. If that refetch fails the ticker is written
+nowhere (no mixed scales) and counts as failed. The refetch covers `project.backfill_start` up to the later of
+`--to` and the ticker's latest stored date, so rows after an explicit past `--to` are revised too.
+The store is opened read-write during the (rate-limited) download, so other processes cannot open
+it meanwhile. Split-adjusted OHLC is rounded to 4 decimals.
+
+Empty answers: for sources with `empty_is_failure` (Yahoo) a ticker with no rows at all counts as
+failed (`partial`) when it has no stored rows yet or the window holds a weekday after its first
+stored date. Retries: every exception from the fetch function is retried with exponential
+backoff, not only network errors.
+
+Exit codes of `vnstratlab ingest`: `0` ok or ok_with_warnings, `1` error (including a missing
+extra, refused terms, every ticker failing) or failed_dq, `2` usage error (bad date, unknown
+source), `3` partial (some tickers failed; the others were written, failed tickers are printed with a re-run hint;
+no data-quality error). Before the terms prompt
+the command checks that the adapter's library is importable and, if not, exits `1` with the
+install hint without asking for or storing acceptance.
+
+## 5a. Data-quality checks (P1-T38)
+
+After the write transaction commits, every non-dry ingest runs the checks on the run's source
+and date range and stores the findings in `dq_results` (`run_id, check, ticker, date, severity,
+detail`; `ticker` is empty for dataset-wide findings). The data stays even when a check fails,
+so it can be inspected. Severity follows the row's provenance: for `price_basis =
+split_adjusted` or `derived_limits` rows the limit and tick checks (and `missing_ticker`, since a
+suspension is possible) only warn (GAP-01, GAP-02).
+
+| Check | raw / synthetic | split_adjusted or derived limits |
+|---|---|---|
+| `duplicate_rows` | error | error |
+| `missing_ticker`, trailing gap | error | warning |
+| `missing_ticker`, interior hole | warning (suspension) | warning (suspension) |
+| `stale_data` | error | error |
+| `close_outside_limits` | error | warning |
+| `off_tick` | error | warning |
+| `ohlc_inconsistent` | error | error |
+| `zero_volume`, `repeated_bar`, `large_move` (> 15 %) | warning | warning |
+
+Sessions are the weekdays minus every holiday listed in the config; stored sessions are never
+the reference (a missing day would otherwise count as a holiday). In a year whose holiday list is
+`partial` or `missing` (GAP-05) an absence may be an unlisted holiday, so `stale_data` and
+`missing_ticker` only warn for sessions of such years (an error stays an error for sessions of
+complete years). `stale_data` compares the newest stored date with the last completed session
+(the day before a partial-bar cutoff). `missing_ticker` reports a ticker with no row on any
+session of the range, and, once per ticker, an interior hole (sessions after its first stored date
+without a row, before a later row of that ticker in the range). An interior hole is always a
+warning (a suspension is the usual cause); only a trailing gap follows the severity table.
+
+`duplicate_rows` is defensive: the primary key (ticker, date, source) already prevents duplicates
+in the store, so it only fires on a damaged file. `ohlc_inconsistent` and `close_outside_limits`
+share one absolute tolerance of 1e-6.
+
+Rescaled history: for split-adjusted or derived-limit rows dated before the ticker's last `stock`
+event, `close_outside_limits` and `off_tick` give ONE summary warning per ticker and check per
+run (count and date range) instead of one finding per row; rows on or after the ex-date are
+reported individually, so a genuine breach after a split still shows. Findings are inserted in
+one batch.
+
+Run status after the checks (`ingest_runs.status`): any error gives `failed_dq` (exit 1, even
+if tickers also failed); otherwise a `partial` run stays `partial` (exit 3, warnings are still
+stored); otherwise warnings give `ok_with_warnings` (exit 0) and none gives `ok`. If the checks
+themselves crash, the run is marked `dq_crashed` (the data is committed, the checks are
+incomplete; exit code 1), not `error`, which means the write was rolled back. Findings and the
+final status are written in one transaction. `vnstratlab data status [--json]` prints stores,
+the last 5 runs, the last run's checks and the open gaps; `vnstratlab data gaps [--status ...]
+[--json]` prints the register.
 
 ## 6. Running ingest on a schedule (interim)
 

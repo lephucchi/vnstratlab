@@ -89,7 +89,6 @@ Names are plain and conventional, without a project prefix.
 |---|---|---|
 | `APP_HOME` | App home override (not `HOME`, which belongs to the OS) | Optional |
 | `LOG_LEVEL` | Logging: `DEBUG`, `INFO`, `WARNING`, `ERROR` | Optional |
-| `VNSTOCK_API_KEY` | vnstock, only if the installed version asks for a key (source review in P1-T03) | Depends on source |
 | `TELEGRAM_BOT_TOKEN` | Telegram report: the token BotFather gives you | Optional |
 | `TELEGRAM_CHAT_ID` | Telegram report: the id of the chat the bot posts to (your private chat or a group) | Optional |
 | `PO_USERNAME`, `PO_PASSWORD` | PO dashboard login; the Pages build encrypts the dashboard data with them (`tools/encrypt_po.py`) | Pages build only |
