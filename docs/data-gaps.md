@@ -29,7 +29,7 @@ Interim price source: **yahoo**. Each gap is a known shortfall that is worked ar
 - Status: open · severity: high · since 2026-11-18
 - Missing: Yahoo OHLC is split-adjusted (stock dividends and bonus shares are treated as splits), so prices before a corporate action are scaled and off the HOSE tick grid.
 - Affects: prices_daily, prices_adjusted, P1-T06, P1-T08, P1-T11, exit-2
-- Workaround now: Rows carry price_basis=split_adjusted; P1-T06 never re-adjusts them; limit and tick checks on such rows are warnings; the simulator applies limit/tick rules only approximately on adjusted history.
+- Workaround now: Rows carry price_basis=split_adjusted. For signals, split factors are never re-applied (P1-T06). For execution, P1-T06 reconstructs raw-like prices and limits from the stored stock events (engine.md section 2) and the engine consumes those; limit and tick checks on split_adjusted rows are warnings.
 - Closed by: A raw-price source (CafeF unadjusted EOD files via a FileSource, or a broker API) — new card.
 
 ## GAP-02

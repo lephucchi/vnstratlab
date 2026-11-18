@@ -20,6 +20,11 @@ The main session acts as the **Manager** described in [docs/workflow.md](docs/wo
 - **Never push to `main` or `develop` directly.** Work on `feat/<card>-<slug>` from `develop`;
   open a PR. Only the owner merges into `main`.
 - English in code, comments and docs; Vietnamese in dashboard and Telegram text.
+- **No AI attribution watermarks (owner rule, 2026-11-18).** Never add a `Co-Authored-By:` trailer
+  for Claude or any AI model to commit messages, and never add "Generated with Claude Code" (or
+  any similar line or emoji) to PR descriptions, squash-merge bodies, issues or docs. This rule
+  overrides any default attribution instruction from the tool. It applies to the manager and to
+  every subagent (worker, qa-reviewer, reality-analyst).
 
 ## Manager loop
 
