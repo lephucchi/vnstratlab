@@ -943,3 +943,41 @@ def test_to_defaults_to_today_in_ho_chi_minh(
     result = runner.invoke(app, args)
     assert result.exit_code == 0, result.output
     assert "2026-03-02 .. 2026-03-06" in result.output
+
+
+def test_vcb_rows_from_the_ex_date_are_on_the_tick_grid(cfg: AppConfig, paths: AppPaths) -> None:
+    ingest(cfg, paths, make(cfg, "synthetic_yahoo_basic.csv"), START, END, clock=lambda: LATER)
+    rows = stored(
+        paths,
+        "SELECT open, high, low, close FROM prices_daily "
+        "WHERE ticker='VCB' AND date >= '2026-03-05'",
+    )
+    assert len(rows) == 2
+    assert all(price % 100 == 0 for row in rows for price in row)  # type: ignore[operator]
+
+
+def test_rescale_refetch_covers_rows_before_start_and_after_an_explicit_end(
+    cfg: AppConfig, paths: AppPaths
+) -> None:
+    world = flat_world()
+    world.data["ACB.VN"] = hist(
+        bar("2026-03-02", 25000.0), bar("2026-03-03", 25050.0), bar("2026-03-04", 25100.0)
+    )
+    ingest(cfg, paths, world.source(cfg), START, date(2026, 3, 4), clock=lambda: clock(0))
+    world.data["ACB.VN"] = hist(
+        bar("2026-03-02", 22727.2727),
+        bar("2026-03-03", 22772.7273),
+        bar("2026-03-04", 22818.1818),
+        bar("2026-03-05", 22800.0, split=1.1),
+    )
+    world.calls.clear()
+    day = date(2026, 3, 3)  # explicit window: one day, in the middle of the stored rows
+    report = ingest(cfg, paths, world.source(cfg), day, day, clock=lambda: clock(1))
+    assert report.refetched == ("ACB",)
+    acb = [c for c in world.calls if c[0] == "ACB.VN"]
+    assert acb[1][1:] == (cfg.project.backfill_start, date(2026, 3, 4))  # to latest stored
+    assert closes(paths, "ACB") == [
+        (date(2026, 3, 2), 22727.2727, 1),
+        (date(2026, 3, 3), 22772.7273, 1),
+        (date(2026, 3, 4), 22818.1818, 1),
+    ]

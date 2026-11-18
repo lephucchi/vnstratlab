@@ -137,6 +137,7 @@ class _Acquired:
     failed: dict[str, str]
     warnings: tuple[str, ...]
     refetched: tuple[str, ...]
+    window: tuple[date, date]  # rows to keep: the run window widened by any full refetch
 
 
 def _replace_ticker(frame: pd.DataFrame, ticker: str, new: pd.DataFrame) -> pd.DataFrame:
@@ -256,12 +257,18 @@ def _acquire(
     failed = dict(getattr(source, "failures", {}))
     warnings = list(getattr(source, "warnings", ()))
     refetched: list[str] = []
+    hi = end
     backfill = cfg.project.backfill_start
     if store is not None and getattr(source, "rescale_refetch", False) and start > backfill:
         for ticker in _rescaled_tickers(raw, actions, store, name):
             log.warning("rescale detected, full refetch: %s from %s", ticker, backfill)
-            full = source.fetch_daily([ticker], backfill, end)
-            full_actions = source.fetch_corporate_actions([ticker], backfill, end)
+            # up to the ticker's latest stored date too: rows after an explicit past --to must
+            # not stay in the old scale
+            latest = store.latest_date(ticker)
+            full_end = max(end, latest) if latest is not None else end
+            hi = max(hi, full_end)
+            full = source.fetch_daily([ticker], backfill, full_end)
+            full_actions = source.fetch_corporate_actions([ticker], backfill, full_end)
             failed.update(getattr(source, "failures", {}))  # the refetch reset the source's own
             warnings = [w for w in warnings if not w.startswith(f"{ticker} ")]
             warnings.extend(getattr(source, "warnings", ()))
@@ -272,7 +279,8 @@ def _acquire(
         failed.update(_empty_failures(raw, tickers, failed, window, store, name))
     if failed and raw.empty:
         raise SourceError(f"every ticker failed: {', '.join(sorted(failed))}")
-    return _Acquired(raw, actions, failed, tuple(warnings), tuple(refetched))
+    keep = (backfill if refetched else start, hi)
+    return _Acquired(raw, actions, failed, tuple(warnings), tuple(refetched), keep)
 
 
 def ingest(
@@ -316,8 +324,8 @@ def ingest(
                 frame, dropped = normalise(
                     raw,
                     source,
-                    start,
-                    end,
+                    got.window[0],
+                    got.window[1],
                     ticks,
                     _prev_close(store, source.info.name, rescaled),
                     exclude_from=cutoff,
@@ -421,7 +429,7 @@ def _dry_run(
         frame, dropped = normalise(
             got.raw,
             source,
-            *window,
+            *got.window,
             ticks,
             _prev_close(store, name, set(got.refetched)),
             exclude_from=cutoff,

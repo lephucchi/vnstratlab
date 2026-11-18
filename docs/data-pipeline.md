@@ -112,7 +112,10 @@ Rescale rule: for sources with `rescale_refetch` (Yahoo), a ticker is re-fetched
 `revision + 1`, `rescale detected, full refetch` is logged and shown in the report), when any
 fetched close on a stored date differs from the stored close by more than a relative 1e-6, or the
 response holds a `stock` event not yet stored. If that refetch fails the ticker is written
-nowhere (no mixed scales) and counts as failed. Split-adjusted OHLC is rounded to 4 decimals.
+nowhere (no mixed scales) and counts as failed. The refetch covers `project.backfill_start` up to the later of
+`--to` and the ticker's latest stored date, so rows after an explicit past `--to` are revised too.
+The store is opened read-write during the (rate-limited) download, so other processes cannot open
+it meanwhile. Split-adjusted OHLC is rounded to 4 decimals.
 
 Empty answers: for sources with `empty_is_failure` (Yahoo) a ticker with no rows at all counts as
 failed (`partial`) when it has no stored rows yet or the window holds a weekday after its first
