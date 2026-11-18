@@ -48,6 +48,7 @@
       <a href="#how"><span data-lang="vi">Cách hoạt động</span><span data-lang="en">How it works</span></a>
       <a href="#selection"><span data-lang="vi">Chọn chiến lược</span><span data-lang="en">Selection</span></a>
       <a href="#strategies"><span data-lang="vi">Chiến lược</span><span data-lang="en">Strategies</span></a>
+      <a href="#data"><span data-lang="vi">Dữ liệu</span><span data-lang="en">Data</span></a>
       <a href="#status"><span data-lang="vi">Trạng thái</span><span data-lang="en">Status</span></a>
       <a href="docs/"><span data-lang="vi">Tài liệu</span><span data-lang="en">Docs</span></a>
     </nav>
@@ -69,6 +70,7 @@
       <a href="#how"><span data-lang="vi">Cách hoạt động</span><span data-lang="en">How it works</span></a>
       <a href="#selection"><span data-lang="vi">Chọn chiến lược</span><span data-lang="en">Selection</span></a>
       <a href="#strategies"><span data-lang="vi">Chiến lược</span><span data-lang="en">Strategies</span></a>
+      <a href="#data"><span data-lang="vi">Dữ liệu</span><span data-lang="en">Data</span></a>
       <a href="#status"><span data-lang="vi">Trạng thái</span><span data-lang="en">Status</span></a>
       <a href="docs/"><span data-lang="vi">Tài liệu</span><span data-lang="en">Docs</span></a>
     </nav>
@@ -316,15 +318,54 @@
     <p class="note mono" id="status-meta"></p>
   </section>
 
+  <!-- DATA -->
+  <section class="wrap section" id="data">
+    <div class="sec-head">
+      <p class="kicker mono">06 — <span data-lang="vi">Dữ liệu</span><span data-lang="en">Data</span></p>
+      <h2 data-lang="vi">Nguồn dữ liệu Phase 1: tạm thời, và nói rõ chỗ thiếu.</h2>
+      <h2 data-lang="en">Phase 1 data: interim, with the gaps written down.</h2>
+      <p class="sub" data-lang="vi">Từ 10/11/2026, <code>vnstock</code> không còn dùng miễn phí được. Phase 1 lấy giá ngày từ Yahoo Finance qua một bộ kết nối tùy chọn, cho tới khi có nguồn tốt hơn (<a href="https://github.com/lephucchi/vnstratlab/blob/develop/docs/adr/ADR-007-yahoo-interim-source.md">ADR-007</a>).</p>
+      <p class="sub" data-lang="en">Since 2026-11-10 <code>vnstock</code> is no longer free to use. Phase 1 reads daily prices from Yahoo Finance through an optional adapter until a better source exists (<a href="https://github.com/lephucchi/vnstratlab/blob/develop/docs/adr/ADR-007-yahoo-interim-source.md">ADR-007</a>).</p>
+    </div>
+    <div class="features">
+      <article class="feature">
+        <svg viewBox="0 0 24 24" class="f-ico" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg>
+        <h3 data-lang="vi">Yahoo Finance, tạm thời</h3><h3 data-lang="en">Yahoo Finance, interim</h3>
+        <p data-lang="vi">Giá OHLCV ngày của 13 mã ngân hàng VN30 (và TPB) trên HOSE. Không cần tài khoản. Cài thêm bằng <code>vnstratlab[yahoo]</code>.</p>
+        <p data-lang="en">Daily OHLCV for the 13 VN30 banks (and TPB) on HOSE. No account needed. Install with <code>vnstratlab[yahoo]</code>.</p>
+      </article>
+      <article class="feature">
+        <svg viewBox="0 0 24 24" class="f-ico" aria-hidden="true"><path d="M4 6h6v4H4zM14 6h6v4h-6zM9 16h6v4H9zM7 10v3h10v-3M12 13v3"/></svg>
+        <h3 data-lang="vi">Pipeline dữ liệu tách riêng</h3><h3 data-lang="en">A separate data pipeline</h3>
+        <p data-lang="vi">Chỉ lớp <code>vnstratlab.data</code> nói chuyện với nguồn. Engine và lab chỉ đọc bảng, nên đổi nguồn không phải sửa engine.</p>
+        <p data-lang="en">Only <code>vnstratlab.data</code> talks to a source. Engine and lab read tables only, so a new source never touches the engine.</p>
+      </article>
+      <article class="feature">
+        <svg viewBox="0 0 24 24" class="f-ico" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+        <h3 data-lang="vi">Dữ liệu ở máy của bạn</h3><h3 data-lang="en">Data stays on your machine</h3>
+        <p data-lang="vi">Bạn chọn nguồn và tuân theo điều khoản của nguồn đó. Repo, CI và trang này không bao giờ chứa giá thật.</p>
+        <p data-lang="en">You choose the source and follow its terms. The repository, CI and this site never contain real prices.</p>
+      </article>
+      <article class="feature">
+        <svg viewBox="0 0 24 24" class="f-ico" aria-hidden="true"><path d="M5 4h14v16H5zM9 9h6M9 13h6M9 17h3"/></svg>
+        <h3 data-lang="vi">Khoảng trống được ghi sổ</h3><h3 data-lang="en">Gaps on the record</h3>
+        <p data-lang="vi">14 khoảng trống có mã GAP-xx, ví dụ: không có giá gốc chưa điều chỉnh, không có chỉ số VN30, chỉ có sàn HOSE. Lệnh <code>vnstratlab data status</code> liệt kê đầy đủ.</p>
+        <p data-lang="en">14 numbered gaps (GAP-xx), e.g. no unadjusted prices, no VN30 index, HOSE only. <code>vnstratlab data status</code> lists them all.</p>
+      </article>
+    </div>
+    <p class="note" data-lang="vi">Danh sách đầy đủ: <a href="https://github.com/lephucchi/vnstratlab/blob/develop/docs/data-gaps.md">data-gaps.md</a> · thiết kế: <a href="https://github.com/lephucchi/vnstratlab/blob/develop/docs/data-pipeline.md">data-pipeline.md</a>. Dữ liệu tổng hợp (synthetic) vẫn dùng cho test, CI và demo.</p>
+    <p class="note" data-lang="en">Full list: <a href="https://github.com/lephucchi/vnstratlab/blob/develop/docs/data-gaps.md">data-gaps.md</a> · design: <a href="https://github.com/lephucchi/vnstratlab/blob/develop/docs/data-pipeline.md">data-pipeline.md</a>. Synthetic data is still used for tests, CI and the demo.</p>
+  </section>
+
   <!-- ROADMAP -->
   <section class="wrap section" id="roadmap">
     <div class="sec-head">
-      <p class="kicker mono">06 — <span data-lang="vi">Lộ trình</span><span data-lang="en">Roadmap</span></p>
+      <p class="kicker mono">07 — <span data-lang="vi">Lộ trình</span><span data-lang="en">Roadmap</span></p>
       <h2 data-lang="vi">Từng bước, từng phiên bản.</h2>
       <h2 data-lang="en">One version at a time.</h2>
     </div>
     <ol class="timeline">
-      <li class="now"><span class="mono v">v0.1</span><p data-lang="vi">Dữ liệu, bộ mô phỏng luật HOSE, chiến lược đầu tiên, backtest, demo offline</p><p data-lang="en">Data, HOSE simulator, first strategies, backtest, offline demo</p></li>
+      <li class="now"><span class="mono v">v0.1</span><p data-lang="vi">Pipeline dữ liệu (Yahoo tạm thời + synthetic), bộ mô phỏng luật HOSE, chiến lược đầu tiên, backtest, demo offline</p><p data-lang="en">Data pipeline (interim Yahoo + synthetic), HOSE simulator, first strategies, backtest, offline demo</p></li>
       <li><span class="mono v">v0.2</span><p data-lang="vi">Lab thống kê: DSR, PBO, SPA, MCS, meta-backtest, stress test</p><p data-lang="en">Statistical lab: DSR, PBO, SPA, MCS, meta-backtest, stress tests</p></li>
       <li><span class="mono v">v0.3</span><p data-lang="vi">Danh mục giả lập, dashboard, lịch chạy mỗi tối, Telegram</p><p data-lang="en">Paper books, dashboard, nightly scheduler, Telegram</p></li>
       <li><span class="mono v">v0.4</span><p data-lang="vi">Tin tức và chấm điểm bằng LLM (kiểm định đăng ký trước)</p><p data-lang="en">News and LLM scoring (pre-registered evaluation)</p></li>
@@ -336,7 +377,7 @@
   <section class="wrap section" id="install">
     <div class="install">
       <div>
-        <p class="kicker mono">07 — <span data-lang="vi">Cài đặt</span><span data-lang="en">Install</span></p>
+        <p class="kicker mono">08 — <span data-lang="vi">Cài đặt</span><span data-lang="en">Install</span></p>
         <h2 data-lang="vi">Chạy trên máy của bạn.<br><span class="dim">Dữ liệu của bạn ở lại đó.</span></h2>
         <h2 data-lang="en">Runs on your machine.<br><span class="dim">Your data stays there.</span></h2>
         <p class="sub" data-lang="vi">Khi phát hành: <code>uv tool install vnstratlab</code> hoặc <code>pipx install vnstratlab</code>.</p>
