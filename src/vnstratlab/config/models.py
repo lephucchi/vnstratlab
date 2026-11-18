@@ -142,6 +142,15 @@ class Risk(_Model):
     vol_target_annual: PositiveFloat | None
 
 
+class Engine(_Model):
+    unfilled_buy: Literal["cancel", "carry"]
+    unfilled_sell: Literal["carry", "cancel"]
+    unsettled_sell: Literal["queue_until_sellable"]
+    max_carry_sessions: NonNegInt
+    rights_policy: Literal["ignore"]
+    ideal_capital_vnd: PositiveFloat
+
+
 class Gate1(_Model):
     dsr_min: Annotated[float, Field(ge=0, le=1, strict=True)]
     pbo_max: Annotated[float, Field(ge=0, le=1, strict=True)]
@@ -318,6 +327,9 @@ class SessionsRule(_RuleMeta):
 
 
 class HoseRules(_Model):
+    cash_proceeds_offset: NonNegIntRule
+    cash_dividend_pay_lag_days: PositiveIntRule
+    stock_dividend_listing_lag_sessions: PositiveIntRule
     earliest_sell_session_offset: NonNegIntRule
     price_limit_pct: PctRule
     round_lot: PositiveIntRule
@@ -405,6 +417,7 @@ class AppConfig(_Model):
     books: Books
     costs: Costs
     risk: Risk
+    engine: Engine
     lab: Lab
     benchmarks: Benchmarks
     stress: Stress

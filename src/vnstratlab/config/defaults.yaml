@@ -48,6 +48,14 @@ benchmarks:                    # every lab report and recommendation is compared
   risk_free: {source: config, annual_rate: null}   # 12-month deposit rate, set by user [VERIFY]
   naive_selectors: [equal_weight_strategies, last_winner]
 
+engine:                        # simulator policies (ADR-003 6, 7, 9, 12); owner freezes at merge
+  unfilled_buy: cancel
+  unfilled_sell: carry
+  unsettled_sell: queue_until_sellable
+  max_carry_sessions: 5
+  rights_policy: ignore
+  ideal_capital_vnd: 1.0e+12   # "very large" capital for ideal mode (1.0e12 would parse as text)
+
 stress:                        # realism checks run by `vnstratlab stress` and QA gate G3
   cost_multipliers: [2.0, 3.0]
   fill_delay_sessions: [1, 2]

@@ -3,7 +3,7 @@ id: P1-T11
 title: Simulator core (SimExecutor) with HOSE rules
 milestone: M1.3 Engine
 release: v0.1.0
-status: todo
+status: done
 branch: feat/P1-T11-simulator-core
 due: 2026-12-04
 ---
