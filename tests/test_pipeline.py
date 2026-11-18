@@ -233,7 +233,7 @@ def test_second_run_with_existing_run_id_is_refused(cfg: AppConfig, paths: AppPa
             "SELECT run_id, rows_written, status FROM ingest_runs"
         ).fetchall()
         frame = store.read_prices(["AAA"], START, END).set_index("date")
-    assert rows == [(first.run_id, 10, "ok")]
+    assert rows == [(first.run_id, 10, "ok_with_warnings")]  # derived limits: tick warnings
     assert frame.loc[date(2026, 3, 4), "close"] != 9_999.0
     assert set(frame["revision"]) == {0}
 
@@ -326,7 +326,15 @@ def test_ingest_run_row_recorded(cfg: AppConfig, paths: AppPaths) -> None:
             [report.run_id],
         ).fetchone()
         actions = store.read_corporate_actions(["AAA"])
-    assert row == ("synthetic_fake", 10, 10, 0, 0, "ok", str(report.raw_path))
+    assert row == (
+        "synthetic_fake",
+        10,
+        10,
+        0,
+        0,
+        "ok_with_warnings",
+        str(report.raw_path),
+    )
     assert list(actions["type"]) == ["cash"]
     assert list(actions["source"]) == ["synthetic_fake"]
 

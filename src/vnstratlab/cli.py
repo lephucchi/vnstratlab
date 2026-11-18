@@ -8,17 +8,29 @@ mistake a stub for success.
 from __future__ import annotations
 
 import importlib.util
+import json
 import platform
 import sys
 from datetime import date
 from enum import StrEnum
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Any
 
+import duckdb
 import typer
 
 from vnstratlab import __version__
 from vnstratlab.calendar import holiday_coverage
 from vnstratlab.config.loader import ConfigError, load_config, load_config_with_info
+from vnstratlab.data.gaps import (
+    SEVERITIES,
+    Gap,
+    GapError,
+    GapRegister,
+    GapStatus,
+    gaps_summary_line,
+    load_gaps,
+)
 from vnstratlab.data.pipeline import (
     VN_TZ,
     IngestReport,
@@ -30,6 +42,7 @@ from vnstratlab.data.pipeline import (
 )
 from vnstratlab.data.pipeline import ingest as ingest_data
 from vnstratlab.data.protocol import DataSource, SourceError, get_source, source_names
+from vnstratlab.data.store import DQRecord, Kind, MarketStore, RunRecord
 from vnstratlab.paths import AppPaths, get_paths
 from vnstratlab.settings import load_settings
 
@@ -39,6 +52,10 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+
+data_app = typer.Typer(help="Inspect the local market data: stores, runs, checks, gaps.")
+app.add_typer(data_app, name="data")
 
 
 class Horizon(StrEnum):
@@ -110,6 +127,11 @@ def doctor() -> None:
     typer.echo("secrets:")
     for name, is_set in settings.secret_status().items():
         typer.echo(f"  {name:<20} {'set' if is_set else 'not set'}")
+    try:
+        typer.echo(gaps_summary_line(load_gaps()))
+    except GapError as exc:
+        typer.echo(f"gaps: INVALID ({exc})")
+        config_ok = False
     if not config_ok:
         raise typer.Exit(code=1)
 
@@ -148,7 +170,7 @@ def _echo_ingest_report(report: IngestReport) -> None:
             f"rescale detected, full refetch: {', '.join(report.refetched)} "
             "(earlier rows were revised)"
         )
-    if report.status != "ok":
+    if report.failed:
         typer.echo(f"status {report.status}: {len(report.failed)} ticker(s) failed", err=True)
         for ticker, message in sorted(report.failed.items()):
             typer.echo(f"  {ticker}: {message}", err=True)
@@ -157,6 +179,16 @@ def _echo_ingest_report(report: IngestReport) -> None:
             "so the failed tickers are fetched again.",
             err=True,
         )
+    if not report.dry_run:
+        errors = [r for r in report.dq if r.severity == "error"]
+        typer.echo(
+            f"status {report.status}; checks: {len(errors)} error(s), "
+            f"{len(report.dq) - len(errors)} warning(s)"
+        )
+        for r in errors[:_MAX_ERRORS]:
+            typer.echo(f"  error {r.check} {r.ticker or '-'} {r.date}: {r.detail}", err=True)
+        if len(errors) > _MAX_ERRORS:
+            typer.echo(f"  ... {len(errors) - _MAX_ERRORS} more (vnstratlab data status)", err=True)
     if report.dry_run:
         typer.echo("dry run: nothing was written")
         for name, frame in report.preview.items():
@@ -224,6 +256,7 @@ def ingest(
     ] = False,
 ) -> None:
     """Download or refresh market data into the local data directory."""
+    _tolerant_output()
     start = _parse_date(from_date, "--from")
     end = _parse_date(to_date, "--to") or utc_now().astimezone(VN_TZ).date()  # Vietnam today
     if start is not None and start > end:
@@ -250,8 +283,176 @@ def ingest(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2 if name not in source_names() else 1) from None
     _echo_ingest_report(report)
+    if report.status == "failed_dq":
+        raise typer.Exit(code=1)
     if report.status == "partial":
         raise typer.Exit(code=3)
+
+
+# ------------------------------------------------------------------ data status / gaps
+
+_MAX_ERRORS = 10
+_RUNS_SHOWN = 5
+
+
+def _run_dict(run: RunRecord) -> dict[str, Any]:
+    return {
+        "run_id": run.run_id,
+        "source": run.source,
+        "start": str(run.start_date),
+        "end": str(run.end_date),
+        "rows_written": run.rows_written,
+        "rows_changed": run.rows_changed,
+        "rows_dropped": run.rows_dropped,
+        "status": run.status,
+    }
+
+
+def _checks_dict(run_id: str, records: list[DQRecord]) -> dict[str, Any]:
+    errors = [r for r in records if r.severity == "error"]
+    return {
+        "run_id": run_id,
+        "errors": len(errors),
+        "warnings": len(records) - len(errors),
+        "first_errors": [
+            {"check": r.check, "ticker": r.ticker, "date": str(r.date), "detail": r.detail}
+            for r in errors[:_MAX_ERRORS]
+        ],
+    }
+
+
+def _store_status(path: Path, kind: Kind) -> dict[str, Any]:
+    entry: dict[str, Any] = {"file": path.name, "kind": kind}
+    try:
+        with MarketStore(path, kind, read_only=True) as store:
+            tickers = store.summary()
+            runs = store.recent_runs(_RUNS_SHOWN)
+            checks = None
+            if runs:
+                checks = _checks_dict(runs[0].run_id, store.read_dq_results(runs[0].run_id))
+            rows = store.row_count()
+    except (SourceError, duckdb.Error) as exc:
+        entry["error"] = str(exc)
+        return entry
+    entry["rows"] = rows
+    entry["tickers"] = [
+        {"ticker": t, "first": str(a), "last": str(b), "rows": n} for t, a, b, n in tickers
+    ]
+    entry["runs"] = [_run_dict(r) for r in runs]
+    entry["last_run_checks"] = checks
+    return entry
+
+
+def _gap_dict(gap: Gap) -> dict[str, Any]:
+    return gap.model_dump(mode="json")
+
+
+def _load_register_or_exit() -> GapRegister:
+    try:
+        return load_gaps()
+    except GapError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+
+
+def _echo_store(entry: dict[str, Any]) -> None:
+    typer.echo(f"{entry['file']}  ({entry['kind']})")
+    if "error" in entry:
+        typer.echo(f"  cannot read: {entry['error']}")
+        return
+    typer.echo(f"  rows {entry['rows']}, tickers {len(entry['tickers'])}")
+    for t in entry["tickers"]:
+        typer.echo(f"    {t['ticker']:<8} {t['first']} .. {t['last']}  ({t['rows']} rows)")
+    typer.echo("  last runs:")
+    for r in entry["runs"]:
+        typer.echo(
+            f"    {r['run_id']}  {r['source']}  {r['start']} .. {r['end']}  "
+            f"written {r['rows_written']}, changed {r['rows_changed']}, "
+            f"dropped {r['rows_dropped']}  {r['status']}"
+        )
+    checks = entry["last_run_checks"]
+    if checks is not None:
+        typer.echo(
+            f"  checks of last run {checks['run_id']}: "
+            f"{checks['errors']} error(s), {checks['warnings']} warning(s)"
+        )
+        for e in checks["first_errors"]:
+            typer.echo(f"    error {e['check']} {e['ticker'] or '-'} {e['date']}: {e['detail']}")
+
+
+def _tolerant_output() -> None:
+    """Never crash on Vietnamese text when stdout/stderr is a pipe or file with a legacy code
+    page (Windows cp1252): unencodable characters become '?'."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(errors="replace")
+
+
+def _echo_gap_list(gaps: list[Gap]) -> None:
+    for severity in SEVERITIES:
+        for gap in (g for g in gaps if g.severity == severity):
+            typer.echo(f"  [{severity}] {gap.id}  {gap.title} / {gap.title_vi}")
+
+
+@data_app.command("status")
+def data_status(
+    as_json: Annotated[bool, typer.Option("--json", help="Print everything as JSON.")] = False,
+) -> None:
+    """Show stores, the last ingest runs, the last run's checks and open data gaps (offline)."""
+    _tolerant_output()
+    paths = get_paths()
+    register = _load_register_or_exit()
+    stores = [
+        _store_status(paths.market_db_for(kind), kind)
+        for kind in ("real", "synthetic")
+        if paths.market_db_for(kind).is_file()
+    ]
+    open_gaps = register.with_status("open")
+    if as_json:
+        payload = {
+            "home": str(paths.home),
+            "stores": stores,
+            "gaps": {
+                "counts": register.open_counts(),
+                "open": [_gap_dict(g) for g in open_gaps],
+            },
+        }
+        typer.echo(json.dumps(payload, indent=2, ensure_ascii=True))
+        return
+    typer.echo(f"home {paths.home}")
+    typer.echo("stores:")
+    if not stores:
+        typer.echo("  no data yet. Try: vnstratlab ingest --source synthetic   (offline)")
+        typer.echo("  or:               vnstratlab ingest                      (default source)")
+    for entry in stores:
+        _echo_store(entry)
+    typer.echo(gaps_summary_line(register))
+    _echo_gap_list(open_gaps)
+
+
+@data_app.command("gaps")
+def data_gaps(
+    status: Annotated[GapStatus | None, typer.Option("--status", help="Filter by status.")] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print as JSON.")] = False,
+) -> None:
+    """Print the data gap register (docs/data-gaps.md)."""
+    _tolerant_output()
+    register = _load_register_or_exit()
+    gaps = register.with_status(status)
+    if as_json:
+        typer.echo(json.dumps([_gap_dict(g) for g in gaps], indent=2, ensure_ascii=True))
+        return
+    if not gaps:
+        typer.echo("no gaps with that status")
+        return
+    for gap in gaps:
+        typer.echo(f"{gap.id}  [{gap.severity}] {gap.status}  {gap.title}")
+        typer.echo(f"  vi:         {gap.title_vi}")
+        typer.echo(f"  missing:    {gap.missing}")
+        typer.echo(f"  affects:    {', '.join(gap.affects)}")
+        typer.echo(f"  workaround: {gap.workaround}")
+        typer.echo(f"  closed by:  {gap.close_by}")
 
 
 @app.command()

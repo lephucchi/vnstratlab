@@ -3,7 +3,7 @@ id: P1-T38
 title: Data-quality checks v0, gap register and `vnstratlab data status`
 milestone: M1.1 Data
 release: v0.1.0
-status: todo
+status: done
 branch: feat/P1-T38-quality-gaps
 due: 2026-11-21
 ---
@@ -34,7 +34,8 @@ due: 2026-11-21
 | Check | raw / synthetic | split_adjusted or derived limits |
 |---|---|---|
 | `duplicate_rows` (same ticker, date, source) | error | error |
-| `missing_ticker` (ticker has an earlier row but none on a session in the run range) | error | warning (suspension possible) |
+| `missing_ticker`, trailing gap (ticker has an earlier row but is behind at the end of the run range, or has none on any session) | error | warning (suspension possible) |
+| `missing_ticker`, interior hole (sessions without a row before a later row of the same ticker in the range) | warning (suspension) | warning (suspension) |
 | `stale_data` (latest date < last completed session) | error | error |
 | `close_outside_limits` | error | warning |
 | `off_tick` (price not on the tick grid) | error | warning |

@@ -3,7 +3,7 @@ id: P1-T37
 title: YahooSource adapter (interim Phase 1 price source)
 milestone: M1.1 Data
 release: v0.1.0
-status: todo
+status: done
 branch: feat/P1-T37-yahoo-source
 due: 2026-11-20
 ---
