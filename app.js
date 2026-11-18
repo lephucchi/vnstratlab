@@ -18,6 +18,25 @@ const ADR_LABEL = {
   "superseded": ["Thay thế", "info"],
 };
 
+const GAP_SEVERITY = {
+  "high": ["Cao", "bad"],
+  "medium": ["Trung bình", "warn"],
+  "low": ["Thấp", ""],
+};
+const GAP_STATUS = {
+  "open": ["Đang mở", "warn"],
+  "mitigated": ["Đã giảm thiểu", "info"],
+  "closed": ["Đã đóng", "ok"],
+};
+// technical reasons from tools/build_status.py → Vietnamese
+const GAP_REASON = {
+  "PyYAML not installed": "bản build thiếu thư viện PyYAML",
+  "gaps.yaml not found": "không tìm thấy tệp gaps.yaml",
+  "gaps.yaml could not be parsed": "tệp gaps.yaml sai cú pháp",
+  "gaps.yaml has no gap list": "tệp gaps.yaml không có danh sách khoảng trống",
+  "gap register could not be serialised": "không chuyển được sổ khoảng trống sang JSON",
+};
+
 const $ = (sel) => document.querySelector(sel);
 
 function el(tag, attrs = {}, ...children) {
@@ -44,6 +63,39 @@ function fmtTime(iso) {
   return d.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour12: false });
 }
 
+// Card due dates are calendar dates (YYYY-MM-DD); compare with the viewer's local date.
+function todayIso() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function isOverdue(card) {
+  return Boolean(card.due) && card.status !== "done" && card.due < todayIso();
+}
+
+function dueChip(card) {
+  if (!card.due) return null;
+  const [y, m, dd] = card.due.split("-");
+  const time = el("time", { datetime: card.due, title: `${dd}/${m}/${y}` }, `${dd}/${m}`);
+  return isOverdue(card)
+    ? el("span", { class: "chip bad" }, "Quá hạn: ", time)
+    : el("span", { class: "chip" }, "Hạn: ", time);
+}
+
+// cards with a due date first (earliest first), the rest in their original order
+function byDue(cards) {
+  return cards
+    .map((c, i) => [c, i])
+    .sort(([a, i], [b, j]) => {
+      if (a.due && b.due) return a.due < b.due ? -1 : a.due > b.due ? 1 : i - j;
+      if (a.due) return -1;
+      if (b.due) return 1;
+      return i - j;
+    })
+    .map(([c]) => c);
+}
+
 function runTone(run) {
   if (run.status !== "completed") return ["đang chạy", "info"];
   if (run.conclusion === "success") return ["thành công", "ok"];
@@ -66,6 +118,12 @@ function renderKpis(d) {
     ["Coverage", d.quality.coverage != null ? `${d.quality.coverage}%` : "—", "ngưỡng 80%"],
     ["Mục [VERIFY]", String(d.verify_items), "luật sàn / lịch nghỉ cần xác nhận"],
   ];
+  const overdue = d.cards.filter(isOverdue).length;
+  if (d.cards.some((c) => c.due)) kpis.splice(2, 0, ["Card quá hạn", String(overdue), "theo hạn trên task card"]);
+  if (d.gaps && d.gaps.available) {
+    const c = d.gaps.counts || {};
+    kpis.push(["Khoảng trống dữ liệu", String(c.open || 0), `đang mở · ${c.high || 0} mức cao (chưa đóng)`]);
+  }
   $("#kpis").replaceChildren(
     ...kpis.map(([label, value, sub]) =>
       el("div", { class: "kpi" }, el("div", { class: "label" }, label), el("div", { class: "value" }, value), el("div", { class: "sub" }, sub))
@@ -121,13 +179,14 @@ function renderBoard(d) {
   const phase = $("#phase-filter").value;
   const cards = d.cards.filter((c) => phase === "all" || c.phase === phase);
   const cols = BOARD_COLUMNS.map((status) => {
-    const inCol = cards.filter((c) => (status === "in-review" ? ["in-review", "changes-requested"].includes(c.status) : c.status === status));
+    const inCol = byDue(cards.filter((c) => (status === "in-review" ? ["in-review", "changes-requested"].includes(c.status) : c.status === status)));
     return el("div", { class: "col" },
       el("h3", {}, el("span", {}, STATUS_LABEL[status]), el("span", { class: "muted" }, String(inCol.length))),
       ...(status === "todo" && inCol.length > TODO_LIMIT ? inCol.slice(0, TODO_LIMIT) : inCol).map((c) =>
         el("div", { class: "task" },
           el("span", { class: "id" }, c.id), " ",
           c.status === "changes-requested" ? chip("cần sửa", "bad") : null,
+          dueChip(c),
           c.branch ? chip(c.branch, "info") : null,
           el("span", { class: "t" }, c.title)
         )
@@ -138,6 +197,70 @@ function renderBoard(d) {
     );
   });
   $("#board").replaceChildren(...cols);
+}
+
+function gapEmpty(text) {
+  $("#gap-counts").replaceChildren();
+  $("#gap-src").textContent = "";
+  $("#gaps tbody").replaceChildren(el("tr", {}, el("td", { colspan: "5", class: "empty" }, text)));
+}
+
+function renderGaps(d) {
+  const g = d.gaps;
+  if (!g) { gapEmpty("Bản dữ liệu này chưa có sổ khoảng trống (build cũ)."); return; }
+  if (!g.available) {
+    const why = GAP_REASON[g.reason] || (g.reason ? `lý do kỹ thuật: ${g.reason}` : "");
+    gapEmpty(`Không đọc được sổ khoảng trống${why ? ` (${why})` : ""}.`);
+    return;
+  }
+  const items = g.items || [];
+  const c = g.counts || {};
+  const origin = g.origin || "";
+  const src = [
+    g.source ? `${g.source === "synthetic" ? "Nguồn" : "Nguồn tạm"}: ${g.source}` : "",
+    origin.startsWith("branch:") ? `đọc từ nhánh ${origin.slice(7)} (chưa có trên develop)` : "",
+  ];
+  $("#gap-src").textContent = src.filter(Boolean).join(" · ");
+  const group = (label, entries) =>
+    el("div", { class: "gap-group", role: "group", "aria-label": label },
+      el("span", { class: "muted small" }, label),
+      ...entries.map(([key, [text, tone]]) => el("span", { class: `chip ${tone}` }, `${text}: ${c[key] || 0}`))
+    );
+  $("#gap-counts").replaceChildren(
+    group("Trạng thái", Object.entries(GAP_STATUS)),
+    group("Mức độ (chưa đóng)", Object.entries(GAP_SEVERITY))
+  );
+  if (!items.length) {
+    $("#gaps tbody").replaceChildren(el("tr", {}, el("td", { colspan: "5", class: "empty" }, "Không có khoảng trống nào.")));
+    return;
+  }
+  $("#gaps tbody").replaceChildren(
+    ...items.map((x) => {
+      const [sev, sevTone] = GAP_SEVERITY[x.severity] || [x.severity || "—", ""];
+      const [st, stTone] = GAP_STATUS[x.status] || [x.status || "—", ""];
+      // register texts other than title_vi are English
+      const detail = (k, v, attrs = { lang: "en" }) => (v ? [el("dt", {}, k), el("dd", attrs, v)] : []);
+      return el("tr", {},
+        el("th", { scope: "row" }, x.id),
+        el("td", {},
+          el("span", { class: "gap-title", lang: x.title_vi ? "vi" : "en" }, x.title_vi || x.title),
+          x.title_vi && x.title ? el("span", { class: "muted small gap-en", lang: "en" }, x.title) : null,
+          el("details", { class: "gap-more" },
+            el("summary", {}, "Chi tiết"),
+            el("dl", {},
+              ...detail("Thiếu", x.missing),
+              ...detail("Cách xử lý tạm", x.workaround),
+              ...detail("Cách khắc phục", x.close_by),
+              ...detail("Ghi nhận ngày", x.since, {})
+            )
+          )
+        ),
+        el("td", {}, chip(sev, sevTone)),
+        el("td", {}, chip(st, stTone)),
+        el("td", { class: "gap-affects" }, (x.affects || []).join(", ") || "—")
+      );
+    })
+  );
 }
 
 function renderAdrs(d) {
@@ -265,6 +388,7 @@ function show(data) {
   renderKpis(data);
   renderWaiting(data);
   renderRoadmap(data);
+  renderGaps(data);
   renderBoard(data);
   renderAdrs(data);
   renderQuality(data);

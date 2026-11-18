@@ -139,6 +139,22 @@ select { font: 13px var(--sans); background: var(--surface); color: var(--fg); b
 .table th { color: var(--muted); font: 500 11.5px var(--mono); text-transform: uppercase; letter-spacing: .05em; border-top: 0; }
 .table td:first-child { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
 
+/* data gap register */
+.gap-counts { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-bottom: 12px; }
+.gap-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gap-group > .muted { margin-right: 2px; }
+.gap-table tbody th { font: 500 12.5px var(--mono); color: var(--fg); text-transform: none; letter-spacing: 0; border-top: 1px solid var(--line); white-space: nowrap; }
+.gap-title { display: block; font-weight: 500; }
+.gap-en { display: block; }
+.gap-affects { font-size: 12.5px; color: var(--fg-2); min-width: 160px; }
+.gap-more { margin-top: 4px; }
+.gap-more summary { cursor: pointer; font-size: 12.5px; color: var(--fg-2); width: fit-content; border-radius: 4px; }
+.gap-more summary:hover { color: var(--fg); }
+.gap-more dl { margin: 8px 0 4px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; }
+.gap-more dt { color: var(--muted); }
+.gap-more dd { margin: 0; color: var(--fg-2); }
+@media (max-width: 560px) { .gap-more dl { grid-template-columns: 1fr; } .gap-more dd { margin-bottom: 6px; } }
+
 .q-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
 .q-row:first-child { border-top: 0; padding-top: 0; }
 .q-row .v { font-family: var(--mono); font-weight: 500; white-space: nowrap; }
