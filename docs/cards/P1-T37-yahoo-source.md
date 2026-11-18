@@ -85,6 +85,8 @@ data:
 7. Terms: non-interactive run without acceptance exits 1; `--accept-source-terms` writes the
    state file and proceeds; second run does not ask again.
 8. `VNSTOCK_API_KEY` no longer appears in `src/`, `.env.example` or `doctor` output.
+   Settings tests are hermetic: they `chdir` to `tmp_path` (or pass `_env_file=None`) so a
+   developer's own `.env` in the repo folder cannot change results (seen on 2026-11-18).
 9. Tests never import `yfinance` and never open a socket (fail the test session if
    `socket.socket.connect` is called — use a fixture). `pytest && ruff check . &&
    ruff format --check . && mypy` green; coverage ≥ 80 %.
