@@ -12,8 +12,9 @@ from vnstratlab.cli import app
 from vnstratlab.config.loader import load_config
 from vnstratlab.config.models import AppConfig
 from vnstratlab.data.pipeline import ingest
-from vnstratlab.data.protocol import SourceError, SourceInfo
+from vnstratlab.data.protocol import SourceError, SourceInfo, TickTable, universe_tickers
 from vnstratlab.data.raw import read_raw, write_raw
+from vnstratlab.data.sources.synthetic import SyntheticSource, ex_price
 from vnstratlab.data.store import MarketStore
 from vnstratlab.paths import AppPaths, get_paths
 
@@ -398,3 +399,35 @@ def test_cli_rejects_bad_dates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert runner.invoke(app, ["ingest", "--to", "soon"]).exit_code == 2
     result = runner.invoke(app, ["ingest", "--from", "2026-03-06", "--to", "2026-03-02"])
     assert result.exit_code == 2
+
+
+def test_three_year_synthetic_ingest_lists_actions_in_store(
+    cfg: AppConfig, paths: AppPaths
+) -> None:
+    syn = cfg.data.synthetic.model_copy(update={"start": date(2020, 1, 1)})
+    small = cfg.model_copy(update={"data": cfg.data.model_copy(update={"synthetic": syn})})
+    report = ingest(
+        small,
+        paths,
+        SyntheticSource(small),
+        date(2020, 1, 1),
+        date(2022, 12, 31),
+        dry_run=False,
+        clock=fixed_clock,
+    )
+    assert report.db_path == paths.synthetic_market_db
+    assert not paths.market_db.exists()
+    tickers = universe_tickers(small)
+    ticks = TickTable.from_config(small)
+    with MarketStore(paths.synthetic_market_db, "synthetic", read_only=True) as store:
+        actions = store.read_corporate_actions(tickers)
+        prices = store.read_prices(tickers, date(2020, 1, 1), date(2022, 12, 31))
+    assert {"cash", "stock"} <= set(actions["type"])
+    assert set(actions["source"]) == {"synthetic"}
+    by_ticker = {t: g.reset_index(drop=True) for t, g in prices.groupby("ticker")}
+    for ev in actions.itertuples():
+        g = by_ticker[str(ev.ticker)]
+        pos = int(g.index[g["date"] == ev.ex_date][0])
+        expected = ex_price(str(ev.type), float(g.loc[pos - 1, "close"]), ev.ratio_or_amount, ticks)
+        assert g.loc[pos, "ref_price"] == expected
+    assert not prices["derived_limits"].any()

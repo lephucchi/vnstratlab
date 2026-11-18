@@ -100,7 +100,12 @@ def ingest(
     raw_path = write_raw(paths, source.info.name, run_id, raw)
     with MarketStore(db_path, kind) as store:
         frame, dropped = normalise(
-            raw, source, start, end, ticks, lambda t, d: store.previous_close(t, d, source.info.name)
+            raw,
+            source,
+            start,
+            end,
+            ticks,
+            lambda t, d: store.previous_close(t, d, source.info.name),
         )
         result = store.upsert_prices(frame, run_id, started)
         store.upsert_corporate_actions(_action_frame(actions, source.info.name), run_id, kind)
@@ -237,7 +242,9 @@ def _with_limits(frame: pd.DataFrame, ticks: TickTable, prev_close: PrevClose) -
         previous = frame.groupby("ticker")["close"].shift(1)
         first = ~frame.duplicated("ticker")
         for index in frame.index[first]:
-            previous.loc[index] = prev_close(str(frame.loc[index, "ticker"]), frame.loc[index, "date"])
+            previous.loc[index] = prev_close(
+                str(frame.loc[index, "ticker"]), frame.loc[index, "date"]
+            )
         frame["ref_price"] = previous.astype(np.float64)
     if "ceiling" not in frame.columns or "floor" not in frame.columns:
         ceiling, floor = ticks.limits(frame["ref_price"].to_numpy(dtype=np.float64))

@@ -4,6 +4,10 @@ Synthetic and real data never share a file; ``store_meta.kind`` records which on
 a mismatching open or write raises ``SourceError``.
 """
 
+# S608: the f-string SQL below is assembled only from module-level column/key constants;
+# every value (run id, timestamps, tickers, dates) is passed as a bound parameter or a frame.
+# ruff: noqa: S608
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -188,19 +192,22 @@ class MarketStore:
         try:
             _run(con, "BEGIN")
             changed = _count(
-                _run(con, 
+                _run(
+                    con,
                     f"SELECT count(*) FROM incoming_prices i JOIN prices_daily p {_PRICE_JOIN} "
-                    f"WHERE {_PRICE_DIFF}"
+                    f"WHERE {_PRICE_DIFF}",
                 )
             )
             inserted = _count(
-                _run(con, 
+                _run(
+                    con,
                     "SELECT count(*) FROM incoming_prices i WHERE NOT EXISTS "
-                    f"(SELECT 1 FROM prices_daily p WHERE {_PRICE_KEY})"
+                    f"(SELECT 1 FROM prices_daily p WHERE {_PRICE_KEY})",
                 )
             )
             assignments = ", ".join(f"{c} = i.{c}" for c in _VALUE_COLUMNS)
-            _run(con, 
+            _run(
+                con,
                 f"UPDATE prices_daily AS p SET {assignments}, run_id = ?, ingested_at = ?, "
                 "revision = revision + 1 FROM incoming_prices i "
                 f"WHERE {_PRICE_KEY} AND {_PRICE_DIFF}",
@@ -210,7 +217,8 @@ class MarketStore:
             selects = ", ".join(
                 "CAST(i.date AS DATE)" if c == "date" else f"i.{c}" for c in PRICE_COLUMNS
             )
-            _run(con, 
+            _run(
+                con,
                 f"INSERT INTO prices_daily ({columns}, run_id, revision, ingested_at) "
                 f"SELECT {selects}, ?, 0, ? FROM incoming_prices i WHERE NOT EXISTS "
                 f"(SELECT 1 FROM prices_daily p WHERE {_PRICE_KEY})",
@@ -236,7 +244,9 @@ class MarketStore:
         kinds = {kind} if kind else {kind_of_source(str(s)) for s in frame["source"].unique()}
         for found in kinds:
             self._require_kind(found, "corporate-action frame")
-        incoming = frame[list(ACTION_COLUMNS)].drop_duplicates(["ticker", "ex_date", "type", "source"])
+        incoming = frame[list(ACTION_COLUMNS)].drop_duplicates(
+            ["ticker", "ex_date", "type", "source"]
+        )
         con = self._con
         con.register("incoming_actions", incoming)
         key = (
@@ -247,23 +257,27 @@ class MarketStore:
         try:
             _run(con, "BEGIN")
             changed = _count(
-                _run(con, 
+                _run(
+                    con,
                     f"SELECT count(*) FROM incoming_actions i JOIN corporate_actions a ON {key} "
-                    f"WHERE {diff}"
+                    f"WHERE {diff}",
                 )
             )
             inserted = _count(
-                _run(con, 
+                _run(
+                    con,
                     "SELECT count(*) FROM incoming_actions i WHERE NOT EXISTS "
-                    f"(SELECT 1 FROM corporate_actions a WHERE {key})"
+                    f"(SELECT 1 FROM corporate_actions a WHERE {key})",
                 )
             )
-            _run(con, 
+            _run(
+                con,
                 "UPDATE corporate_actions AS a SET ratio_or_amount = i.ratio_or_amount, run_id = ? "
                 f"FROM incoming_actions i WHERE {key} AND {diff}",
                 [run_id],
             )
-            _run(con, 
+            _run(
+                con,
                 "INSERT INTO corporate_actions (ticker, ex_date, type, ratio_or_amount, source, "
                 "run_id) SELECT i.ticker, CAST(i.ex_date AS DATE), i.type, i.ratio_or_amount, "
                 "i.source, ? FROM incoming_actions i WHERE NOT EXISTS "
@@ -317,7 +331,9 @@ class MarketStore:
             "ORDER BY ticker, ex_date, type",
             [tickers],
         ).df()
-        frame["ex_date"] = [d.date() if isinstance(d, pd.Timestamp) else d for d in frame["ex_date"]]
+        frame["ex_date"] = [
+            d.date() if isinstance(d, pd.Timestamp) else d for d in frame["ex_date"]
+        ]
         return frame
 
     def latest_date(self, ticker: str | None = None) -> date | None:

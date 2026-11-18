@@ -6,7 +6,8 @@
 *.key
 
 # --- market data and local state: never commit (provider terms, privacy)
-/data/
+data/
+!src/vnstratlab/data/
 *.duckdb
 *.duckdb.wal
 *.sqlite
