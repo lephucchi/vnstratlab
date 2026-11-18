@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794974711466,
+  "lastUpdate": 1794977038241,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -279,6 +279,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00012637853410002778",
             "extra": "mean: 4.872946266668994 msec\nrounds: 15"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0666c7923b7eba7b4e1371d8c04588ffb665f6c5",
+          "message": "feat(data): DataSource protocol, market store and synthetic market (P1-T36) (#15)\n\nDataSource protocol and registry; DuckDB market store with raw Parquet snapshots, revisions, one kind rule (synthetic vs real stores), atomic ingest with error run rows and run-id refusal; deterministic synthetic market (HOSE ticks/limits, corporate actions, suspensions); vnstratlab ingest with --dry-run; import-boundary test. G2 approved in round 3.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-18T11:43:32+07:00",
+          "tree_id": "d694f9729eb56b0204e8b2e6e247d446e7be60f3",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/0666c7923b7eba7b4e1371d8c04588ffb665f6c5"
+        },
+        "date": 1794977037742,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 141.19820514486963,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00911812504572895",
+            "extra": "mean: 7.082243000001297 msec\nrounds: 21"
           }
         ]
       }
