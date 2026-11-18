@@ -90,6 +90,16 @@ def test_limits_exact_multiples_are_not_pushed_a_tick(cfg: AppConfig) -> None:
     assert floor[0] == 9_300
 
 
+def test_limits_around_the_50000_band_boundary(cfg: AppConfig) -> None:
+    ticks = TickTable.from_config(cfg)
+    # 47,000 * 1.07 = 50,290 -> tick 100 above 50,000 -> 50,200 ; 47,000 * 0.93 = 43,710 -> 43,750
+    ceiling, floor = ticks.limits(_arr(47_000))
+    assert (ceiling[0], floor[0]) == (50_200, 43_750)
+    # 53,700 * 1.07 = 57,459 -> 57,400 ; 53,700 * 0.93 = 49,941 -> tick 50 -> up 49,950
+    ceiling, floor = ticks.limits(_arr(53_700))
+    assert (ceiling[0], floor[0]) == (57_400, 49_950)
+
+
 def test_is_on_grid(cfg: AppConfig) -> None:
     ticks = TickTable.from_config(cfg)
     assert list(ticks.is_on_grid(_arr(9_990, 10_050, 10_025, 50_050))) == [True, True, False, False]

@@ -97,35 +97,65 @@ def ingest(
     if dry_run:
         return _dry_run(source, db_path, kind, raw, actions, (start, end), ticks, run_id)
 
-    raw_path = write_raw(paths, source.info.name, run_id, raw)
-    with MarketStore(db_path, kind) as store:
-        frame, dropped = normalise(
-            raw,
-            source,
-            start,
-            end,
-            ticks,
-            lambda t, d: store.previous_close(t, d, source.info.name),
-        )
-        result = store.upsert_prices(frame, run_id, started)
-        store.upsert_corporate_actions(_action_frame(actions, source.info.name), run_id, kind)
-        store.record_run(
-            RunRecord(
-                run_id=run_id,
-                source=source.info.name,
-                started_at=started,
-                finished_at=clock(),
-                start_date=start,
-                end_date=end,
-                tickers=",".join(tickers),
-                rows_in=len(raw),
-                rows_written=result.written,
-                rows_changed=result.changed,
-                rows_dropped=dropped,
-                status="ok",
-                raw_path=str(raw_path),
+    with MarketStore(db_path, kind) as store:  # validates the store kind before anything is written
+        if store.has_run(run_id):
+            raise SourceError(
+                f"run id {run_id} already exists in {db_path.name}; "
+                "refusing to overwrite its snapshot or audit row (retry in a later second)"
             )
-        )
+        raw_path = write_raw(paths, source.info.name, run_id, raw)
+        try:
+            with store.transaction():
+                frame, dropped = normalise(
+                    raw,
+                    source,
+                    start,
+                    end,
+                    ticks,
+                    lambda t, d: store.previous_close(t, d, source.info.name),
+                )
+                result = store.upsert_prices(frame, run_id, started)
+                store.upsert_corporate_actions(
+                    _action_frame(actions, source.info.name), run_id, kind
+                )
+                store.record_run(
+                    RunRecord(
+                        run_id=run_id,
+                        source=source.info.name,
+                        started_at=started,
+                        finished_at=clock(),
+                        start_date=start,
+                        end_date=end,
+                        tickers=",".join(tickers),
+                        rows_in=len(raw),
+                        rows_written=result.written,
+                        rows_changed=result.changed,
+                        rows_dropped=dropped,
+                        status="ok",
+                        raw_path=str(raw_path),
+                    )
+                )
+        except BaseException:
+            # The transaction rolled back: no price, action or "ok" run row survives. Keep the
+            # raw snapshot and leave one audit row with status="error".
+            store.record_run(
+                RunRecord(
+                    run_id=run_id,
+                    source=source.info.name,
+                    started_at=started,
+                    finished_at=clock(),
+                    start_date=start,
+                    end_date=end,
+                    tickers=",".join(tickers),
+                    rows_in=len(raw),
+                    rows_written=0,
+                    rows_changed=0,
+                    rows_dropped=0,
+                    status="error",
+                    raw_path=str(raw_path),
+                )
+            )
+            raise
     return IngestReport(
         run_id=run_id,
         source=source.info.name,

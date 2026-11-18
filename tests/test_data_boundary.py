@@ -12,15 +12,28 @@ DOWNSTREAM = ("engine", "features", "strategies", "lab", "risk", "portfolio", "e
 FORBIDDEN = ("vnstratlab.data.sources", "yfinance")
 
 
-def _imports(path: Path) -> list[str]:
+def _package_of(path: Path, root: Path = SRC) -> list[str]:
+    """Dotted package parts of the module at ``path``, e.g. engine/x.py -> [vnstratlab, engine]."""
+    return ["vnstratlab", *path.relative_to(root).parts[:-1]]
+
+
+def _imports(path: Path, root: Path = SRC) -> list[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     found: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             found.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            found.append(node.module)
-            found.extend(f"{node.module}.{alias.name}" for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                package = _package_of(path, root)
+                base = package[: len(package) - (node.level - 1)]
+                module = ".".join([*base, *([node.module] if node.module else [])])
+            elif node.module:
+                module = node.module
+            else:
+                continue
+            found.append(module)
+            found.extend(f"{module}.{alias.name}" for alias in node.names)
     return found
 
 
@@ -46,12 +59,35 @@ def test_boundary_checker_detects_a_violation(tmp_path: Path) -> None:
     assert "yfinance" in names
 
 
+def test_boundary_checker_resolves_relative_imports(tmp_path: Path) -> None:
+    pkg = tmp_path / "engine"
+    pkg.mkdir()
+    bad = pkg / "bad.py"
+    bad.write_text(
+        "from ..data.sources import synthetic\n"
+        "from ..data import sources\n"
+        "from ..data import protocol\n"
+        "from . import sibling\n"
+    )
+    names = [n for n in _imports(bad, tmp_path) if _is_forbidden(n)]
+    assert "vnstratlab.data.sources.synthetic" in names
+    assert "vnstratlab.data.sources" in names
+    assert not any(n.endswith("protocol") for n in names)
+
+
+def test_downstream_scan_uses_the_relative_resolver() -> None:
+    for package in DOWNSTREAM:
+        for path in (SRC / package).rglob("*.py"):
+            _imports(path)  # must not raise for any downstream module
+
+
 def test_importing_data_package_pulls_no_source_library() -> None:
     code = (
         "import sys, vnstratlab.data, vnstratlab.data.protocol, vnstratlab.data.store, "
         "vnstratlab.data.pipeline\n"
         "bad = [m for m in sys.modules\n"
-        "       if m == 'yfinance' or m.startswith('vnstratlab.data.sources.')]\n"
+        "       if m == 'yfinance' or m == 'vnstratlab.data.sources'\n"
+        "       or m.startswith('vnstratlab.data.sources.')]\n"
         "assert not bad, bad\n"
     )
     result = subprocess.run(  # noqa: S603

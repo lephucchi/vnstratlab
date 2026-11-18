@@ -72,6 +72,14 @@ increments `revision` and is counted in `ingest_runs`. Synthetic rows are labell
 `source = synthetic`, `price_basis = synthetic` and are never mixed with a real source in one
 database file (the store refuses it).
 
+Run integrity: the run id (UTC second plus a hash of source and window) is unique. The store
+is opened and validated first; an id already present in `ingest_runs`, or an existing raw
+snapshot file, makes `ingest` raise `SourceError` and nothing is overwritten (retry in a later
+second). Prices, corporate actions and the `ingest_runs` row are written in ONE transaction. If
+it fails, the transaction rolls back (no partial rows) and a single `ingest_runs` row with
+`status = "error"` is recorded; the raw snapshot is kept as evidence of what was fetched.
+The store also refuses rows whose `source` name or `price_basis` disagrees with its kind.
+
 ## 5. Commands
 
 ```bash

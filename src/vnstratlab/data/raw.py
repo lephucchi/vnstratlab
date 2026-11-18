@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from vnstratlab.data.protocol import SourceError
+
 if TYPE_CHECKING:
     from vnstratlab.paths import AppPaths
 
@@ -16,10 +18,24 @@ def snapshot_path(paths: AppPaths, source: str, run_id: str) -> Path:
 
 
 def write_raw(paths: AppPaths, source: str, run_id: str, frame: pd.DataFrame) -> Path:
-    """Write the source frame exactly as received; returns the file path."""
+    """Write the source frame exactly as received; returns the file path.
+
+    The file is created exclusively: an existing snapshot is never overwritten.
+    """
     path = snapshot_path(paths, source, run_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    frame.to_parquet(path, index=False)
+    try:
+        handle = path.open("xb")
+    except FileExistsError:
+        raise SourceError(
+            f"raw snapshot {path.name} already exists; refusing to overwrite"
+        ) from None
+    try:
+        with handle:
+            frame.to_parquet(handle, index=False)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
     return path
 
 

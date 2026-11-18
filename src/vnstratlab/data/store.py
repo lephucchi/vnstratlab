@@ -4,12 +4,14 @@ Synthetic and real data never share a file; ``store_meta.kind`` records which on
 a mismatching open or write raises ``SourceError``.
 """
 
-# S608: the f-string SQL below is assembled only from module-level column/key constants;
-# every value (run id, timestamps, tickers, dates) is passed as a bound parameter or a frame.
-# ruff: noqa: S608
+# S608 is silenced per statement: the f-string SQL below is assembled only from module-level
+# column/key constants; every value (run id, timestamps, tickers, dates) is a bound parameter
+# or a registered frame.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -123,6 +125,7 @@ class MarketStore:
         if not read_only:
             path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
+        self._in_tx = False
         self._con = duckdb.connect(str(path), read_only=read_only)
         try:
             if not read_only:
@@ -174,6 +177,28 @@ class MarketStore:
                 f"refusing to write a {kind} {what} into the {self.kind} store {self.path.name}"
             )
 
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """One atomic unit; nested use joins the outer transaction. Rolls back on any error."""
+        if self._in_tx:
+            yield
+            return
+        _run(self._con, "BEGIN")
+        self._in_tx = True
+        try:
+            yield
+        except BaseException:
+            _run(self._con, "ROLLBACK")
+            raise
+        else:
+            _run(self._con, "COMMIT")
+        finally:
+            self._in_tx = False
+
+    def has_run(self, run_id: str) -> bool:
+        row = _first(_run(self._con, "SELECT 1 FROM ingest_runs WHERE run_id = ?", [run_id]))
+        return row is not None
+
     def upsert_prices(self, frame: pd.DataFrame, run_id: str, now: datetime) -> UpsertResult:
         """Insert new keys (revision 0); update changed rows (revision + 1); skip identical."""
         missing = [c for c in PRICE_COLUMNS if c not in frame.columns]
@@ -185,49 +210,48 @@ class MarketStore:
             raise SourceError("price frame has duplicate (ticker, date, source) keys")
         for basis in frame["price_basis"].unique():
             self._require_kind(kind_of_basis(str(basis)), "price frame")
+        for name in frame["source"].unique():
+            self._require_kind(kind_of_source(str(name)), "price frame (source name)")
         incoming = frame[list(PRICE_COLUMNS)]
         stamp = _naive_utc(now)
         con = self._con
         con.register("incoming_prices", incoming)
         try:
-            _run(con, "BEGIN")
-            changed = _count(
-                _run(
-                    con,
-                    f"SELECT count(*) FROM incoming_prices i JOIN prices_daily p {_PRICE_JOIN} "
-                    f"WHERE {_PRICE_DIFF}",
+            with self.transaction():
+                changed = _count(
+                    _run(
+                        con,
+                        "SELECT count(*) FROM incoming_prices i "  # noqa: S608
+                        f"JOIN prices_daily p {_PRICE_JOIN} WHERE {_PRICE_DIFF}",
+                    )
                 )
-            )
-            inserted = _count(
+                inserted = _count(
+                    _run(
+                        con,
+                        "SELECT count(*) FROM incoming_prices i WHERE NOT EXISTS "  # noqa: S608
+                        f"(SELECT 1 FROM prices_daily p WHERE {_PRICE_KEY})",
+                    )
+                )
+                assignments = ", ".join(f"{c} = i.{c}" for c in _VALUE_COLUMNS)
                 _run(
                     con,
-                    "SELECT count(*) FROM incoming_prices i WHERE NOT EXISTS "
+                    f"UPDATE prices_daily AS p SET {assignments}, "  # noqa: S608
+                    "run_id = ?, ingested_at = ?, "
+                    "revision = revision + 1 FROM incoming_prices i "
+                    f"WHERE {_PRICE_KEY} AND {_PRICE_DIFF}",
+                    [run_id, stamp],
+                )
+                columns = ", ".join(PRICE_COLUMNS)
+                selects = ", ".join(
+                    "CAST(i.date AS DATE)" if c == "date" else f"i.{c}" for c in PRICE_COLUMNS
+                )
+                _run(
+                    con,
+                    f"INSERT INTO prices_daily ({columns}, run_id, revision, ingested_at) "  # noqa: S608
+                    f"SELECT {selects}, ?, 0, ? FROM incoming_prices i WHERE NOT EXISTS "
                     f"(SELECT 1 FROM prices_daily p WHERE {_PRICE_KEY})",
+                    [run_id, stamp],
                 )
-            )
-            assignments = ", ".join(f"{c} = i.{c}" for c in _VALUE_COLUMNS)
-            _run(
-                con,
-                f"UPDATE prices_daily AS p SET {assignments}, run_id = ?, ingested_at = ?, "
-                "revision = revision + 1 FROM incoming_prices i "
-                f"WHERE {_PRICE_KEY} AND {_PRICE_DIFF}",
-                [run_id, stamp],
-            )
-            columns = ", ".join(PRICE_COLUMNS)
-            selects = ", ".join(
-                "CAST(i.date AS DATE)" if c == "date" else f"i.{c}" for c in PRICE_COLUMNS
-            )
-            _run(
-                con,
-                f"INSERT INTO prices_daily ({columns}, run_id, revision, ingested_at) "
-                f"SELECT {selects}, ?, 0, ? FROM incoming_prices i WHERE NOT EXISTS "
-                f"(SELECT 1 FROM prices_daily p WHERE {_PRICE_KEY})",
-                [run_id, stamp],
-            )
-            _run(con, "COMMIT")
-        except Exception:
-            _run(con, "ROLLBACK")
-            raise
         finally:
             con.unregister("incoming_prices")
         return UpsertResult(inserted, changed)
@@ -255,39 +279,37 @@ class MarketStore:
         )
         diff = "a.ratio_or_amount IS DISTINCT FROM i.ratio_or_amount"
         try:
-            _run(con, "BEGIN")
-            changed = _count(
-                _run(
-                    con,
-                    f"SELECT count(*) FROM incoming_actions i JOIN corporate_actions a ON {key} "
-                    f"WHERE {diff}",
+            with self.transaction():
+                changed = _count(
+                    _run(
+                        con,
+                        "SELECT count(*) FROM incoming_actions i "  # noqa: S608
+                        f"JOIN corporate_actions a ON {key} WHERE {diff}",
+                    )
                 )
-            )
-            inserted = _count(
+                inserted = _count(
+                    _run(
+                        con,
+                        "SELECT count(*) FROM incoming_actions i WHERE NOT EXISTS "  # noqa: S608
+                        f"(SELECT 1 FROM corporate_actions a WHERE {key})",
+                    )
+                )
                 _run(
                     con,
-                    "SELECT count(*) FROM incoming_actions i WHERE NOT EXISTS "
+                    "UPDATE corporate_actions AS a SET "  # noqa: S608
+                    "ratio_or_amount = i.ratio_or_amount, run_id = ? "
+                    f"FROM incoming_actions i WHERE {key} AND {diff}",
+                    [run_id],
+                )
+                _run(
+                    con,
+                    "INSERT INTO corporate_actions "  # noqa: S608
+                    "(ticker, ex_date, type, ratio_or_amount, source, run_id) "
+                    "SELECT i.ticker, CAST(i.ex_date AS DATE), i.type, i.ratio_or_amount, "
+                    "i.source, ? FROM incoming_actions i WHERE NOT EXISTS "
                     f"(SELECT 1 FROM corporate_actions a WHERE {key})",
+                    [run_id],
                 )
-            )
-            _run(
-                con,
-                "UPDATE corporate_actions AS a SET ratio_or_amount = i.ratio_or_amount, run_id = ? "
-                f"FROM incoming_actions i WHERE {key} AND {diff}",
-                [run_id],
-            )
-            _run(
-                con,
-                "INSERT INTO corporate_actions (ticker, ex_date, type, ratio_or_amount, source, "
-                "run_id) SELECT i.ticker, CAST(i.ex_date AS DATE), i.type, i.ratio_or_amount, "
-                "i.source, ? FROM incoming_actions i WHERE NOT EXISTS "
-                f"(SELECT 1 FROM corporate_actions a WHERE {key})",
-                [run_id],
-            )
-            _run(con, "COMMIT")
-        except Exception:
-            _run(con, "ROLLBACK")
-            raise
         finally:
             con.unregister("incoming_actions")
         return UpsertResult(inserted, changed)
@@ -295,7 +317,7 @@ class MarketStore:
     def record_run(self, record: RunRecord) -> None:
         _run(
             self._con,
-            "INSERT OR REPLACE INTO ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO ingest_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 record.run_id,
                 record.source,

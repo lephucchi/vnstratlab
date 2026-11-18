@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from collections.abc import Callable, Sequence
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 from vnstratlab.cli import app
 from vnstratlab.config.loader import load_config
 from vnstratlab.config.models import AppConfig
-from vnstratlab.data.pipeline import ingest
+from vnstratlab.data.pipeline import ingest, make_run_id
 from vnstratlab.data.protocol import SourceError, SourceInfo, TickTable, universe_tickers
 from vnstratlab.data.raw import read_raw, write_raw
 from vnstratlab.data.sources.synthetic import SyntheticSource, ex_price
@@ -27,6 +27,20 @@ def fixed_clock() -> datetime:
     return CLOCK_TIME
 
 
+class TickingClock:
+    """Advances one second per call so consecutive runs never share a run id."""
+
+    def __init__(self) -> None:
+        self._seconds = 0
+
+    def __call__(self) -> datetime:
+        self._seconds += 1
+        return CLOCK_TIME + timedelta(seconds=self._seconds)
+
+
+_CLOCKS: dict[Path, TickingClock] = {}
+
+
 class SyntheticFakeSource:
     """Fake adapter: hand-written frame, optionally without limits."""
 
@@ -38,7 +52,8 @@ class SyntheticFakeSource:
         closes: dict[tuple[str, date], float] | None = None,
         extra_rows: list[dict[str, object]] | None = None,
     ) -> None:
-        self.info = SourceInfo("synthetic_fake", basis, True, None, None)  # type: ignore[arg-type]
+        name = "synthetic" if basis == "synthetic" else "synthetic_fake"
+        self.info = SourceInfo(name, basis, True, None, None)  # type: ignore[arg-type]
         self._with_limits = with_limits
         self._closes = closes or {}
         self._extra = extra_rows or []
@@ -103,8 +118,10 @@ def run(
     dry_run: bool = False,
     start: date = START,
     end: date = END,
+    clock: Callable[[], datetime] | None = None,
 ):  # type: ignore[no-untyped-def]
-    return ingest(cfg, paths, source, start, end, dry_run=dry_run, clock=fixed_clock)
+    ticking = _CLOCKS.setdefault(paths.home, TickingClock())
+    return ingest(cfg, paths, source, start, end, dry_run=dry_run, clock=clock or ticking)
 
 
 def test_ingest_twice_is_idempotent(cfg: AppConfig, paths: AppPaths) -> None:
@@ -122,7 +139,9 @@ def test_changed_close_bumps_revision(cfg: AppConfig, paths: AppPaths) -> None:
     run(cfg, paths, SyntheticFakeSource())
     target = ("AAA", date(2026, 3, 4))
     report = run(cfg, paths, SyntheticFakeSource(closes={target: 9_999.0}))
-    assert report.rows_changed >= 1
+    # Derived limits: the changed close alters the next session's ref_price, ceiling and floor
+    # (limits come from the previous close), so exactly two rows change: 03-04 and 03-05.
+    assert report.rows_changed == 2
     with MarketStore(paths.market_db, "real", read_only=True) as store:
         frame = store.read_prices(["AAA"], START, END).set_index("date")
     assert frame.loc[date(2026, 3, 4), "revision"] == 1
@@ -185,12 +204,64 @@ def test_write_raw_and_read_raw(paths: AppPaths) -> None:
 
 
 def test_run_id_is_deterministic_for_clock_and_inputs(cfg: AppConfig, paths: AppPaths) -> None:
-    a = run(cfg, paths, SyntheticFakeSource())
-    b = run(cfg, paths, SyntheticFakeSource())
-    c = run(cfg, paths, SyntheticFakeSource(), end=date(2026, 3, 5))
-    assert a.run_id == b.run_id
-    assert a.run_id.startswith("20260309T123015Z-")
-    assert c.run_id != a.run_id
+    a = make_run_id(CLOCK_TIME, "synthetic_fake", START, END)
+    assert a == make_run_id(CLOCK_TIME, "synthetic_fake", START, END)
+    assert a.startswith("20260309T123015Z-")
+    assert make_run_id(CLOCK_TIME, "synthetic_fake", START, date(2026, 3, 5)) != a
+    report = run(cfg, paths, SyntheticFakeSource(), clock=fixed_clock)
+    assert report.run_id == a
+
+
+def test_second_run_with_existing_run_id_is_refused(cfg: AppConfig, paths: AppPaths) -> None:
+    first = run(cfg, paths, SyntheticFakeSource(), clock=fixed_clock)
+    assert first.raw_path is not None
+    snapshot_bytes = first.raw_path.read_bytes()
+    with pytest.raises(SourceError, match="already exists"):
+        run(
+            cfg,
+            paths,
+            SyntheticFakeSource(closes={("AAA", date(2026, 3, 4)): 9_999.0}),
+            clock=fixed_clock,
+        )
+    assert first.raw_path.read_bytes() == snapshot_bytes
+    with MarketStore(paths.market_db, "real", read_only=True) as store:
+        rows = store.connection.execute(
+            "SELECT run_id, rows_written, status FROM ingest_runs"
+        ).fetchall()
+        frame = store.read_prices(["AAA"], START, END).set_index("date")
+    assert rows == [(first.run_id, 10, "ok")]
+    assert frame.loc[date(2026, 3, 4), "close"] != 9_999.0
+    assert set(frame["revision"]) == {0}
+
+
+def test_write_raw_refuses_to_overwrite(paths: AppPaths) -> None:
+    frame = pd.DataFrame({"ticker": ["A"], "date": [date(2026, 3, 2)], "close": [1.0]})
+    path = write_raw(paths, "src", "run-x", frame)
+    with pytest.raises(SourceError, match="already exists"):
+        write_raw(paths, "src", "run-x", frame.assign(close=2.0))
+    assert read_raw(path)["close"].tolist() == [1.0]
+
+
+def test_store_refusal_leaves_no_raw_snapshot(cfg: AppConfig, paths: AppPaths) -> None:
+    MarketStore(paths.market_db, "synthetic").close()
+    with pytest.raises(SourceError, match="kind"):
+        run(cfg, paths, SyntheticFakeSource(basis="raw"))
+    assert not (paths.raw_dir / "synthetic_fake").exists()
+
+
+def test_failure_mid_write_rolls_back_and_records_error_run(
+    cfg: AppConfig, paths: AppPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*args: object, **kwargs: object) -> None:
+        raise SourceError("actions failed")
+
+    monkeypatch.setattr(MarketStore, "upsert_corporate_actions", boom)
+    with pytest.raises(SourceError, match="actions failed"):
+        run(cfg, paths, SyntheticFakeSource(), clock=fixed_clock)
+    with MarketStore(paths.market_db, "real", read_only=True) as store:
+        assert store.read_prices(["AAA", "BBB"], START, END).empty
+        rows = store.connection.execute("SELECT status, rows_written FROM ingest_runs").fetchall()
+    assert rows == [("error", 0)]
 
 
 def test_ingest_run_row_recorded(cfg: AppConfig, paths: AppPaths) -> None:

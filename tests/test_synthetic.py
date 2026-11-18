@@ -135,6 +135,14 @@ def test_prices_on_tick_grid_and_inside_limits(cfg: AppConfig, prices: pd.DataFr
     assert np.array_equal(floor, prices["floor"].to_numpy())
 
 
+def test_ex_price_across_the_50000_boundary(cfg: AppConfig) -> None:
+    ticks = TickTable.from_config(cfg)
+    # 57,450 / 1.15 = 49,956.5 -> tick 50 below 50,000 -> 49,950
+    assert ex_price("stock", 57_450.0, 0.15, ticks) == 49_950.0
+    # 51,950 - 2,000 = 49,950
+    assert ex_price("cash", 51_950.0, 2_000.0, ticks) == 49_950.0
+
+
 def test_ex_price_hand_computed(cfg: AppConfig) -> None:
     ticks = TickTable.from_config(cfg)
     assert ex_price("cash", 25_300.0, 1_000.0, ticks) == 24_300.0

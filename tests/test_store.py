@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 import pytest
 
@@ -135,6 +136,23 @@ def test_synthetic_frame_into_real_store_raises(tmp_path: Path) -> None:
             store.upsert_prices(synthetic_prices(basis="synthetic"), "r", NOW)
         with pytest.raises(SourceError):
             store.upsert_corporate_actions(synthetic_actions("synthetic"), "r")
+
+
+def test_source_name_must_match_store_kind(tmp_path: Path) -> None:
+    with MarketStore(tmp_path / "m.duckdb", "real") as store, pytest.raises(SourceError):
+        store.upsert_prices(synthetic_prices(basis="raw", source="synthetic"), "r", NOW)
+    with MarketStore(tmp_path / "s.duckdb", "synthetic") as store, pytest.raises(SourceError):
+        store.upsert_prices(synthetic_prices(basis="synthetic", source="yahoo"), "r", NOW)
+
+
+def test_duplicate_run_id_is_not_replaced(tmp_path: Path) -> None:
+    record = RunRecord(
+        "r1", "s", NOW, NOW, date(2026, 3, 2), date(2026, 3, 3), "AAA", 1, 1, 0, 0, "ok", None
+    )
+    with MarketStore(tmp_path / "m.duckdb", "real") as store:
+        store.record_run(record)
+        with pytest.raises(duckdb.Error):
+            store.record_run(record)
 
 
 def test_reopening_with_other_kind_raises(tmp_path: Path) -> None:
