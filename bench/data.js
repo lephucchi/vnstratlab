@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794981931227,
+  "lastUpdate": 1794982190438,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -372,6 +372,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.005650608501238898",
             "extra": "mean: 7.7797319523797555 msec\nrounds: 21"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e7c53163af9f3b772fb54fdc134bd14e574edc11",
+          "message": "feat(data): quality checks v0, gap register and data status (P1-T38) (#20)\n\nMerged on owner request without final G2 approval (2026-11-18); known follow-up: trailing synthetic suspension gap fails DQ on some days.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-18T13:09:16+07:00",
+          "tree_id": "c2bf649fa753f55574a4ffeb1187ca013b0981b6",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/e7c53163af9f3b772fb54fdc134bd14e574edc11"
+        },
+        "date": 1794982189737,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 121.00031443942741,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00016746140356442292",
+            "extra": "mean: 8.264441333337183 msec\nrounds: 12"
           }
         ]
       }
