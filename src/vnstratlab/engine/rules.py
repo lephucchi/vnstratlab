@@ -90,3 +90,12 @@ def after_sessions(calendar: TradingCalendar, day: date, n: int) -> date:
         return calendar.next_trading_day(day, n)
     except ValueError:
         return date.max
+
+
+def price_limits(
+    ref_price: float, limit_pct: float, bands: Sequence[tuple[int, int]]
+) -> tuple[float, float]:
+    """``(ceiling, floor)`` from a reference price: ceiling rounds down, floor rounds up."""
+    ceiling = round_limit_price(round(ref_price * (1 + limit_pct), 6), "buy", bands)
+    floor = round_limit_price(round(ref_price * (1 - limit_pct), 6), "sell", bands)
+    return ceiling, floor

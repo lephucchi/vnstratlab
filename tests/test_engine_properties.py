@@ -1,4 +1,9 @@
-"""Property tests on the synthetic market (P1-T36): ideal equals executable with lots off."""
+"""Property tests on the synthetic market (P1-T36): ideal equals executable with lots off.
+
+Scope: ideal mode uses a proceeds offset of 0 (engine.md section 8), executable mode the
+configured ``cash_proceeds_offset`` (3). The equality is therefore only defined while cash does
+not bind. The targets below keep the invested share at or below 0.4 so that it never does.
+"""
 
 from __future__ import annotations
 
@@ -58,10 +63,10 @@ def _inputs(
 def test_executable_without_lots_equals_ideal(engine_cfg: AppConfig, seed: int) -> None:
     prices, corporate, cfg, calendar, targets = _inputs(engine_cfg, seed)
     ideal = make_params(cfg, "ideal")
-    # Executable with lots off and the ideal capital: only the proceeds offset (2 vs 0)
+    # Executable with lots off and the ideal capital: only the proceeds offset (3 vs 0)
     # differs, and with cash slack it cannot change a return.
     executable = make_params(cfg, "executable", cfg.engine.ideal_capital_vnd, lots=False)
-    assert executable.proceeds_offset == 2
+    assert executable.proceeds_offset == 3
     a = run_simulation(prices, corporate, targets, calendar, ideal).returns
     b = run_simulation(prices, corporate, targets, calendar, executable).returns
     assert len(a) > 50

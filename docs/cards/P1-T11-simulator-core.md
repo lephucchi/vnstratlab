@@ -3,7 +3,7 @@ id: P1-T11
 title: Simulator core (SimExecutor) with HOSE rules
 milestone: M1.3 Engine
 release: v0.1.0
-status: in-progress
+status: in-review
 branch: feat/P1-T11-simulator-core
 due: 2026-12-04
 ---
@@ -22,6 +22,9 @@ due: 2026-12-04
   `rules.py` (ticks, limits, lots, settlement), `costs.py` (fee, tax, slippage),
   `ledger.py` (positions with sellable dates, cash buckets), `orders.py` (order model, lifecycle,
   `order_events`), `loop.py` (session loop, modes), `__init__.py` (public API).
+  Tick and limit rules live in `engine/rules.py` (pure). They duplicate
+  `vnstratlab.data.protocol.TickTable` because the engine may not import `vnstratlab.data`; a
+  test asserts both agree on a price grid (a later refactor may move both into one pure module).
 - `src/vnstratlab/execution/base.py` (`Executor` protocol, plan §5.4) and
   `src/vnstratlab/execution/sim.py` (`SimExecutor` wrapping the core).
 - `src/vnstratlab/config/defaults.yaml`: new `engine:` section (below).
@@ -42,13 +45,13 @@ engine:
   unsettled_sell: queue_until_sellable
   max_carry_sessions: 5
   rights_policy: ignore                # ADR-003 §6
-  ideal_capital_vnd: 1.0e12            # "very large" capital for ideal mode
+  ideal_capital_vnd: 1.0e+12           # "very large" capital for ideal mode (PyYAML needs the sign)
 ```
 ```yaml
 # markets/hose.yaml, under rules:
-cash_proceeds_offset: {value: 2, status: VERIFY, note: "sessions after a sell fill until proceeds can fund buys; conservative"}
-cash_dividend_pay_lag_days: {value: 30, status: VERIFY, note: "fallback when corporate_actions.pay_date is missing"}
-stock_dividend_listing_lag_sessions: {value: 20, status: VERIFY, note: "fallback when corporate_actions.listing_date is missing"}
+cash_proceeds_offset: {value: 3, status: VERIFY, note: "sessions after a sell fill until proceeds can fund buys; owner 2026-11-18; consistent with shares sellable from the T+3 open; broker advances never assumed"}
+cash_dividend_pay_lag_days: {value: 30, status: VERIFY, note: "calendar days after ex_date, rolled forward to the next session; fallback when pay_date is missing"}
+stock_dividend_listing_lag_sessions: {value: 20, status: VERIFY, note: "sessions after ex_date; fallback when listing_date is missing; confirmed by owner 2026-11-18"}
 ```
 
 #### Inputs (plain DataFrames; the core does no I/O)
@@ -56,18 +59,39 @@ stock_dividend_listing_lag_sessions: {value: 20, status: VERIFY, note: "fallback
   price_basis` for the sessions to simulate. Allowed `price_basis`: `raw`, `synthetic`, or
   `exec_reconstructed` (produced later by P1-T06 from `split_adjusted` rows). A frame with
   `split_adjusted` rows raises a clear error (reconstruction is P1-T06's job, ADR-007 / engine.md
-  §2).
-- `corporate_actions`: `ticker, ex_date, type (cash|stock), ratio_or_amount` (+ optional
-  `pay_date`, `listing_date`).
+  §2). `exec_reconstructed` is a new `price_basis` value proposed here and produced by P1-T06.
+- `corporate_actions`: `ticker, ex_date, type, ratio_or_amount` (+ optional `pay_date`,
+  `listing_date`). `bonus` is treated as `stock`; `rights` is ignored and logged per
+  `rights_policy: ignore`; other types raise. Every not-yet-applied action with `ex_date <= t` is
+  applied once at pre-open of `t` (engine.md §4 1a), so a late-published event is not lost.
 - `targets`: mapping decision date → target weights (Series by ticker, long-only, sum ≤ 1).
 - `calendar`: `TradingCalendar` (P1-T02); `rules`: resolved config; `mode`: `ideal` |
   `executable`; `capital_vnd`.
 
 #### Outputs (engine.md §11)
-`returns` (per session; per period helper), `positions` (session × ticker), `trades` (qty, price,
+`returns` (per session; per period helper), `turnover` (per session: Σ|traded value| / equity at
+the previous close; per period helper), `positions` (session × ticker), `trades` (qty, price,
 fee, tax, slippage, lot type), `order_events` (order id, ticker, side, session, event
 `blocked_ceiling|blocked_floor|blocked_cash|carried|queued_until_sellable|stale_order|cancelled`,
 reason), `equity` (cash_available, cash_pending, cash_reserved, positions_value, equity).
+
+#### Settled details (state them in docstrings; tests rely on them)
+- Fees and tax are charged on the **filled** value (price after slippage); amounts are not rounded
+  (VND floats); quantities are integers in executable mode, fractional in ideal mode.
+- Slippage tier: round-lot tier for every quantity when lots are off (ideal mode).
+- A new decision supersedes pending orders (same ticker and side keep id and carry count; others
+  `cancelled`, reason "superseded").
+- `stale_order` fires on the 6th blocked session (5 carries, then stale).
+- For sells, the settlement check runs before the floor check; `queued_until_sellable` does not
+  count toward the carry limit.
+- A ticker with no price row on a session (suspension): buys are cancelled, sells carried.
+- Dividend entitlement uses all shares held at pre-open of the ex-date (settled or not).
+- Pending order quantities scale by `1 + ratio` on a stock event.
+- `sales_tax_pct` authoritative source: `costs.sales_tax_pct` in defaults.yaml (hose.yaml's copy is
+  informational and must equal it; a test asserts this).
+- Ideal mode uses proceeds offset 0 (engine.md §8); executable uses `cash_proceeds_offset`.
+- Out of P1-T11: circuit breaker, stops, `rebalance_threshold_pct` (all P1-T12); `derived_limits`
+  in `order_events` (follow-up).
 
 #### Acceptance criteria (hand-computed; numbers in test comments)
 Costs from defaults: fee 0.15 % per side, sales tax 0.1 % on sells, slippage 0.10 % (round lot)
@@ -83,17 +107,21 @@ settlement offset 3.
 5. Odd lot: target 150 shares → 100 round lot + 50 odd lot, each with its slippage.
 6. Fees on both sides; sales tax on a sell at a loss (exact VND amounts).
 7. Fill prices: buy = open × 1.001, sell = open × 0.999 (round lot).
-8. `cash_proceeds_offset`: proceeds of a Monday sell are not usable for a buy before the offset;
-   sells fill before buys within a session.
+8. `cash_proceeds_offset` = 3: proceeds of a Monday sell are usable from Thursday pre-open, not
+   before; sells fill before buys within a session.
 9. Cash dividend: receivable booked on the ex-date, available on `pay_date` (or ex-date +
    `cash_dividend_pay_lag_days`).
 10. Stock dividend 10 % on 1,000 shares: `shares += 100` on the ex-date; the 100 new shares are
-    sellable only from `listing_date` (or the lag); equity is continuous across the ex-date on a
-    synthetic series (1,000 × 50,000 before ≈ 1,100 × 45,450 after, within one tick of value).
+    sellable only from `listing_date` (or the lag); on a hand-built frame (close 50,000, ex-price
+    45,450 = 50,000 / 1.1 rounded down to the tick) positions value goes 50,000,000 → 49,995,000:
+    the difference is below one tick × shares (100 × 1,100 = 110,000). An action published after its
+    ex-date is applied exactly once.
 11. Limit-price helper: buy rounds down, sell rounds up: 49,973 → 49,950; 52,730 → 52,800; every
     tick band boundary tested.
 12. Ideal mode: fractional shares, `ideal_capital_vnd`; property test on ≥ 20 random synthetic
-    seeds: executable with lots off and capital → ideal_capital equals ideal returns to 1e-10.
+    seeds: executable with lots off and capital = ideal_capital equals ideal returns to 1e-10 **while
+    cash does not bind** (invested weight ≤ 0.4), because the two modes use different proceeds
+    offsets; a companion test shows lots on + 11M capital differs.
 13. Determinism: same inputs → identical outputs (hash of every output frame).
 14. `split_adjusted` input refused with a clear message; `order_events` has a row for every
     blocked, carried, queued, stale or cancelled order.
@@ -109,3 +137,7 @@ vectorised fast path (ADR-003 §2, deferred), PaperExecutor (P1-T24).
 - Tests use the synthetic market (P1-T36) or hand-built `synthetic_*` frames only.
 - Do not change existing config values; only add the keys above. Report any rule you believe is
   wrong instead of changing it ([VERIFY] items stay [VERIFY]).
+- `tests/test_guardrails.py` bans the identifiers `place_order`, `submit_order`, `cancel_order`
+  anywhere in `src/`: use other names (e.g. `cancel`, `OrderEvent.CANCELLED`). `Executor.submit`
+  (plan §5.4) is fine.
+- Size: this card is large; if it does not fit one session, ship `rules`/`costs`/`ledger` first.

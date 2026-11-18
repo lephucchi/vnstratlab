@@ -21,7 +21,14 @@ from engine_helpers import (
 )
 from vnstratlab.calendar import TradingCalendar
 from vnstratlab.config.models import AppConfig
-from vnstratlab.engine import SimParams, make_params, period_returns, run_simulation
+from vnstratlab.engine import (
+    SimParams,
+    Simulator,
+    make_params,
+    period_returns,
+    period_turnover,
+    run_simulation,
+)
 from vnstratlab.execution.base import Executor
 from vnstratlab.execution.sim import SimExecutor
 
@@ -73,12 +80,22 @@ def test_settlement_queue_then_sell_costs(engine_cfg: AppConfig) -> None:
     assert sell["tax"] == pytest.approx(49_950)
     assert sell["slippage"] == pytest.approx(50_000)
     # Equity Thursday: 100,000,000 - slippage 100,000 - fees 150,000 - tax 49,950 = 99,700,050
-    # of which sale proceeds 49,825,125 are pending (offset 2).
+    # of which sale proceeds 49,825,125 are pending (offset 3).
     thu = res.equity[res.equity["date"] == date(2026, 11, 5)].iloc[0]
     assert thu["equity"] == pytest.approx(99_700_050)
     assert thu["cash_available"] == pytest.approx(49_874_925)  # 100,000,000 - 50,125,075
     assert thu["cash_pending"] == pytest.approx(49_825_125)  # 49,950,000 - 74,925 - 49,950
     assert thu["positions_value"] == 0
+    # Turnover = sum |notional| of the session's fills / that session's closing equity.
+    # Monday: buy 50,050,000 / equity (49,874,925 cash + 1,000 x 50,000) 99,874,925 = 0.50113...
+    # Thursday: sell 49,950,000 / 99,700,050 = 0.50100...; other sessions 0.
+    to = res.turnover
+    assert to[date(2026, 11, 2)] == pytest.approx(50_050_000 / 99_874_925)
+    assert to[date(2026, 11, 5)] == pytest.approx(49_950_000 / 99_700_050)
+    assert to.sum() == pytest.approx(to[date(2026, 11, 2)] + to[date(2026, 11, 5)])
+    per = period_turnover(to, [date(2026, 11, 3), date(2026, 11, 6)])
+    assert per.iloc[0] == pytest.approx(50_050_000 / 99_874_925)  # up to Tuesday
+    assert per.iloc[1] == pytest.approx(49_950_000 / 99_700_050)  # Wed..Fri
 
 
 # ---------------------------------------------------------------- criterion 2
@@ -226,6 +243,7 @@ def _proceeds_setup(cfg: AppConfig, offset: int | None) -> pd.DataFrame:
         4: [("AAA", "sell", 100), ("BBB", "buy", 100)],
         5: [("BBB", "buy", 100)],
         6: [("BBB", "buy", 100)],
+        7: [("BBB", "buy", 100)],
     }
     sim = drive(prices, params, orders)
     res = sim.result()
@@ -235,30 +253,29 @@ def _proceeds_setup(cfg: AppConfig, offset: int | None) -> pd.DataFrame:
 
 
 def test_sale_proceeds_fund_buys_only_after_the_offset(engine_cfg: AppConfig) -> None:
-    trades = _proceeds_setup(engine_cfg, None)  # config offset = 2
+    trades = _proceeds_setup(engine_cfg, None)  # config offset = 3
     ev, eq = trades.attrs["events"], trades.attrs["equity"]
     # After Monday's AAA buy: 10,000,000 - (5,005,000 + 7,507.5) = 4,987,492.5.
-    # Thursday AAA sell: 4,995,000 - 7,492.5 - 4,995 = 4,982,512.5 pending until Monday
-    # (Thu + 2 sessions). BBB lot: 100 x 90,090 x 1.0015 = 9,022,513.5 > 4,987,492.5.
-    # Thursday and Friday: blocked_cash then cancelled. Monday: cash 9,970,005 >= 9,022,513.5.
-    assert events(ev) == [
-        (date(2026, 11, 5), "blocked_cash"),
-        (date(2026, 11, 5), "cancelled"),
-        (date(2026, 11, 6), "blocked_cash"),
-        (date(2026, 11, 6), "cancelled"),
-    ]
+    # Thursday AAA sell: 4,995,000 - 7,492.5 - 4,995 = 4,982,512.5 pending until Tuesday
+    # (Thu + 3 sessions: Fri, Mon, Tue). BBB lot: 100 x 90,090 x 1.0015 = 9,022,513.5 > cash.
+    # Thursday, Friday, Monday: blocked_cash then cancelled.
+    # Tuesday: cash 4,987,492.5 + 4,982,512.5 = 9,970,005 >= 9,022,513.5 -> fills.
+    blocked = [date(2026, 11, 5), date(2026, 11, 6), date(2026, 11, 9)]
+    assert events(ev) == [(d, e) for d in blocked for e in ("blocked_cash", "cancelled")]
     bbb = trades[trades["ticker"] == "BBB"]
-    assert list(bbb["session"]) == [date(2026, 11, 9)]
+    assert list(bbb["session"]) == [date(2026, 11, 10)]
     assert bbb.iloc[0]["fee"] == pytest.approx(13_513.5)  # 9,009,000 x 0.0015
     thu = eq[eq["date"] == date(2026, 11, 5)].iloc[0]
     assert thu["cash_available"] == pytest.approx(4_987_492.5)
     assert thu["cash_pending"] == pytest.approx(4_982_512.5)
     mon = eq[eq["date"] == date(2026, 11, 9)].iloc[0]
-    assert mon["cash_pending"] == 0
-    assert mon["cash_available"] == pytest.approx(9_970_005 - 9_022_513.5)
+    assert mon["cash_pending"] == pytest.approx(4_982_512.5)  # still not released on Monday
+    tue = eq[eq["date"] == date(2026, 11, 10)].iloc[0]
+    assert tue["cash_pending"] == 0
+    assert tue["cash_available"] == pytest.approx(9_970_005 - 9_022_513.5)
 
 
-def test_monday_sell_proceeds_usable_from_wednesday(engine_cfg: AppConfig) -> None:
+def test_monday_sell_proceeds_usable_from_thursday(engine_cfg: AppConfig) -> None:
     days = make_days(10)
     prices = synthetic_prices(
         synthetic_bars("AAA", days, 50_000), synthetic_bars("BBB", days, 90_000)
@@ -266,25 +283,27 @@ def test_monday_sell_proceeds_usable_from_wednesday(engine_cfg: AppConfig) -> No
     params = executable(engine_cfg, 10_000_000, odd_lots=False)
     orders = {
         1: [("AAA", "buy", 100)],  # Mon 11-02, sellable from Thu 11-05
-        6: [("AAA", "sell", 100)],  # Mon 11-09: net proceeds 4,982,512.5, released Wed 11-11
+        6: [("AAA", "sell", 100)],  # Mon 11-09: net 4,982,512.5, released Thu 11-12 (Mon + 3)
         7: [("BBB", "buy", 100)],  # Tue 11-10: cash 4,987,492.5 < 9,022,513.5 -> blocked_cash
-        8: [("BBB", "buy", 100)],  # Wed 11-11: 4,987,492.5 + 4,982,512.5 = 9,970,005 -> fills
+        8: [("BBB", "buy", 100)],  # Wed 11-11: still blocked
+        9: [("BBB", "buy", 100)],  # Thu 11-12: 4,987,492.5 + 4,982,512.5 = 9,970,005 -> fills
     }
     res = drive(prices, params, orders).result()
+    blocked = [date(2026, 11, 10), date(2026, 11, 11)]
     assert events(res.order_events) == [
-        (date(2026, 11, 10), "blocked_cash"),
-        (date(2026, 11, 10), "cancelled"),
+        (d, e) for d in blocked for e in ("blocked_cash", "cancelled")
     ]
     bbb = res.trades[res.trades["ticker"] == "BBB"]
-    assert list(bbb["session"]) == [date(2026, 11, 11)]
+    assert list(bbb["session"]) == [date(2026, 11, 12)]
 
 
 def test_with_offset_zero_the_sell_funds_the_same_session_buy(engine_cfg: AppConfig) -> None:
     trades = _proceeds_setup(engine_cfg, 0)
     ev = trades.attrs["events"]
     # Thursday's BBB buy is funded by the sell (no event). It leaves 9,970,005 - 9,022,513.5 =
-    # 947,491.5, so only the later duplicate buys (Fri, Mon) are blocked.
-    assert list(ev["session"]) == [date(2026, 11, 6), date(2026, 11, 6)] + [date(2026, 11, 9)] * 2
+    # 947,491.5, so only the later duplicate buys (Fri, Mon, Tue) are blocked.
+    blocked = [date(2026, 11, 6), date(2026, 11, 9), date(2026, 11, 10)]
+    assert list(ev["session"]) == [d for d in blocked for _ in range(2)]
     thu = trades[trades["session"] == date(2026, 11, 5)]
     # Sells fill before buys: AAA sell first, then the BBB buy it funds (9,970,005 >= 9,022,513.5).
     assert list(thu["side"]) == ["sell", "buy"]
@@ -613,3 +632,40 @@ def test_sim_executor_run_matches_run_simulation(engine_cfg: AppConfig) -> None:
     ex = SimExecutor(prices, None, CAL, params)
     assert ex.run(targets).digest() == run_simulation(prices, None, targets, CAL, params).digest()
     assert ex.result().trades.empty  # the stepping state is independent of run()
+
+
+def test_late_published_action_is_applied_once_on_first_visible_session(
+    engine_cfg: AppConfig,
+) -> None:
+    days = make_days(10)
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
+    sim = Simulator(prices, None, CAL, executable(engine_cfg))
+    late = synthetic_actions(
+        {
+            "ticker": "AAA",
+            "ex_date": days[3],  # Wed 11-04
+            "type": "cash",
+            "ratio_or_amount": 1_000.0,
+            "pay_date": date(2026, 11, 20),
+        }
+    )
+    for i, day in enumerate(sim.sessions):
+        if i == 1:
+            sim.queue("AAA", "buy", 1_000, days[0])
+        if i == 5:  # first appears two sessions after its ex-date (Fri 11-06)
+            sim.add_actions(late)
+        if i == 6:
+            sim.add_actions(late)  # published again: must not apply twice
+        sim.open_session(day)
+        sim.mark(day)
+        sim.record(day)
+    eq = {r.date: r.cash_pending for r in sim.result().equity.itertuples()}
+    assert eq[days[4]] == 0  # not visible yet
+    # 1,000 shares x 1,000 VND = 1,000,000 booked once, on the first visible session.
+    assert eq[days[5]] == pytest.approx(1_000_000)
+    assert eq[days[6]] == pytest.approx(1_000_000)  # not 2,000,000
+    assert eq[days[9]] == pytest.approx(1_000_000)
+
+
+def test_sales_tax_in_hose_yaml_equals_costs_default(engine_cfg: AppConfig) -> None:
+    assert engine_cfg.market.rules.sales_tax_pct.value == engine_cfg.costs.sales_tax_pct

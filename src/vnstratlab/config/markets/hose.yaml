@@ -20,7 +20,7 @@ rules:
     value: {ato: "09:00-09:15", continuous: ["09:15-11:30", "13:00-14:30"], atc: "14:30-14:45"}
     status: VERIFY
   sales_tax_pct: {value: 0.001, status: confirmed, source: "broker fee page"}
-  cash_proceeds_offset: {value: 2, status: VERIFY, note: "sessions after a sell fill until proceeds can fund buys; conservative"}
+  cash_proceeds_offset: {value: 3, status: VERIFY, note: "conservative; consistent with shares sellable from the T+3 open; broker advances are never assumed"}
   cash_dividend_pay_lag_days: {value: 30, status: VERIFY, note: "fallback when corporate_actions.pay_date is missing"}
   stock_dividend_listing_lag_sessions: {value: 20, status: VERIFY, note: "fallback when corporate_actions.listing_date is missing"}
   short_selling: {value: false, status: confirmed}

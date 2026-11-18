@@ -25,6 +25,14 @@ class Ledger:
         self.cash_available = cash
         self._pending: list[tuple[date, float]] = []
         self._tranches: dict[str, list[_Tranche]] = {}
+        self._applied: set[tuple[str, date, str, float]] = set()
+
+    def mark_applied(self, key: tuple[str, date, str, float]) -> bool:
+        """Record a corporate action as applied; False if it already was (idempotence)."""
+        if key in self._applied:
+            return False
+        self._applied.add(key)
+        return True
 
     @property
     def cash_pending(self) -> float:

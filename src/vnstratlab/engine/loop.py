@@ -140,10 +140,21 @@ class _Action:
     pay_date: date | None
     listing_date: date | None
 
+    @property
+    def key(self) -> tuple[str, date, str, float]:
+        return (self.ticker, self.ex_date, self.kind, self.value)
+
 
 @dataclass(frozen=True)
 class SimResult:
+    """Run outputs (engine.md section 11).
+
+    ``turnover`` per session = sum of |notional| (qty x fill price, buys and sells) of that
+    session's fills / that session's closing equity; 0 on days without fills.
+    """
+
     returns: pd.Series
+    turnover: pd.Series
     positions: pd.DataFrame
     trades: pd.DataFrame
     order_events: pd.DataFrame
@@ -152,6 +163,7 @@ class SimResult:
     def frames(self) -> dict[str, pd.DataFrame]:
         return {
             "returns": self.returns.rename("ret").reset_index(),
+            "turnover": self.turnover.rename("turnover").reset_index(),
             "positions": self.positions,
             "trades": self.trades,
             "order_events": self.order_events,
@@ -168,6 +180,15 @@ class SimResult:
         return h.hexdigest()
 
 
+def _in_period(series: pd.Series, start: date | None, end: date) -> list[float]:
+    values = series.to_numpy(dtype=float)
+    return [float(v) for d, v in zip(series.index, values, strict=True) if _within(d, start, end)]
+
+
+def _within(day: date, start: date | None, end: date) -> bool:
+    return (start is None or day > start) and day <= end
+
+
 def period_returns(returns: pd.Series, period_ends: Sequence[date]) -> pd.Series:
     """Compound per-session returns into periods ending on ``period_ends`` (inclusive).
 
@@ -177,12 +198,21 @@ def period_returns(returns: pd.Series, period_ends: Sequence[date]) -> pd.Series
     start: date | None = None
     for end in sorted(period_ends):
         growth = 1.0
-        for day, ret in zip(returns.index, returns.to_numpy(dtype=float), strict=True):
-            if (start is None or day > start) and day <= end:
-                growth *= 1.0 + float(ret)
+        for ret in _in_period(returns, start, end):
+            growth *= 1.0 + ret
         out[end] = growth - 1.0
         start = end
     return pd.Series(out, name="ret", dtype=float)
+
+
+def period_turnover(turnover: pd.Series, period_ends: Sequence[date]) -> pd.Series:
+    """Sum per-session turnover over the same periods as :func:`period_returns`."""
+    out: dict[date, float] = {}
+    start: date | None = None
+    for end in sorted(period_ends):
+        out[end] = sum(_in_period(turnover, start, end))
+        start = end
+    return pd.Series(out, name="turnover", dtype=float)
 
 
 # ------------------------------------------------------------------ input validation
@@ -273,7 +303,6 @@ class Simulator:
         if bad:
             raise ValueError(f"price dates are not trading days: {bad[:3]}")
         self._actions = _actions(corporate_actions)
-        self._next_action = 0
         self.ledger = Ledger(params.capital)
         self._last_close: dict[str, float] = {}
         self._pending: list[Order] = []
@@ -284,6 +313,8 @@ class Simulator:
         self._positions: list[tuple[Any, ...]] = []
         self._prev_equity = params.capital
         self._returns: dict[date, float] = {}
+        self._turnover: dict[date, float] = {}
+        self._traded_seen = 0
 
     # -- orders
 
@@ -325,6 +356,9 @@ class Simulator:
                 (today, ticker, shares, ledger.sellable(ticker, today), close, shares * close)
             )
         self._returns[today] = equity / self._prev_equity - 1.0
+        traded = sum(abs(t[7]) for t in self._trades[self._traded_seen :])  # notional column
+        self._traded_seen = len(self._trades)
+        self._turnover[today] = traded / equity if equity > 0 else 0.0
         self._prev_equity = equity
 
     def decide(self, today: date, weights: pd.Series) -> None:
@@ -373,12 +407,19 @@ class Simulator:
             self._events.add(order, today, "cancelled", "superseded by new decision")
         self._pending = kept
 
+    def add_actions(self, corporate_actions: pd.DataFrame) -> None:
+        """Add actions (e.g. published after their ex-date). Each action is applied exactly
+        once, at the pre-open of the first session on or after its ex-date."""
+        self._actions = sorted(
+            self._actions + _actions(corporate_actions), key=lambda a: (a.ex_date, a.ticker)
+        )
+
     def _apply_actions(self, today: date) -> None:
-        while self._next_action < len(self._actions):
-            action = self._actions[self._next_action]
+        for action in self._actions:
             if action.ex_date > today:
                 break
-            self._next_action += 1
+            if not self.ledger.mark_applied(action.key):
+                continue
             if action.kind == "cash":
                 self._cash_dividend(action)
             else:
@@ -530,8 +571,11 @@ class Simulator:
     def result(self) -> SimResult:
         returns = pd.Series(self._returns, name="ret", dtype=float)
         returns.index.name = "date"
+        turnover = pd.Series(self._turnover, name="turnover", dtype=float)
+        turnover.index.name = "date"
         return SimResult(
             returns=returns,
+            turnover=turnover,
             positions=pd.DataFrame(self._positions, columns=list(POSITION_COLUMNS)),
             trades=pd.DataFrame(self._trades, columns=list(TRADE_COLUMNS)),
             order_events=self._events.frame(),
@@ -546,7 +590,13 @@ def run_simulation(
     calendar: TradingCalendar,
     params: SimParams,
 ) -> SimResult:
-    """Run every session in ``prices``; ``targets[d]`` is decided at the close of ``d``."""
+    """Run every session in ``prices``; ``targets[d]`` is decided at the close of ``d``.
+
+    Ideal mode uses a proceeds offset of 0 (engine.md section 8) and executable mode the
+    configured ``cash_proceeds_offset``. Ideal and executable-with-lots-off returns are
+    therefore only equal while cash does not bind (e.g. invested weight well below 1);
+    with binding cash the executable run delays buys until proceeds are released.
+    """
     sim = Simulator(prices, corporate_actions, calendar, params)
     unknown = sorted(set(targets) - set(sim.sessions))
     if unknown:

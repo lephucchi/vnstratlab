@@ -13,6 +13,7 @@ from vnstratlab.engine.costs import Piece, sell_pieces
 from vnstratlab.engine.rules import (
     after_sessions,
     buy_blocked_by_ceiling,
+    price_limits,
     sell_blocked_by_floor,
     split_lots,
     target_quantity,
@@ -30,7 +31,7 @@ def test_config_adds_engine_section_and_hose_rules(engine_cfg: AppConfig) -> Non
     )
     assert (e.max_carry_sessions, e.rights_policy, e.ideal_capital_vnd) == (5, "ignore", 1.0e12)
     r = engine_cfg.market.rules
-    assert (r.cash_proceeds_offset.value, r.cash_proceeds_offset.status) == (2, "VERIFY")
+    assert (r.cash_proceeds_offset.value, r.cash_proceeds_offset.status) == (3, "VERIFY")
     assert r.cash_dividend_pay_lag_days.value == 30
     assert r.stock_dividend_listing_lag_sessions.value == 20
     rules = MarketRules.from_config(engine_cfg)
@@ -155,3 +156,29 @@ def test_after_sessions_uses_the_calendar() -> None:
     assert after_sessions(cal, date(2026, 11, 2), 3) == date(2026, 11, 5)
     ends = TradingCalendar.from_sessions([date(2026, 11, 2), date(2026, 11, 3)])
     assert after_sessions(ends, date(2026, 11, 3), 3) == date.max  # beyond the data
+
+
+def test_engine_rules_agree_with_data_ticktable(engine_cfg: AppConfig) -> None:
+    """engine.rules duplicates TickTable's logic (the engine may not import vnstratlab.data)."""
+    import numpy as np
+
+    from vnstratlab.data.protocol import TickTable
+
+    table = TickTable.from_config(engine_cfg)
+    rules = MarketRules.from_config(engine_cfg)
+    prices = (
+        [float(p) for p in range(9_900, 10_101)]  # incl. 9,990-10,050
+        + [float(p) for p in range(49_900, 50_201)]  # incl. 49,900-50,100
+        + [1_234.0, 9_995.0, 12_345.0, 49_973.0, 52_730.0, 87_650.0, 150_000.0]
+        + [9_994.5, 10_024.9, 49_974.9, 50_049.9]  # off-grid, fractional
+    )
+    for price in prices:
+        arr = np.array([price])
+        assert tick_size(price, rules.tick_bands) == table.tick(arr)[0], price
+        assert round_limit_price(price, "buy", rules.tick_bands) == table.round_down(arr)[0], price
+        assert round_limit_price(price, "sell", rules.tick_bands) == table.round_up(arr)[0], price
+        ceiling, floor = table.limits(arr)
+        got = price_limits(price, table.limit_pct, rules.tick_bands)
+        assert got == (ceiling[0], floor[0]), price
+    # hand check: ref 50,000, 7 %: 53,500 / 46,500
+    assert price_limits(50_000, 0.07, rules.tick_bands) == (53_500, 46_500)

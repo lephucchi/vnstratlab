@@ -11,6 +11,7 @@ from vnstratlab.engine.loop import (
     Simulator,
     make_params,
     period_returns,
+    period_turnover,
     run_simulation,
 )
 from vnstratlab.engine.orders import EventLog, Order
@@ -28,6 +29,7 @@ __all__ = [
     "Simulator",
     "make_params",
     "period_returns",
+    "period_turnover",
     "plan_buy",
     "round_limit_price",
     "run_simulation",
