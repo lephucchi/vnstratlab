@@ -76,13 +76,32 @@
   code { font-family: var(--mono); font-size: 12.5px; }
   footer { margin-top: 48px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 12px; }
   footer a { color: inherit; }
+  .noscript { color: var(--muted); font-size: 13px; }
 </style>
+<script>
+  // Follow the docs site's light/dark toggle when embedded (same origin); else the OS setting.
+  (function () {
+    function sync() {
+      try {
+        var b = window.parent && window.parent !== window ? window.parent.document.body : null;
+        var s = b ? b.getAttribute("data-md-color-scheme") : null;
+        if (s) document.documentElement.setAttribute("data-theme", s === "slate" ? "dark" : "light");
+      } catch (e) { /* not embedded or cross-origin: keep prefers-color-scheme */ }
+    }
+    sync();
+    try {
+      if (window.parent !== window) {
+        new MutationObserver(sync).observe(window.parent.document.body, { attributes: true, attributeFilter: ["data-md-color-scheme"] });
+      }
+    } catch (e) { /* ignore */ }
+  })();
+</script>
 </head>
 <body>
 <main>
 <header>
   <h1>Engine architecture: next Phase 1 milestones</h1>
-  <p>How the engine (M1.2 features → M1.3 simulator → M1.4 strategies → M1.5 lab) sits on the new data pipeline (ADR-007). Design view: nothing below the data layer runs yet. Text spec: <code>docs/engine.md</code>; proposals beyond the plan are marked <em>ADR-003</em>.</p>
+  <p>How the engine (M1.2 features → M1.3 simulator → M1.4 strategies → M1.5 lab) sits on the new data pipeline (ADR-007). Design view: the data layer runs (P1-T36 merged); everything above it is not built yet. Text spec: <code>docs/engine.md</code>; proposals beyond the plan are marked <em>ADR-003</em>.</p>
   <div class="legend" aria-label="Legend">
     <span class="chip done">done</span>
     <span class="chip review">in review / in progress</span>
@@ -108,19 +127,17 @@
 <!-- 1 LAYERS -->
 <section class="fig" id="f1">
   <h2><span class="num">01</span>Layers and the dependency rule</h2>
-  <p class="cap">Dependencies point down only. The domain core receives DataFrames and returns results; it never opens a database or a network connection. Only <code>vnstratlab.data</code> talks to a source (ADR-007, enforced by <code>tests/test_data_boundary.py</code>).</p>
+  <p class="cap">Dependencies point down only. The domain core receives DataFrames and returns results; it never opens a database or a network connection. Only <code>vnstratlab.data</code> talks to a source (ADR-007). The data boundary is enforced by <code>tests/test_data_boundary.py</code> (P1-T36); a full import-linter contract is proposed in ADR-003 §1.</p>
   <div class="frame">
   <svg viewBox="0 0 960 470" role="img" aria-labelledby="f1t f1d">
     <title id="f1t">Four layers of vnstratlab</title>
-    <desc id="f1d">Interfaces on top, then application, then the pure domain core, then infrastructure. Arrows show allowed dependencies downward; the data pipeline is the only layer that reads sources.</desc>
-    <!-- bands -->
+    <desc id="f1d">Interfaces on top, then application, then the pure domain core, then infrastructure. Arrows show allowed dependencies downward; the data pipeline is the only layer that reads sources, and the core never imports it.</desc>
     <rect x="10" y="10" width="940" height="80" rx="10" class="band"/>
     <text x="26" y="34" class="t-lg">Interfaces</text>
     <text x="26" y="52" class="t-sm muted">user-facing; Vietnamese UI text</text>
-    <rect x="230" y="28" width="150" height="44" rx="7" class="done"/><text x="305" y="48" text-anchor="middle" class="t-md mono">cli.py</text><text x="305" y="63" text-anchor="middle" class="t-xs muted">doctor · ingest</text>
-    <rect x="395" y="28" width="150" height="44" rx="7" class="todo"/><text x="470" y="48" text-anchor="middle" class="t-md mono">app/</text><text x="470" y="63" text-anchor="middle" class="t-xs muted">FastAPI · P1-T27</text>
-    <rect x="560" y="28" width="150" height="44" rx="7" class="todo"/><text x="635" y="48" text-anchor="middle" class="t-md mono">web/</text><text x="635" y="63" text-anchor="middle" class="t-xs muted">dashboard · P1-T28</text>
-    <rect x="725" y="28" width="210" height="44" rx="7" class="todo"/><text x="830" y="48" text-anchor="middle" class="t-md mono">notify/</text><text x="830" y="63" text-anchor="middle" class="t-xs muted">console · Telegram · P1-T29</text>
+    <rect x="230" y="28" width="200" height="44" rx="7" class="done"/><text x="330" y="48" text-anchor="middle" class="t-md mono">cli.py</text><text x="330" y="63" text-anchor="middle" class="t-xs muted">doctor · ingest (P1-T36)</text>
+    <rect x="445" y="28" width="235" height="44" rx="7" class="todo"/><text x="562" y="48" text-anchor="middle" class="t-md mono">app/</text><text x="562" y="63" text-anchor="middle" class="t-xs muted">FastAPI, read-only · P1-T27</text>
+    <rect x="695" y="28" width="240" height="44" rx="7" class="todo"/><text x="815" y="48" text-anchor="middle" class="t-md mono">web/</text><text x="815" y="63" text-anchor="middle" class="t-xs muted">dashboard, 5 pages · P1-T28</text>
 
     <rect x="10" y="110" width="940" height="90" rx="10" class="band"/>
     <text x="26" y="134" class="t-lg">Application</text>
@@ -141,21 +158,20 @@
     <rect x="10" y="350" width="940" height="110" rx="10" class="band"/>
     <text x="26" y="374" class="t-lg">Infrastructure</text>
     <text x="26" y="392" class="t-sm muted">all I/O lives here</text>
-    <rect x="230" y="366" width="330" height="80" rx="7" class="review"/>
-    <text x="395" y="388" text-anchor="middle" class="t-md mono">data/  (separate pipeline, ADR-007)</text>
-    <text x="395" y="406" text-anchor="middle" class="t-xs">sources → raw snapshot → normalise → DQ → market.duckdb</text>
-    <text x="395" y="422" text-anchor="middle" class="t-xs muted">P1-T36 in review · P1-T37 in progress · P1-T38 planned</text>
-    <text x="395" y="437" text-anchor="middle" class="t-xs muted">only layer that imports yfinance / adapters</text>
-    <rect x="575" y="366" width="170" height="80" rx="7" class="todo"/><text x="660" y="398" text-anchor="middle" class="t-md mono">journal/</text><text x="660" y="415" text-anchor="middle" class="t-xs muted">SQLite, append-only</text><text x="660" y="430" text-anchor="middle" class="t-xs muted">P1-T25</text>
-    <rect x="760" y="366" width="175" height="80" rx="7" class="done"/><text x="847" y="398" text-anchor="middle" class="t-md mono">config/ · calendar</text><text x="847" y="415" text-anchor="middle" class="t-xs muted">typed YAML, HOSE rules</text><text x="847" y="430" text-anchor="middle" class="t-xs muted">P1-T02 done</text>
+    <rect x="230" y="366" width="300" height="80" rx="7" class="done"/>
+    <text x="380" y="388" text-anchor="middle" class="t-md mono">data/  (separate pipeline)</text>
+    <text x="380" y="405" text-anchor="middle" class="t-xs">sources → raw → normalise → DQ → store</text>
+    <text x="380" y="421" text-anchor="middle" class="t-xs muted">P1-T36 done · P1-T37, P1-T38 in review</text>
+    <text x="380" y="436" text-anchor="middle" class="t-xs muted">only layer that imports yfinance / adapters</text>
+    <rect x="540" y="366" width="125" height="80" rx="7" class="todo"/><text x="602" y="398" text-anchor="middle" class="t-md mono">journal/</text><text x="602" y="415" text-anchor="middle" class="t-xs muted">SQLite, append-only</text><text x="602" y="430" text-anchor="middle" class="t-xs muted">P1-T25</text>
+    <rect x="675" y="366" width="125" height="80" rx="7" class="todo"/><text x="737" y="390" text-anchor="middle" class="t-md mono">notify/ · news/</text><text x="737" y="407" text-anchor="middle" class="t-xs muted">Telegram P1-T29</text><text x="737" y="422" text-anchor="middle" class="t-xs muted">raw news P1-T09</text>
+    <rect x="810" y="366" width="125" height="80" rx="7" class="done"/><text x="872" y="390" text-anchor="middle" class="t-md mono">config/</text><text x="872" y="407" text-anchor="middle" class="t-xs muted">typed YAML,</text><text x="872" y="422" text-anchor="middle" class="t-xs muted">calendar · P1-T02</text>
 
-    <!-- allowed dependency arrows -->
-    <path d="M305 72 V 126" class="edge" marker-end="url(#a)"/>
+    <path d="M330 72 V 126" class="edge" marker-end="url(#a)"/>
+    <path d="M562 72 V 126" class="edge" marker-end="url(#a)"/>
     <path d="M330 182 V 236" class="edge" marker-end="url(#a)"/>
-    <path d="M797 182 V 236" class="edge" marker-end="url(#a)"/>
     <path d="M545 182 V 236" class="edge" marker-end="url(#a)"/>
-    <path d="M545 72 V 126" class="edge" marker-end="url(#a)"/>
-    <!-- core never imports data: red dashed forbidden -->
+    <path d="M797 182 V 236" class="edge" marker-end="url(#a)"/>
     <path d="M315 312 V 362" class="edge-gap"/>
     <text x="322" y="342" class="t-xs gaptxt">✕ core never imports data/</text>
     <path d="M230 160 H 206 V 406 H 228" class="edge" marker-end="url(#a)"/>
@@ -168,7 +184,7 @@
 <!-- 2 DATA TO ORDERS -->
 <section class="fig" id="f2">
   <h2><span class="num">02</span>From data to orders: two price bases</h2>
-  <p class="cap">Signals use <strong>adjusted</strong> prices (a dividend is not a crash). Execution uses <strong>raw</strong> traded prices (limits, ticks, lot cost). With the interim Yahoo source there is no raw series yet (GAP-01) and limits are derived (GAP-02), so in Phase 1 the simulator executes on the split-adjusted series and treats limit/tick checks as approximate. Every row carries <code>price_basis</code>, so P1-T06 never adjusts twice.</p>
+  <p class="cap">Signals use <strong>adjusted</strong> prices (a dividend is not a crash). Execution uses <strong>raw</strong> traded prices (limits, ticks, lot cost). With the interim Yahoo source there is no raw series yet (GAP-01) and limits are derived (GAP-02), so in Phase 1 the simulator executes on the split-adjusted series, treats limit/tick checks as approximate and does <strong>not</strong> add stock-dividend shares to holdings (the price history already contains them). Every row carries <code>price_basis</code>, so nothing is adjusted twice.</p>
   <div class="frame">
   <svg viewBox="0 0 960 380" role="img" aria-labelledby="f2t f2d">
     <title id="f2t">Data flow from sources to orders</title>
@@ -192,7 +208,7 @@
 
     <!-- signal path -->
     <path d="M386 112 C 420 112, 420 60, 446 60" class="edge" marker-end="url(#a)"/>
-    <rect x="448" y="36" width="150" height="48" rx="8" class="todo"/><text x="523" y="57" text-anchor="middle" class="t-md mono">prices_adjusted</text><text x="523" y="73" text-anchor="middle" class="t-xs muted">P1-T06 (skip if adjusted)</text>
+    <rect x="448" y="36" width="150" height="48" rx="8" class="todo"/><text x="523" y="57" text-anchor="middle" class="t-md mono">prices_adjusted</text><text x="523" y="73" text-anchor="middle" class="t-xs muted">P1-T06 · no split re-adjust</text>
     <path d="M598 60 H 630" class="edge" marker-end="url(#a)"/>
     <rect x="632" y="36" width="140" height="48" rx="8" class="todo"/><text x="702" y="57" text-anchor="middle" class="t-md mono">features_daily</text><text x="702" y="73" text-anchor="middle" class="t-xs muted">point-in-time · P1-T10</text>
     <path d="M772 60 H 806" class="edge" marker-end="url(#a)"/>
@@ -210,17 +226,19 @@
     <!-- execution path -->
     <path d="M386 136 C 470 136, 470 304, 556 304" class="edge-strong" marker-end="url(#as)"/>
     <path d="M386 218 C 450 218, 450 296, 556 296" class="edge" marker-end="url(#a)"/>
-    <text x="410" y="268" class="t-sm muted">execution path · raw</text>
-    <rect x="558" y="272" width="190" height="62" rx="8" class="core"/>
+    <text x="226" y="262" class="t-sm muted">execution path · raw →</text>
+    <text x="226" y="278" class="t-xs muted">stock events reach holdings</text>
+    <text x="226" y="291" class="t-xs muted">only on raw / synthetic rows</text>
+    <rect x="558" y="272" width="190" height="62" rx="8" class="box"/>
     <text x="653" y="295" text-anchor="middle" class="t-md">SimExecutor</text>
     <text x="653" y="311" text-anchor="middle" class="t-xs muted">fill at open t+1 · HOSE rules</text>
     <text x="653" y="325" text-anchor="middle" class="t-xs muted">P1-T11 (PaperExecutor P1-T24)</text>
     <path d="M790 304 H 750" class="edge" marker-end="url(#a)"/>
 
     <!-- gap callouts -->
-    <rect x="490" y="160" width="250" height="56" rx="8" class="gapbox"/>
+    <rect x="490" y="156" width="290" height="62" rx="8" class="gapbox"/>
     <text x="504" y="180" class="t-sm gaptxt">Phase 1 (Yahoo): no raw series · GAP-01</text>
-    <text x="504" y="196" class="t-xs gaptxt">executes on split_adjusted; ref/ceiling/floor</text>
+    <text x="504" y="196" class="t-xs gaptxt">executes on split_adjusted; ref / ceiling / floor</text>
     <text x="504" y="209" class="t-xs gaptxt">derived from prev. close · GAP-02 (approximate)</text>
     <path d="M615 216 V 270" class="edge-gap" marker-end="url(#ag)"/>
 
@@ -247,6 +265,7 @@
     <line x1="110" y1="104" x2="950" y2="104" class="grid"/>
     <line x1="110" y1="154" x2="950" y2="154" class="grid"/>
   </svg>
+  <noscript><p class="noscript">This figure is drawn by a small script; enable JavaScript to see the sessions.</p></noscript>
   </div>
 </section>
 
@@ -308,7 +327,7 @@
     <path d="M470 155 H 488" class="edge-strong" marker-end="url(#as)"/>
     <path d="M710 155 H 728" class="edge-strong" marker-end="url(#as)"/>
     <path d="M840 290 C 840 318, 120 318, 120 292" class="edge" marker-end="url(#a)"/>
-    <text x="480" y="314" text-anchor="middle" class="t-xs muted">next session t+1</text>
+    <text x="480" y="302" text-anchor="middle" class="t-xs muted">next session t+1</text>
   </svg>
   </div>
 </section>
@@ -333,15 +352,14 @@
     <text x="318" y="138" class="t-xs muted">buy: ceiling / no cash</text>
     <rect x="440" y="120" width="150" height="48" rx="24" class="box"/><text x="515" y="141" text-anchor="middle" class="t-md">buy blocked</text><text x="515" y="157" text-anchor="middle" class="t-xs muted">unfilled_buy</text>
     <path d="M590 144 H 698" class="edge" marker-end="url(#a)"/>
-    <rect x="700" y="120" width="250" height="48" rx="24" class="gapbox"/><text x="825" y="141" text-anchor="middle" class="t-md gaptxt">cancelled</text><text x="825" y="157" text-anchor="middle" class="t-xs muted">next decision re-evaluates</text>
+    <rect x="700" y="120" width="250" height="48" rx="24" class="box" stroke-dasharray="4 3"/><text x="825" y="141" text-anchor="middle" class="t-md">cancelled</text><text x="825" y="157" text-anchor="middle" class="t-xs muted">next decision re-evaluates</text>
     <!-- sell blocked -->
     <path d="M300 152 C 360 200, 380 226, 438 228" class="edge" marker-end="url(#a)"/>
     <text x="318" y="214" class="t-xs muted">sell: floor</text>
-    <rect x="440" y="206" width="150" height="48" rx="24" class="review"/><text x="515" y="227" text-anchor="middle" class="t-md reviewtxt">carried</text><text x="515" y="243" text-anchor="middle" class="t-xs muted">unfilled_sell = carry</text>
+    <rect x="440" y="206" width="150" height="48" rx="24" class="review"/><text x="515" y="227" text-anchor="middle" class="t-md reviewtxt">carried</text><text x="515" y="243" text-anchor="middle" class="t-xs muted">≤ 5 sessions, then stale_order</text>
     <path d="M500 206 C 480 182, 300 170, 270 166" class="edge-dash" marker-end="url(#a)"/>
-    <text x="350" y="186" class="t-xs muted">retry next open</text>
+    <text x="350" y="166" class="t-xs muted">retry next open</text>
     <path d="M590 230 C 650 230, 680 190, 760 170" class="edge" marker-end="url(#a)"/>
-    <text x="620" y="252" class="t-xs muted">&gt; max_carry_sessions (5) → stale_order</text>
     <!-- unsettled -->
     <path d="M240 168 V 262 H 438" class="edge" marker-end="url(#a)"/>
     <text x="250" y="284" class="t-xs muted">sell before sellable (settlement)</text>
@@ -362,7 +380,7 @@
     <desc id="f6d">Three example strategies produce target weights. The lab assigns selection weights alpha. The combined weight vector goes through the risk layer to quantities and orders. A fallback path holds equal weight when the lab selects nothing.</desc>
     <rect x="10" y="20" width="170" height="52" rx="8" class="core"/><text x="95" y="42" text-anchor="middle" class="t-md mono">S02 breakout20</text><text x="95" y="60" text-anchor="middle" class="t-xs muted">w₁ = {A: .5, B: .5}</text>
     <rect x="10" y="94" width="170" height="52" rx="8" class="core"/><text x="95" y="116" text-anchor="middle" class="t-md mono">S03 oversold</text><text x="95" y="134" text-anchor="middle" class="t-xs muted">w₂ = {B: 1.0}</text>
-    <rect x="10" y="168" width="170" height="52" rx="8" class="core"/><text x="95" y="190" text-anchor="middle" class="t-md mono">S17 equal weight</text><text x="95" y="208" text-anchor="middle" class="t-xs muted">w₃ = 1/N</text>
+    <rect x="10" y="168" width="170" height="52" rx="8" class="core"/><text x="95" y="190" text-anchor="middle" class="t-md mono">S17 equal weight</text><text x="95" y="208" text-anchor="middle" class="t-xs muted">w₃ = 1/N over the universe</text>
     <path d="M180 46 C 230 46, 230 120, 268 120" class="edge" marker-end="url(#a)"/>
     <path d="M180 120 H 268" class="edge" marker-end="url(#a)"/>
     <path d="M180 194 C 230 194, 230 120, 268 120" class="edge" marker-end="url(#a)"/>
@@ -380,8 +398,8 @@
     <text x="850" y="110" text-anchor="middle" class="t-md">Quantities → orders</text>
     <text x="850" y="128" text-anchor="middle" class="t-xs muted">equity × W at raw close</text>
     <text x="850" y="143" text-anchor="middle" class="t-xs muted">round lots, odd-lot rest</text>
-    <path d="M365 154 V 214 H 840 V 156" class="edge-dash" marker-end="url(#a)"/>
-    <text x="600" y="232" text-anchor="middle" class="t-xs muted">lab selects nothing → hold_benchmark (1/N)</text>
+    <path d="M365 154 V 214 H 605 V 156" class="edge-dash" marker-end="url(#a)"/>
+    <text x="485" y="232" text-anchor="middle" class="t-xs muted">lab selects nothing → hold_benchmark (1/N), still through the risk layer</text>
   </svg>
   </div>
 </section>
@@ -398,12 +416,12 @@
     <text x="10" y="22" class="t-sm muted">walk-forward: at each period end p, strategies see data &lt; p only</text>
     <g>
       <rect x="10" y="32" width="380" height="16" rx="3" class="todo"/>
-      <rect x="390" y="32" width="40" height="16" rx="3" class="done"/>
+      <rect x="390" y="32" width="40" height="16" rx="3" class="core"/>
       <rect x="10" y="54" width="420" height="16" rx="3" class="todo"/>
-      <rect x="430" y="54" width="40" height="16" rx="3" class="done"/>
+      <rect x="430" y="54" width="40" height="16" rx="3" class="core"/>
       <rect x="10" y="76" width="460" height="16" rx="3" class="todo"/>
-      <rect x="470" y="76" width="40" height="16" rx="3" class="done"/>
-      <text x="520" y="45" class="t-xs muted">history ≤ p</text>
+      <rect x="470" y="76" width="40" height="16" rx="3" class="core"/>
+      <text x="520" y="45" class="t-xs muted">history &lt; p</text>
       <text x="520" y="89" class="t-xs muted">OOS period → oos_returns (ideal, exec)</text>
     </g>
     <!-- funnel -->
@@ -419,15 +437,15 @@
     <polygon points="680,120 820,120 810,170 690,170" class="core"/>
     <text x="750" y="142" text-anchor="middle" class="t-md">MCS</text>
     <text x="750" y="158" text-anchor="middle" class="t-xs muted">α = 0.10</text>
-    <rect x="830" y="120" width="120" height="50" rx="8" class="done"/>
-    <text x="890" y="142" text-anchor="middle" class="t-md donetxt">weights α</text>
+    <rect x="830" y="120" width="120" height="50" rx="8" class="core"/>
+    <text x="890" y="142" text-anchor="middle" class="t-md coretxt">weights α</text>
     <text x="890" y="158" text-anchor="middle" class="t-xs muted">Hedge, shrunk, capped</text>
     <path d="M410 170 V 220 H 640" class="edge-dash"/>
     <path d="M600 170 V 220" class="edge-dash"/>
     <path d="M750 170 V 220 H 640" class="edge-dash"/>
     <path d="M640 220 V 240" class="edge-dash" marker-end="url(#a)"/>
-    <rect x="540" y="242" width="200" height="40" rx="8" class="gapbox"/>
-    <text x="640" y="266" text-anchor="middle" class="t-sm gaptxt">nothing passes → hold_benchmark</text>
+    <rect x="540" y="242" width="200" height="40" rx="8" class="box" stroke-dasharray="4 3"/>
+    <text x="640" y="266" text-anchor="middle" class="t-sm">nothing passes → hold_benchmark</text>
     <text x="10" y="210" class="t-xs muted">Reports split performance at registered_at:</text>
     <text x="10" y="226" class="t-xs muted">before = historical walk-forward (in-sample by design)</text>
     <text x="10" y="242" class="t-xs muted">after = forward (true OOS) · meta-backtest runs this</text>
@@ -469,52 +487,55 @@
 <!-- 9 BUILD ORDER -->
 <section class="fig" id="f9">
   <h2><span class="num">09</span>Build order for the next milestones</h2>
-  <p class="cap">Card dependencies as planned in <code>docs/roadmap.md</code> (dates are plans). The simulator needs only the synthetic market (P1-T36), so engine work does not wait for the interim source.</p>
+  <p class="cap">Card dependencies from plan §8 (dates from <code>docs/roadmap.md</code> are plans). The simulator needs only the synthetic market (P1-T36), so engine work does not wait for real data. The feature store also depends on P1-T07 (fundamentals), which has no source yet (GAP-11): value and quality features stay synthetic-only until it does.</p>
   <div class="frame">
-  <svg viewBox="0 0 960 330" role="img" aria-labelledby="f9t f9d">
+  <svg viewBox="0 0 960 340" role="img" aria-labelledby="f9t f9d">
     <title id="f9t">Card dependency graph</title>
-    <desc id="f9d">P1-T02 is done. P1-T36 is in review and unblocks P1-T37, P1-T11 and P1-T13. P1-T37 leads to P1-T38, then P1-T06, then P1-T10. P1-T11 leads to P1-T12. P1-T10 and P1-T13 lead to strategies P1-T14 to 19, then the lab P1-T20 to 23, then demo P1-T32 and release v0.1.0.</desc>
-    <text x="70" y="20" text-anchor="middle" class="t-xs muted">M1.0</text>
-    <text x="250" y="20" text-anchor="middle" class="t-xs muted">M1.1 data · 19–21/11</text>
-    <text x="480" y="20" text-anchor="middle" class="t-xs muted">M1.1–M1.3 · w/c 23/11–30/11</text>
-    <text x="700" y="20" text-anchor="middle" class="t-xs muted">M1.4 · to 18/12</text>
-    <text x="880" y="20" text-anchor="middle" class="t-xs muted">release</text>
+    <desc id="f9d">P1-T02 is done and leads to P1-T36 (done) and P1-T05. P1-T36 leads to P1-T37 and P1-T11. P1-T37 leads to P1-T38, which leads to P1-T06 and, with P1-T06 and the blocked P1-T07, to the feature store P1-T10. P1-T10 leads to the strategy registry P1-T13, which leads to strategies P1-T14 to 19 and, with the simulator P1-T11, to the lab P1-T20 to 23 in v0.2. P1-T11 leads to the risk layer P1-T12. Strategies lead to the demo P1-T32 in v0.1. Membership history P1-T05 feeds the lab.</desc>
+    <text x="65" y="12" text-anchor="middle" class="t-xs muted">M1.0</text>
+    <text x="215" y="12" text-anchor="middle" class="t-xs muted">M1.1</text>
+    <text x="375" y="12" text-anchor="middle" class="t-xs muted">M1.1 · M1.3</text>
+    <text x="530" y="12" text-anchor="middle" class="t-xs muted">M1.1 · M1.3</text>
+    <text x="680" y="12" text-anchor="middle" class="t-xs muted">M1.2 · M1.4</text>
+    <text x="865" y="12" text-anchor="middle" class="t-xs muted">v0.1 → v0.2</text>
 
-    <rect x="10" y="140" width="120" height="44" rx="8" class="done"/><text x="70" y="160" text-anchor="middle" class="t-md mono">P1-T02</text><text x="70" y="175" text-anchor="middle" class="t-xs muted">config · calendar</text>
+    <rect x="10" y="140" width="110" height="44" rx="8" class="done"/><text x="65" y="160" text-anchor="middle" class="t-md mono">P1-T02</text><text x="65" y="175" text-anchor="middle" class="t-xs muted">config · calendar</text>
+    <rect x="150" y="140" width="130" height="44" rx="8" class="done"/><text x="215" y="160" text-anchor="middle" class="t-md mono">P1-T36</text><text x="215" y="175" text-anchor="middle" class="t-xs muted">protocol · store · synth</text>
+    <rect x="150" y="260" width="130" height="44" rx="8" class="todo"/><text x="215" y="280" text-anchor="middle" class="t-md mono">P1-T05</text><text x="215" y="295" text-anchor="middle" class="t-xs muted">VN30 membership</text>
 
-    <rect x="180" y="140" width="140" height="44" rx="8" class="review"/><text x="250" y="160" text-anchor="middle" class="t-md mono">P1-T36</text><text x="250" y="175" text-anchor="middle" class="t-xs muted">protocol · store · synth</text>
-    <rect x="180" y="40" width="140" height="44" rx="8" class="review"/><text x="250" y="60" text-anchor="middle" class="t-md mono">P1-T37</text><text x="250" y="75" text-anchor="middle" class="t-xs muted">Yahoo adapter</text>
-    <rect x="180" y="250" width="140" height="44" rx="8" class="todo"/><text x="250" y="270" text-anchor="middle" class="t-md mono">P1-T05</text><text x="250" y="285" text-anchor="middle" class="t-xs muted">VN30 membership</text>
+    <rect x="310" y="20" width="130" height="44" rx="8" class="review"/><text x="375" y="40" text-anchor="middle" class="t-md mono">P1-T37</text><text x="375" y="55" text-anchor="middle" class="t-xs muted">Yahoo adapter</text>
+    <rect x="310" y="80" width="130" height="44" rx="8" class="review"/><text x="375" y="100" text-anchor="middle" class="t-md mono">P1-T38</text><text x="375" y="115" text-anchor="middle" class="t-xs muted">DQ v0 · gaps</text>
+    <rect x="310" y="160" width="130" height="44" rx="8" class="todo"/><text x="375" y="180" text-anchor="middle" class="t-md mono">P1-T11</text><text x="375" y="195" text-anchor="middle" class="t-xs muted">simulator</text>
+    <rect x="310" y="240" width="130" height="44" rx="8" class="gapbox"/><text x="375" y="260" text-anchor="middle" class="t-md mono gaptxt">P1-T07</text><text x="375" y="275" text-anchor="middle" class="t-xs gaptxt">fundamentals · blocked</text>
 
-    <rect x="370" y="40" width="130" height="44" rx="8" class="todo"/><text x="435" y="60" text-anchor="middle" class="t-md mono">P1-T38</text><text x="435" y="75" text-anchor="middle" class="t-xs muted">DQ · gaps</text>
-    <rect x="370" y="96" width="130" height="44" rx="8" class="todo"/><text x="435" y="116" text-anchor="middle" class="t-md mono">P1-T06</text><text x="435" y="131" text-anchor="middle" class="t-xs muted">adjusted prices</text>
-    <rect x="370" y="160" width="130" height="44" rx="8" class="todo"/><text x="435" y="180" text-anchor="middle" class="t-md mono">P1-T11</text><text x="435" y="195" text-anchor="middle" class="t-xs muted">simulator</text>
-    <rect x="370" y="220" width="130" height="44" rx="8" class="todo"/><text x="435" y="240" text-anchor="middle" class="t-md mono">P1-T13</text><text x="435" y="255" text-anchor="middle" class="t-xs muted">strategy registry</text>
+    <rect x="470" y="80" width="120" height="44" rx="8" class="todo"/><text x="530" y="100" text-anchor="middle" class="t-md mono">P1-T06</text><text x="530" y="115" text-anchor="middle" class="t-xs muted">adjusted prices</text>
+    <rect x="470" y="160" width="120" height="44" rx="8" class="todo"/><text x="530" y="180" text-anchor="middle" class="t-md mono">P1-T12</text><text x="530" y="195" text-anchor="middle" class="t-xs muted">risk layer</text>
 
-    <rect x="540" y="96" width="120" height="44" rx="8" class="todo"/><text x="600" y="116" text-anchor="middle" class="t-md mono">P1-T10</text><text x="600" y="131" text-anchor="middle" class="t-xs muted">features</text>
-    <rect x="540" y="160" width="120" height="44" rx="8" class="todo"/><text x="600" y="180" text-anchor="middle" class="t-md mono">P1-T12</text><text x="600" y="195" text-anchor="middle" class="t-xs muted">risk layer</text>
+    <rect x="620" y="80" width="120" height="44" rx="8" class="todo"/><text x="680" y="100" text-anchor="middle" class="t-md mono">P1-T10</text><text x="680" y="115" text-anchor="middle" class="t-xs muted">features</text>
+    <rect x="620" y="160" width="120" height="44" rx="8" class="todo"/><text x="680" y="180" text-anchor="middle" class="t-md mono">P1-T13</text><text x="680" y="195" text-anchor="middle" class="t-xs muted">strategy registry</text>
 
-    <rect x="690" y="140" width="130" height="44" rx="8" class="todo"/><text x="755" y="160" text-anchor="middle" class="t-md mono">P1-T14…19</text><text x="755" y="175" text-anchor="middle" class="t-xs muted">strategies</text>
-    <rect x="690" y="230" width="130" height="44" rx="8" class="todo"/><text x="755" y="250" text-anchor="middle" class="t-md mono">P1-T20…23</text><text x="755" y="265" text-anchor="middle" class="t-xs muted">lab (v0.2)</text>
+    <rect x="790" y="30" width="160" height="44" rx="8" class="todo"/><text x="870" y="50" text-anchor="middle" class="t-md mono">P1-T14…19</text><text x="870" y="65" text-anchor="middle" class="t-xs muted">strategies · v0.1</text>
+    <rect x="790" y="100" width="160" height="44" rx="8" class="todo"/><text x="870" y="120" text-anchor="middle" class="t-md mono">P1-T32</text><text x="870" y="135" text-anchor="middle" class="t-xs muted">demo · v0.1</text>
+    <rect x="790" y="200" width="160" height="44" rx="8" class="todo"/><text x="870" y="220" text-anchor="middle" class="t-md mono">P1-T20…23</text><text x="870" y="235" text-anchor="middle" class="t-xs muted">lab · M1.5 · v0.2</text>
 
-    <rect x="850" y="140" width="100" height="44" rx="8" class="todo"/><text x="900" y="160" text-anchor="middle" class="t-md mono">P1-T32</text><text x="900" y="175" text-anchor="middle" class="t-xs muted">demo · v0.1</text>
-
-    <path d="M130 162 H 178" class="edge" marker-end="url(#a)"/>
-    <path d="M130 170 C 155 170, 150 272, 178 272" class="edge" marker-end="url(#a)"/>
-    <path d="M250 140 V 86" class="edge" marker-end="url(#a)"/>
-    <path d="M320 62 H 368" class="edge" marker-end="url(#a)"/>
-    <path d="M435 84 V 94" class="edge" marker-end="url(#a)"/>
-    <path d="M320 168 C 345 168, 345 182, 368 182" class="edge" marker-end="url(#a)"/>
-    <path d="M320 176 C 345 176, 345 242, 368 242" class="edge" marker-end="url(#a)"/>
-    <path d="M500 118 H 538" class="edge" marker-end="url(#a)"/>
-    <path d="M500 182 H 538" class="edge" marker-end="url(#a)"/>
-    <path d="M660 118 C 680 118, 670 150, 688 154" class="edge" marker-end="url(#a)"/>
-    <path d="M500 242 C 600 242, 640 176, 688 170" class="edge" marker-end="url(#a)"/>
-    <path d="M660 182 C 675 182, 672 170, 688 166" class="edge" marker-end="url(#a)"/>
-    <path d="M755 184 V 228" class="edge" marker-end="url(#a)"/>
-    <path d="M820 162 H 848" class="edge" marker-end="url(#a)"/>
-    <path d="M320 272 C 520 300, 620 300, 690 262" class="edge-dash" marker-end="url(#a)"/>
-    <text x="520" y="318" text-anchor="middle" class="t-xs muted">membership by date feeds the lab universe (survivorship, GAP-13)</text>
+    <path d="M120 162 H 148" class="edge" marker-end="url(#a)"/>
+    <path d="M120 172 C 135 172, 135 282, 148 282" class="edge" marker-end="url(#a)"/>
+    <path d="M280 152 C 295 152, 295 42, 308 42" class="edge" marker-end="url(#a)"/>
+    <path d="M375 64 V 78" class="edge" marker-end="url(#a)"/>
+    <path d="M280 172 C 295 172, 295 182, 308 182" class="edge" marker-end="url(#a)"/>
+    <path d="M440 102 H 468" class="edge" marker-end="url(#a)"/>
+    <path d="M590 102 H 618" class="edge" marker-end="url(#a)"/>
+    <path d="M440 90 C 520 50, 570 56, 620 88" class="edge" marker-end="url(#a)"/>
+    <text x="530" y="58" text-anchor="middle" class="t-xs muted">DQ (part of P1-T08)</text>
+    <path d="M440 262 H 772 V 116 H 742" class="edge-gap" marker-end="url(#ag)"/>
+    <path d="M680 124 V 158" class="edge" marker-end="url(#a)"/>
+    <path d="M740 172 C 758 172, 758 52, 788 52" class="edge" marker-end="url(#a)"/>
+    <path d="M740 190 C 758 190, 760 222, 788 222" class="edge" marker-end="url(#a)"/>
+    <path d="M440 182 H 468" class="edge" marker-end="url(#a)"/>
+    <path d="M440 196 C 600 232, 700 236, 788 230" class="edge" marker-end="url(#a)"/>
+    <path d="M870 74 V 98" class="edge" marker-end="url(#a)"/>
+    <path d="M215 304 V 318 H 870 V 246" class="edge-dash" marker-end="url(#a)"/>
+    <text x="540" y="332" text-anchor="middle" class="t-xs muted">membership by date feeds the lab universe (survivorship, GAP-13)</text>
   </svg>
   </div>
 </section>
