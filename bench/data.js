@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794926897727,
+  "lastUpdate": 1794974711466,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -248,6 +248,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002274183976824281",
             "extra": "mean: 9.979508727273156 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0e776f3d502c9ead68fb6855650abf839ca88b56",
+          "message": "docs(adr): ADR-007 Yahoo interim source, data pipeline, gap register (#13)\n\nOwner decision 2026-11-18. ADR-007, Yahoo source review, gap register (14 gaps), data-pipeline design, cards P1-T36..T38, M1.1 schedule.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-18T11:04:51+07:00",
+          "tree_id": "246d5b0e0f1ffae5bb2659a6bf225be7a542860a",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/0e776f3d502c9ead68fb6855650abf839ca88b56"
+        },
+        "date": 1794974711038,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 205.21465767845848,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00012637853410002778",
+            "extra": "mean: 4.872946266668994 msec\nrounds: 15"
           }
         ]
       }
