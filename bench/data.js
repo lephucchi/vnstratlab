@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794982633115,
+  "lastUpdate": 1794982861071,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -434,6 +434,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00025017188435831134",
             "extra": "mean: 9.802968499994336 msec\nrounds: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c3d67b7c5c84e7bf7481596b52ab5b315dd63323",
+          "message": "docs(adr): accept ADR-003 in part; card P1-T11 simulator core (#21)\n\nOwner decision 2026-11-18: ADR-003 proposals 1, 3, 4, 6-12 accepted, 2 and 5 deferred; cash_proceeds_offset = 3 and stock_dividend_listing_lag_sessions = 20 confirmed. Card P1-T11 with settled engine details. Merged on owner request.",
+          "timestamp": "2026-11-18T13:20:33+07:00",
+          "tree_id": "8a06edb4db1391590df533ff82c3bbf4db2da106",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/c3d67b7c5c84e7bf7481596b52ab5b315dd63323"
+        },
+        "date": 1794982860522,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 170.6101132812954,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001853204092245707",
+            "extra": "mean: 5.86131724999935 msec\nrounds: 12"
           }
         ]
       }
