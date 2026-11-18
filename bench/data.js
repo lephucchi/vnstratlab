@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794982861071,
+  "lastUpdate": 1794983177736,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -465,6 +465,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0001853204092245707",
             "extra": "mean: 5.86131724999935 msec\nrounds: 12"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f8a2986547aa61d07bd0fea77777186858aee38f",
+          "message": "feat(engine): simulator core with HOSE rules (P1-T11) (#23)\n\nPure event loop and SimExecutor: settlement T+3, price limits, round and odd lots, ticks, fees, sales tax, slippage, cash ledger with proceeds offset 3, cash and stock dividends, order lifecycle with order_events, ideal and executable modes, turnover. Merged on owner request; G2 follow-ups open (late-action entitlement, turnover denominator, pre-ex pending rescale).",
+          "timestamp": "2026-11-18T13:25:43+07:00",
+          "tree_id": "c45ea45e8873b6b5c58f2c69863d54eaf05182c3",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/f8a2986547aa61d07bd0fea77777186858aee38f"
+        },
+        "date": 1794983177414,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 95.84388220053283,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002764022411666604",
+            "extra": "mean: 10.433634125000424 msec\nrounds: 8"
           }
         ]
       }
