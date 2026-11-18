@@ -72,14 +72,18 @@ Corporate actions are applied to the simulated portfolio on the ex-date:
 The interim Yahoo source has **no raw series** (GAP-01) and **no exchange limits** (GAP-02).
 Until a raw source closes those gaps, the engine runs on Yahoo rows as follows:
 
-| Topic | Yahoo rows (`price_basis = split_adjusted`) | Engine behaviour in Phase 1 |
+Let `F(t) = Π (1 + ratio_e)` over the stored stock events `e` of the ticker with `ex_date > t`
+(ratio = bonus fraction, P1-T37 convention). P1-T06 builds the execution series from it; P1-T11
+only consumes it (`price_basis = exec_reconstructed`) and refuses `split_adjusted` input.
+
+| Topic | Yahoo rows (`price_basis = split_adjusted`) | Phase 1 handling |
 |---|---|---|
-| Execution prices | Split-adjusted series; prices before a stock dividend / bonus issue are scaled down by `1 + ratio` | The engine **reconstructs an execution series**: `exec(t) = adjusted(t) × Π (1 + ratio_e)` over stock events `e` in `corporate_actions` with `ex_date > t` (ratio = bonus fraction). This undoes Yahoo's scaling, so lot cost, cash per lot, limits and ticks are close to raw (small rounding residue). Proposed for P1-T06 (`prices_exec` or a view) and consumed by P1-T11 |
-| `ref_price`, `ceiling`, `floor` | Derived from the previous stored close (`derived_limits = true`) | Limit checks run but are wrong on ex-dates. Logging limit-blocked fills with `derived_limits` in `order_events` is a **proposal for P1-T11** |
-| Stock dividend / bonus shares | Yahoo rescales all earlier history; P1-T37 refetches the ticker's full history when it sees the new event (GAP-08), so the store stays in one scale | Because execution uses the reconstructed series, stock events are **applied to holdings exactly as for raw rows** (`shares += floor(shares × ratio)` on the ex-date). This is correct both for backtests over rescaled history and for paper books that hold a position across a new event; it never double counts and never loses the bonus shares |
-| Cash dividend | Not in `Close` (P1-T37 reads Yahoo with `auto_adjust=False`, so `Close` is split-adjusted only) | Booked to cash as for raw rows |
-| `prices_adjusted` (P1-T06) | — | For signals: split factors are **never re-applied** to `split_adjusted` rows (they are already split-continuous); cash-dividend adjustment still applies (ADR-007 §5) |
-| Tick grid | Historical prices are off-grid after scaling | Tick rounding applies only to recommended limit prices shown to the user (§5), as before |
+| Execution prices | Split-adjusted; prices before a stock dividend / bonus issue are divided by `1 + ratio` | **P1-T06 reconstructs** `exec(t) = adjusted(t) × F(t)` for open/high/low/close, **rounded to the tick grid**; volume is divided by `F(t)` (if Yahoo scales volume, open question in the Yahoo review). Lot cost and cash per lot are then close to raw |
+| `ref_price`, `ceiling`, `floor` | Derived at ingest from the previous split-adjusted close (`derived_limits = true`) | P1-T06 recomputes them on the reconstructed scale: `ref(t)` = reconstructed previous close (the theoretical ex-price on an ex-date), ceiling/floor from the HOSE rules. Limits are then right on ex-dates too, but still derived (GAP-02). Logging `derived_limits` in `order_events` is a follow-up proposal, not part of P1-T11 |
+| Stock dividend / bonus shares | Yahoo rescales all earlier history; P1-T37 refetches the ticker's full history when it sees a new event (GAP-08), so the store stays in one scale | Applied to **holdings as for raw rows** (`shares += floor(shares × ratio)`). The loop applies every not-yet-applied action with `ex_date ≤ t` (idempotent, tracked per book), so an event that Yahoo publishes a few days after its ex-date is still applied once to a paper book |
+| Cash dividend | Not in `Close` (P1-T37 reads Yahoo with `auto_adjust=False`) | Booked to cash as for raw rows. **[VERIFY]** whether Yahoo's dividend amounts are split-adjusted too; if so, P1-T06 multiplies them by `F(ex_date)` like prices |
+| `prices_adjusted` (P1-T06) | — | For signals: split factors are **never re-applied** to `split_adjusted` rows (already split-continuous); cash-dividend adjustment still applies (ADR-007 §5) |
+| Preconditions | Reconstruction is only as good as the stored stock events (GAP-06); P1-T37 drops reverse splits (factor ≤ 1) | P1-T06 adds a check: across each ex-date the reconstructed close should fall by about `1/(1 + ratio)`; a ticker that fails is flagged and excluded from execution until fixed |
 | Synthetic rows (`price_basis = synthetic`) | Raw-like, on the tick grid, with exact limits | Engine rule tests (§14) run on synthetic data, where every rule is exact |
 
 Hand-computed engine tests therefore always use the synthetic market; real-data runs are for
@@ -102,7 +106,7 @@ For each session `t` (all orders are generated at a close and filled at the **ne
 
 ```
 1. PRE-OPEN (t)
-   a. apply corporate actions with ex_date == t
+   a. apply every not-yet-applied corporate action with ex_date <= t (idempotent per book)
    b. release settled shares  (bought at t - offset → sellable at t)
    c. release cash            (dividends paid, sale proceeds after cash_proceeds_offset)
 
@@ -287,7 +291,7 @@ replays a fixture run and compares hashes.
 | Lots | 52,700 VND × 3 lots unaffordable; odd-lot remainder; odd lots off |
 | Ticks | each tick band boundary, both rounding directions |
 | Costs | fee both sides; tax on loss; odd-lot slippage |
-| Corporate actions | 10% stock dividend (shares, no artificial gap in signals); cash dividend receivable → available; on `split_adjusted` rows the reconstructed execution price equals the raw price (synthetic round trip: raw → Yahoo-style scaling → reconstruction), and a book holding across a 10% stock dividend keeps its equity (1,000 sh × 50,000 = 50.0M before; 1,100 sh × 45,455 ≈ 50.0M after) with no −ratio step in signals |
+| Corporate actions | 10% stock dividend (shares, no artificial gap in signals); cash dividend receivable → available; on `split_adjusted` rows the reconstructed execution price equals the raw price (synthetic round trip: raw → Yahoo-style scaling → reconstruction), and a book holding across a 10% stock dividend keeps its equity within one tick (1,000 sh × 50,000 = 50,000,000 before; 1,100 sh × 45,450 = 49,995,000 after, the ex-price rounded down to the tick) with no −ratio step in signals; an action published after its ex-date is applied once |
 | Modes | executable == ideal with lots off and infinite capital (property test) |
 | Lookahead | strategy that peeks at `t+1` is impossible (features truncated) and detected |
 | Determinism | same manifest → identical outputs |
