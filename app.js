@@ -18,6 +18,17 @@ const ADR_LABEL = {
   "superseded": ["Thay thế", "info"],
 };
 
+const GAP_SEVERITY = {
+  "high": ["Cao", "bad"],
+  "medium": ["Trung bình", "warn"],
+  "low": ["Thấp", ""],
+};
+const GAP_STATUS = {
+  "open": ["Đang mở", "warn"],
+  "mitigated": ["Đã giảm thiểu", "info"],
+  "closed": ["Đã đóng", "ok"],
+};
+
 const $ = (sel) => document.querySelector(sel);
 
 function el(tag, attrs = {}, ...children) {
@@ -44,6 +55,39 @@ function fmtTime(iso) {
   return d.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour12: false });
 }
 
+// Card due dates are calendar dates (YYYY-MM-DD); compare with the viewer's local date.
+function todayIso() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function isOverdue(card) {
+  return Boolean(card.due) && card.status !== "done" && card.due < todayIso();
+}
+
+function dueChip(card) {
+  if (!card.due) return null;
+  const [y, m, dd] = card.due.split("-");
+  const time = el("time", { datetime: card.due, title: `${dd}/${m}/${y}` }, `${dd}/${m}`);
+  return isOverdue(card)
+    ? el("span", { class: "chip bad" }, "Quá hạn: ", time)
+    : el("span", { class: "chip" }, "Hạn: ", time);
+}
+
+// cards with a due date first (earliest first), the rest in their original order
+function byDue(cards) {
+  return cards
+    .map((c, i) => [c, i])
+    .sort(([a, i], [b, j]) => {
+      if (a.due && b.due) return a.due < b.due ? -1 : a.due > b.due ? 1 : i - j;
+      if (a.due) return -1;
+      if (b.due) return 1;
+      return i - j;
+    })
+    .map(([c]) => c);
+}
+
 function runTone(run) {
   if (run.status !== "completed") return ["đang chạy", "info"];
   if (run.conclusion === "success") return ["thành công", "ok"];
@@ -66,6 +110,12 @@ function renderKpis(d) {
     ["Coverage", d.quality.coverage != null ? `${d.quality.coverage}%` : "—", "ngưỡng 80%"],
     ["Mục [VERIFY]", String(d.verify_items), "luật sàn / lịch nghỉ cần xác nhận"],
   ];
+  const overdue = d.cards.filter(isOverdue).length;
+  if (d.cards.some((c) => c.due)) kpis.splice(2, 0, ["Card quá hạn", String(overdue), "theo hạn trên task card"]);
+  if (d.gaps && d.gaps.available) {
+    const c = d.gaps.counts || {};
+    kpis.push(["Khoảng trống dữ liệu", String(c.open || 0), `đang mở · ${c.high || 0} mức cao`]);
+  }
   $("#kpis").replaceChildren(
     ...kpis.map(([label, value, sub]) =>
       el("div", { class: "kpi" }, el("div", { class: "label" }, label), el("div", { class: "value" }, value), el("div", { class: "sub" }, sub))
@@ -121,13 +171,14 @@ function renderBoard(d) {
   const phase = $("#phase-filter").value;
   const cards = d.cards.filter((c) => phase === "all" || c.phase === phase);
   const cols = BOARD_COLUMNS.map((status) => {
-    const inCol = cards.filter((c) => (status === "in-review" ? ["in-review", "changes-requested"].includes(c.status) : c.status === status));
+    const inCol = byDue(cards.filter((c) => (status === "in-review" ? ["in-review", "changes-requested"].includes(c.status) : c.status === status)));
     return el("div", { class: "col" },
       el("h3", {}, el("span", {}, STATUS_LABEL[status]), el("span", { class: "muted" }, String(inCol.length))),
       ...(status === "todo" && inCol.length > TODO_LIMIT ? inCol.slice(0, TODO_LIMIT) : inCol).map((c) =>
         el("div", { class: "task" },
           el("span", { class: "id" }, c.id), " ",
           c.status === "changes-requested" ? chip("cần sửa", "bad") : null,
+          dueChip(c),
           c.branch ? chip(c.branch, "info") : null,
           el("span", { class: "t" }, c.title)
         )
@@ -138,6 +189,61 @@ function renderBoard(d) {
     );
   });
   $("#board").replaceChildren(...cols);
+}
+
+function gapEmpty(text) {
+  $("#gap-counts").replaceChildren();
+  $("#gap-src").textContent = "";
+  $("#gaps tbody").replaceChildren(el("tr", {}, el("td", { colspan: "5", class: "empty" }, text)));
+}
+
+function renderGaps(d) {
+  const g = d.gaps;
+  if (!g) { gapEmpty("Bản dữ liệu này chưa có sổ khoảng trống (build cũ)."); return; }
+  if (!g.available) { gapEmpty(`Không đọc được sổ khoảng trống${g.reason ? ` (${g.reason})` : ""}.`); return; }
+  const items = g.items || [];
+  const c = g.counts || {};
+  const src = [g.source ? `Nguồn tạm: ${g.source}` : "", g.origin && g.origin !== "develop" ? `đọc từ nhánh ${g.origin}` : ""];
+  $("#gap-src").textContent = src.filter(Boolean).join(" · ");
+  const group = (label, entries) =>
+    el("div", { class: "gap-group", role: "group", "aria-label": label },
+      el("span", { class: "muted small" }, label),
+      ...entries.map(([key, [text, tone]]) => el("span", { class: `chip ${tone}` }, `${text}: ${c[key] || 0}`))
+    );
+  $("#gap-counts").replaceChildren(
+    group("Trạng thái", Object.entries(GAP_STATUS)),
+    group("Mức độ (chưa đóng)", Object.entries(GAP_SEVERITY))
+  );
+  if (!items.length) {
+    $("#gaps tbody").replaceChildren(el("tr", {}, el("td", { colspan: "5", class: "empty" }, "Không có khoảng trống nào.")));
+    return;
+  }
+  $("#gaps tbody").replaceChildren(
+    ...items.map((x) => {
+      const [sev, sevTone] = GAP_SEVERITY[x.severity] || [x.severity || "—", ""];
+      const [st, stTone] = GAP_STATUS[x.status] || [x.status || "—", ""];
+      const detail = (k, v) => (v ? [el("dt", {}, k), el("dd", {}, v)] : []);
+      return el("tr", {},
+        el("th", { scope: "row" }, x.id),
+        el("td", {},
+          el("span", { class: "gap-title", lang: "vi" }, x.title_vi || x.title),
+          x.title_vi && x.title ? el("span", { class: "muted small gap-en", lang: "en" }, x.title) : null,
+          el("details", { class: "gap-more" },
+            el("summary", {}, "Chi tiết"),
+            el("dl", {},
+              ...detail("Thiếu", x.missing),
+              ...detail("Cách xử lý tạm", x.workaround),
+              ...detail("Đóng bằng", x.close_by),
+              ...detail("Ghi nhận từ", x.since)
+            )
+          )
+        ),
+        el("td", {}, chip(sev, sevTone)),
+        el("td", {}, chip(st, stTone)),
+        el("td", { class: "gap-affects" }, (x.affects || []).join(", ") || "—")
+      );
+    })
+  );
 }
 
 function renderAdrs(d) {
@@ -265,6 +371,7 @@ function show(data) {
   renderKpis(data);
   renderWaiting(data);
   renderRoadmap(data);
+  renderGaps(data);
   renderBoard(data);
   renderAdrs(data);
   renderQuality(data);

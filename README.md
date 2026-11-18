@@ -15,6 +15,12 @@ Orphan branch: shares no history with the code. Served at `/po/` by `pages.yml` 
   for the tab only. Every Pages build rotates the salt, so users log in again after each build.
   Without the secrets the page says it is not configured. A CSP meta tag allows only same-origin
   scripts/data and Google Fonts.
+- Sections include the **data gap register** ("Khoảng trống dữ liệu": counts by status and by
+  severity of gaps not yet closed, one row per gap with "Chi tiết" for what is missing, the
+  workaround and how it closes) from `gaps` in the data (`src/vnstratlab/data/gaps.yaml`,
+  ADR-007), and each card's planned **due date** from its front matter (`due:`), shown as
+  "Hạn: dd/mm" on the board, "Quá hạn" when not done and past the viewer's local date.
+  Older data without `gaps`, or `"available": false`, shows a short note instead.
 - Same monochrome design system and buffalo mascot as the intro site (`site` branch).
 - A push to this branch triggers `pages.yml` via `.github/workflows/trigger-pages.yml`.
 
