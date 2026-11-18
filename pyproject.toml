@@ -49,8 +49,8 @@ dev = [
     "cryptography>=42",
 ]
 docs = ["mkdocs-material>=9.5"]
-# Data-source extras are added in P1-T03 after the source's licence is reviewed
-# (see docs/data-sources.md). Example: vnstock = ["vnstock>=X.Y"].
+# Interim price source (ADR-007). User's own responsibility: see Yahoo's terms.
+yahoo = ["yfinance>=1.8,<2"]
 
 [project.scripts]
 vnstratlab = "vnstratlab.cli:app"
@@ -88,6 +88,10 @@ python_version = "3.11"
 strict = true
 files = ["src/vnstratlab"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["yfinance", "yfinance.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"

@@ -234,9 +234,18 @@ class SyntheticConfig(_Model):
     suspension_probability: Pct
 
 
+class YahooConfig(_Model):
+    symbol_suffix: Annotated[str, Field(pattern=r"^(\.[A-Z]{1,4})?$")]
+    max_requests_per_minute: PositiveInt
+    retries: NonNegInt
+    backoff_seconds: PositiveFloat
+    final_after: Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]  # Asia/Ho_Chi_Minh
+
+
 class DataConfig(_Model):
     source: Name
     synthetic: SyntheticConfig
+    yahoo: YahooConfig
 
 
 # ------------------------------------------------------------------ markets/<name>.yaml

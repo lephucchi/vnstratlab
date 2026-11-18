@@ -56,7 +56,13 @@ stress:                        # realism checks run by `vnstratlab stress` and Q
   regimes: []                  # list of {name, start, end}; filled per release
 
 data:                          # market data pipeline (docs/data-pipeline.md)
-  source: synthetic            # P1-T37 changes this to yahoo
+  source: yahoo                # interim (ADR-007); `synthetic` for tests/demo
+  yahoo:
+    symbol_suffix: ".VN"
+    max_requests_per_minute: 30
+    retries: 3
+    backoff_seconds: 2.0
+    final_after: "16:00"       # Asia/Ho_Chi_Minh; today's bar is dropped before this time
   synthetic:
     seed: 20261118
     start: 2015-01-01          # first synthetic session (also capped by --from)

@@ -62,6 +62,7 @@ class DataSource(Protocol):
 # name -> "module:factory"; adapters are imported only when requested.
 _REGISTRY: dict[str, str] = {
     "synthetic": "vnstratlab.data.sources.synthetic:build",
+    "yahoo": "vnstratlab.data.sources.yahoo:build",
 }
 
 

@@ -18,10 +18,17 @@ import typer
 from vnstratlab import __version__
 from vnstratlab.calendar import holiday_coverage
 from vnstratlab.config.loader import ConfigError, load_config, load_config_with_info
-from vnstratlab.data.pipeline import IngestReport, default_start
+from vnstratlab.data.pipeline import (
+    IngestReport,
+    default_start,
+    record_terms_acceptance,
+    terms_accepted,
+    terms_notice,
+    utc_now,
+)
 from vnstratlab.data.pipeline import ingest as ingest_data
-from vnstratlab.data.protocol import SourceError, get_source, source_names
-from vnstratlab.paths import get_paths
+from vnstratlab.data.protocol import DataSource, SourceError, get_source, source_names
+from vnstratlab.paths import AppPaths, get_paths
 from vnstratlab.settings import load_settings
 
 app = typer.Typer(
@@ -132,6 +139,10 @@ def _echo_ingest_report(report: IngestReport) -> None:
         f"rows in {report.rows_in}, written {report.rows_written}, "
         f"changed {report.rows_changed}, dropped {report.rows_dropped}"
     )
+    if report.status != "ok":
+        typer.echo(f"status {report.status}: {len(report.failed)} ticker(s) failed", err=True)
+        for ticker, message in sorted(report.failed.items()):
+            typer.echo(f"  {ticker}: {message}", err=True)
     if report.dry_run:
         typer.echo("dry run: nothing was written")
         for name, frame in report.preview.items():
@@ -140,6 +151,29 @@ def _echo_ingest_report(report: IngestReport) -> None:
     else:
         typer.echo(f"store {report.db_path}")
         typer.echo(f"raw   {report.raw_path}")
+
+
+def _is_interactive() -> bool:
+    return sys.stdin.isatty()
+
+
+def _require_terms(paths: AppPaths, adapter: DataSource, accept: bool, dry_run: bool) -> None:
+    """ADR-007 section 2: show the notice once per interim source and store the acceptance."""
+    if terms_accepted(paths, adapter):
+        return
+    typer.echo(terms_notice(adapter), err=True)
+    if not accept:
+        if not _is_interactive():
+            typer.echo(
+                "error: terms not accepted. Re-run with --accept-source-terms to accept "
+                f"{adapter.info.name}'s terms non-interactively.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        if not typer.confirm("Do you accept and want to continue? / Bạn đồng ý và muốn tiếp tục?"):
+            raise typer.Exit(code=1)
+    if not dry_run:  # a dry run creates no file
+        record_terms_acceptance(paths, adapter, utc_now())
 
 
 @app.command()
@@ -155,6 +189,13 @@ def ingest(
         str | None, typer.Option("--to", help="End date YYYY-MM-DD; default: today.")
     ] = None,
     dry_run: DryRun = False,
+    accept_source_terms: Annotated[
+        bool,
+        typer.Option(
+            "--accept-source-terms",
+            help="Accept the terms of an interim source without asking (for OS schedulers).",
+        ),
+    ] = False,
 ) -> None:
     """Download or refresh market data into the local data directory."""
     start = _parse_date(from_date, "--from")
@@ -172,6 +213,7 @@ def ingest(
     name = source or cfg.data.source
     try:
         adapter = get_source(name, cfg)
+        _require_terms(paths, adapter, accept_source_terms, dry_run)
         start = start or default_start(cfg, paths, adapter)
         if start > end:
             typer.echo(f"{name}: up to date (latest stored session is on or after {end})")

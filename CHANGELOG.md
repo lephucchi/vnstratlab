@@ -23,6 +23,11 @@ All notable changes are documented here. The format follows
   `po/data.json` is no longer written.
 
 ### Added
+- Yahoo adapter (P1-T37): `YahooSource` (optional extra `pip install "vnstratlab[yahoo]"`,
+  `data.source` default is now `yahoo`, new `data.yahoo` config), rate limit with retries and
+  backoff, holiday filler-row and partial-bar rules, a one-time terms notice stored in
+  `<home>/state/accepted_sources.json` (`ingest --accept-source-terms` for schedulers), and a
+  `partial` run status when a ticker fails. `VNSTOCK_API_KEY` is removed.
 - Data pipeline (P1-T36): `DataSource` protocol and registry, DuckDB market store with raw
   Parquet snapshots, revisions and a `store_meta.kind` guard (synthetic data goes to
   `market-synthetic.duckdb`, real data to `market.duckdb`), deterministic synthetic market

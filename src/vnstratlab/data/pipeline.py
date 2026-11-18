@@ -6,9 +6,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from dataclasses import dataclass, field, replace
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,6 +31,10 @@ from vnstratlab.data.store import Kind, MarketStore, RunRecord, kind_of_basis, k
 if TYPE_CHECKING:
     from vnstratlab.config.models import AppConfig
     from vnstratlab.paths import AppPaths
+
+log = logging.getLogger(__name__)
+# Vietnam has no daylight saving time; a fixed offset avoids a tz-database dependency.
+VN_TZ = timezone(timedelta(hours=7), "Asia/Ho_Chi_Minh")
 
 Clock = Callable[[], datetime]
 PrevClose = Callable[[str, date], float | None]
@@ -53,6 +59,8 @@ class IngestReport:
     db_path: Path | None
     raw_path: Path | None
     preview: dict[str, pd.DataFrame] = field(default_factory=dict)
+    status: str = "ok"
+    failed: dict[str, str] = field(default_factory=dict)
 
 
 def source_kind(source: DataSource) -> Kind:
@@ -103,11 +111,18 @@ def ingest(
     run_id = make_run_id(started, source.info.name, start, end)
     raw = source.fetch_daily(tickers, start, end)
     actions = source.fetch_corporate_actions(tickers, start, end)
+    failed = dict(getattr(source, "failures", {}))
+    if failed and raw.empty:
+        names = ", ".join(sorted(failed))
+        raise SourceError(f"every ticker failed: {names}")
+    status = "partial" if failed else "ok"
+    cutoff = partial_bar_cutoff(source, end, started)
     db_path = paths.market_db_for(kind)
     ticks = TickTable.from_config(cfg)
 
     if dry_run:
-        return _dry_run(source, db_path, kind, raw, actions, (start, end), ticks, run_id)
+        report = _dry_run(source, db_path, kind, raw, actions, (start, end), ticks, run_id, cutoff)
+        return replace(report, status=status, failed=failed)
 
     with MarketStore(db_path, kind) as store:  # validates the store kind before anything is written
         if store.has_run(run_id):
@@ -125,6 +140,7 @@ def ingest(
                     end,
                     ticks,
                     lambda t, d: store.previous_close(t, d, source.info.name),
+                    exclude_from=cutoff,
                 )
                 result = store.upsert_prices(frame, run_id, started)
                 store.upsert_corporate_actions(
@@ -143,7 +159,7 @@ def ingest(
                         rows_written=result.written,
                         rows_changed=result.changed,
                         rows_dropped=dropped,
-                        status="ok",
+                        status=status,
                         raw_path=str(raw_path),
                     )
                 )
@@ -184,6 +200,8 @@ def ingest(
         rows_dropped=dropped,
         db_path=db_path,
         raw_path=raw_path,
+        status=status,
+        failed=failed,
     )
 
 
@@ -196,15 +214,23 @@ def _dry_run(
     window: tuple[date, date],
     ticks: TickTable,
     run_id: str,
+    cutoff: date | None,
 ) -> IngestReport:
     name = source.info.name
     if db_path.is_file():
         with MarketStore(db_path, kind, read_only=True) as store:
             frame, dropped = normalise(
-                raw, source, *window, ticks, lambda t, d: store.previous_close(t, d, name)
+                raw,
+                source,
+                *window,
+                ticks,
+                lambda t, d: store.previous_close(t, d, name),
+                exclude_from=cutoff,
             )
     else:
-        frame, dropped = normalise(raw, source, *window, ticks, lambda t, d: None)
+        frame, dropped = normalise(
+            raw, source, *window, ticks, lambda t, d: None, exclude_from=cutoff
+        )
     return IngestReport(
         run_id=run_id,
         source=name,
@@ -239,21 +265,33 @@ def normalise(
     end: date,
     ticks: TickTable,
     prev_close: PrevClose,
+    exclude_from: date | None = None,
 ) -> tuple[pd.DataFrame, int]:
-    """Schema, dtypes, sort, validity filter and derived limits. Returns ``(frame, dropped)``."""
+    """Schema, dtypes, sort, validity filter and derived limits. Returns ``(frame, dropped)``.
+
+    ``exclude_from`` drops rows dated on or after it (the partial-bar rule). Sources with
+    ``drop_filler_rows = True`` also lose holiday filler rows (GAP-05).
+    """
     missing = [c for c in REQUIRED_COLUMNS if c not in raw.columns]
     if missing:
         raise SourceError(f"source frame is missing columns: {', '.join(missing)}")
     columns = [*REQUIRED_COLUMNS, *(c for c in OPTIONAL_COLUMNS if c in raw.columns)]
     if "value" in raw.columns:
         columns.append("value")
-    frame = raw[columns].copy()
+    frame = raw[columns].reset_index(drop=True)
     frame["ticker"] = frame["ticker"].astype(str)
     frame["date"] = [pd.Timestamp(d).date() for d in frame["date"]]
     for col in (*_PRICE_FLOATS, *(c for c in (*OPTIONAL_COLUMNS, "value") if c in frame.columns)):
         frame[col] = pd.to_numeric(frame[col]).astype(np.float64)
     frame["volume"] = pd.to_numeric(frame["volume"])
     keep = _valid_mask(frame, start, end)
+    if exclude_from is not None:
+        keep &= pd.Series([d < exclude_from for d in frame["date"]], index=frame.index)
+    if getattr(source, "drop_filler_rows", False):
+        filler = _filler_mask(frame, prev_close)
+        if filler.any():
+            _log_filler(frame, filler)
+        keep &= ~filler
     frame = frame[keep].copy()
     frame["volume"] = frame["volume"].astype(np.int64)
     frame = frame.drop_duplicates(["ticker", "date"], keep="last")
@@ -300,3 +338,90 @@ def _with_limits(frame: pd.DataFrame, ticks: TickTable, prev_close: PrevClose) -
             frame["floor"] = floor
     frame["derived_limits"] = derived
     return frame
+
+
+def _filler_mask(frame: pd.DataFrame, prev_close: PrevClose) -> pd.Series:
+    """Rows with zero volume and open = high = low = close = the ticker's previous close."""
+    ordered = frame.sort_values(["ticker", "date"], kind="stable")
+    previous = ordered.groupby("ticker")["close"].shift(1)
+    for index in ordered.index[~ordered.duplicated("ticker")]:
+        previous.loc[index] = prev_close(
+            str(ordered.loc[index, "ticker"]), ordered.loc[index, "date"]
+        )
+    reference = previous.astype(np.float64)
+    flat = ordered["volume"] == 0
+    for col in _PRICE_FLOATS:
+        flat &= pd.Series(
+            np.isclose(ordered[col], reference, rtol=1e-9, atol=0.0), index=ordered.index
+        )
+    return flat.reindex(frame.index).fillna(False).astype(bool)
+
+
+def _log_filler(frame: pd.DataFrame, filler: pd.Series) -> None:
+    for ticker, group in frame[filler].groupby("ticker"):
+        days = ", ".join(str(d) for d in group["date"])
+        log.info("dropped %d filler row(s) for %s: %s", len(group), ticker, days)
+
+
+# ------------------------------------------------------------------ partial bar
+
+
+def partial_bar_cutoff(source: DataSource, end: date, now: datetime) -> date | None:
+    """Today's date when ``end`` reaches today and the session is not final yet, else ``None``.
+
+    Reads the optional ``final_after`` (a ``datetime.time``, Vietnam time) from the source.
+    """
+    final_after: time | None = getattr(source, "final_after", None)
+    if final_after is None:
+        return None
+    local = now.astimezone(VN_TZ)
+    if end >= local.date() and local.time() < final_after:
+        return local.date()
+    return None
+
+
+# ------------------------------------------------------------------ source terms
+
+
+def accepted_sources_path(paths: AppPaths) -> Path:
+    return paths.home / "state" / "accepted_sources.json"
+
+
+def _accepted(paths: AppPaths) -> dict[str, object]:
+    path = accepted_sources_path(paths)
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def terms_accepted(paths: AppPaths, source: DataSource) -> bool:
+    """True if the source needs no acceptance or the user already accepted its terms."""
+    return not source.info.interim or source.info.name in _accepted(paths)
+
+
+def record_terms_acceptance(paths: AppPaths, source: DataSource, now: datetime) -> None:
+    accepted = _accepted(paths)
+    accepted[source.info.name] = {
+        "accepted_at": now.astimezone(UTC).isoformat(timespec="seconds"),
+        "terms_url": source.info.terms_url,
+    }
+    path = accepted_sources_path(paths)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(accepted, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def terms_notice(source: DataSource) -> str:
+    """One-time notice (Vietnamese and English) for an interim source."""
+    name, url = source.info.name, source.info.terms_url
+    return (
+        f"Nguồn dữ liệu '{name}' là nguồn tạm thời (interim). Điều khoản: {url}\n"
+        "Dữ liệu chỉ dùng cho nghiên cứu cá nhân của bạn; bạn tự chịu trách nhiệm tuân thủ "
+        "điều khoản của nguồn. vnstratlab không phân phối lại dữ liệu.\n"
+        f"Data source '{name}' is an interim source. Its terms: {url}\n"
+        "Use the data only for your own research; you are responsible for following the "
+        "source's terms. vnstratlab never redistributes downloaded data."
+    )
