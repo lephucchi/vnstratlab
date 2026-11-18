@@ -94,7 +94,8 @@ def test_gap_register_from_checkout(tmp_path: Path) -> None:
     _write_gaps(tmp_path)
     gaps = bs.gap_register(tmp_path)
     assert gaps["available"] is True
-    assert gaps["origin"] == "develop"
+    assert gaps["origin"] == "checkout"
+    assert "fallback" not in gaps
     assert gaps["source"] == "synthetic"
     assert gaps["version"] == 1
     assert gaps["counts"] == {
@@ -136,12 +137,34 @@ def test_gap_register_falls_back_to_newest_work_branch(
     monkeypatch.setattr(bs, "git", fake_git)
     gaps = bs.gap_register(tmp_path)
     assert gaps["available"] is True
-    assert gaps["origin"] == "feat/P1-T36-y"
+    assert gaps["origin"] == "branch:feat/P1-T36-y"
+    assert gaps["fallback"] is True
     assert len(gaps["items"]) == 3
 
 
-def test_gap_register_missing(tmp_path: Path) -> None:
+def test_gap_register_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(bs, "git", lambda repo, *args: "")  # no real refs
     assert bs.gap_register(tmp_path) == {"available": False, "reason": "gaps.yaml not found"}
+
+
+def test_gap_register_date_version_is_serialisable() -> None:
+    gaps = bs.parse_gaps("version: 2026-11-18\ngaps: []\n", "develop")
+    json.dumps(gaps)
+    assert gaps["version"] == "2026-11-18"
+
+
+def test_safe_gap_register_never_raises(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(bs, "gap_register", lambda repo: {"available": True, "x": object()})
+    gaps = bs.safe_gap_register(tmp_path)
+    assert gaps["available"] is False
+    assert gaps["reason"]
+
+
+def test_plan_and_roadmap_cards_have_due() -> None:
+    plan = "## 9. Phase 1 — X\n### M1.1 — Data\n**P1-T01 — First card**\n"
+    roadmap = "| P1-T50 | Added card | v0.1.0 |\n"
+    assert bs.parse_plan(plan)[0]["due"] == ""
+    assert bs.parse_roadmap_cards(roadmap)[0]["due"] == ""
 
 
 def test_gap_register_without_pyyaml(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

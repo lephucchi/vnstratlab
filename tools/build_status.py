@@ -116,6 +116,7 @@ def parse_plan(text: str) -> list[dict[str, Any]]:
                     "phase": phase,
                     "status": "todo",
                     "branch": None,
+                    "due": "",
                     "source": "plan",
                 }
             )
@@ -139,6 +140,7 @@ def parse_roadmap_cards(text: str) -> list[dict[str, Any]]:
                     "release": m.group(3),
                     "status": "todo",
                     "branch": None,
+                    "due": "",
                     "source": "roadmap",
                 }
             )
@@ -229,6 +231,11 @@ def _text(value: Any) -> str:
     return "" if value is None else str(value).strip()
 
 
+def _version(value: Any) -> int | str:
+    """Register version as int or text (a YAML date such as 2026-11-18 is not JSON)."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else _text(value)
+
+
 def parse_gaps(text: str, origin: str) -> dict[str, Any]:
     """The gap register as PO data; `{"available": False, ...}` if it cannot be read."""
     try:
@@ -260,7 +267,7 @@ def parse_gaps(text: str, origin: str) -> dict[str, Any]:
         "available": True,
         "origin": origin,
         "source": _text(register.get("source")),
-        "version": register.get("version"),
+        "version": _version(register.get("version")),
         "items": items,
         "counts": counts,
     }
@@ -269,16 +276,36 @@ def parse_gaps(text: str, origin: str) -> dict[str, Any]:
 def gap_register(repo: Path) -> dict[str, Any]:
     """Read gaps.yaml from the checkout, else from the newest remote feat/ or fix/ branch.
 
-    The fallback lets the dashboard show the register while the card that adds it is in review.
+    `origin` is "checkout" for the working tree; a branch read is marked `fallback: true`
+    and warned about in the CI log.
     """
     path = repo / GAPS_PATH
     if path.exists():
-        return parse_gaps(path.read_text(encoding="utf-8"), "develop")
+        return parse_gaps(path.read_text(encoding="utf-8"), "checkout")
+    # TODO(PR #15): remove this branch fallback once gaps.yaml is on develop (it is ignored by
+    # `data/` in .gitignore until P1-T36 lands). It only bridges the review period; after that a
+    # missing file on develop must show as unavailable, not silently come from a feature branch.
     for ref in remote_work_refs(repo):
         text = git(repo, "show", f"{ref}:{GAPS_PATH}")
         if text:
-            return parse_gaps(text, ref.removeprefix("origin/"))
+            branch = ref.removeprefix("origin/")
+            print(f"::warning::{GAPS_PATH} not in the checkout; gap register read from {branch}.")
+            gaps = parse_gaps(text, f"branch:{branch}")
+            if gaps.get("available"):
+                gaps["fallback"] = True
+            return gaps
     return {"available": False, "reason": "gaps.yaml not found"}
+
+
+def safe_gap_register(repo: Path) -> dict[str, Any]:
+    """The gap register, guaranteed JSON-serialisable; never fails the Pages build."""
+    try:
+        gaps = gap_register(repo)
+        json.dumps(gaps)
+    except (TypeError, ValueError, OSError) as exc:
+        print(f"::warning::gap register not published ({type(exc).__name__}).")
+        return {"available": False, "reason": "gap register could not be serialised"}
+    return gaps
 
 
 # ------------------------------------------------------------------ progress, ADRs
@@ -519,7 +546,7 @@ def build(
         "adrs": adrs,
         "waiting_for_owner": waiting,
         "verify_items": count_verify(repo),
-        "gaps": gap_register(repo),
+        "gaps": safe_gap_register(repo),
         "quality": {"tests": tests, "coverage": cov, "benchmarks": benches},
         "github": gh,
     }
