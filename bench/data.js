@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794977038241,
+  "lastUpdate": 1794979690251,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -310,6 +310,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00911812504572895",
             "extra": "mean: 7.082243000001297 msec\nrounds: 21"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "dbae0f66db950864eaa98387568b1a758f6dc9b7",
+          "message": "feat(tools): gap register and card due dates in PO data (#16)\n\nG2 round 3 point (dead fallback) verified removed; CI green.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+          "timestamp": "2026-11-18T12:27:40+07:00",
+          "tree_id": "5187117f911adb23b1d159e2963d957d53d0fcd6",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/dbae0f66db950864eaa98387568b1a758f6dc9b7"
+        },
+        "date": 1794979689770,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 115.9942839237701,
+            "unit": "iter/sec",
+            "range": "stddev: 0.012424594210522581",
+            "extra": "mean: 8.621114473685504 msec\nrounds: 19"
           }
         ]
       }
