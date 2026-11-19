@@ -66,5 +66,10 @@ kept in the repository**; findings are described qualitatively.
 ## 5. Open questions
 
 1. Which Yahoo entity and regional terms apply to a user in Vietnam (ToS §13–14 not reviewed).
-2. Whether trading volume is adjusted for splits the same way as prices.
+2. Whether trading volume is adjusted for splits the same way as prices. P1-T06 assumes it is and
+   divides volume by `F(t)` in the execution series.
+   Whether Yahoo's dividend amounts are split-adjusted is also open: the repository fixtures are
+   hand-built and cannot answer it (P1-T06 finding), so amounts are used as stored and
+   `vnstratlab.data.adjust.DIVIDENDS_SPLIT_ADJUSTED` (default False) is the one switch to flip once
+   a real sample is compared against a raw source.
 3. How Yahoo treats repeated requests from datacenter IPs (not tested; CI never calls it).

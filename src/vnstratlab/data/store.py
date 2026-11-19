@@ -56,6 +56,7 @@ _VALUE_COLUMNS = (
     "derived_limits",
 )
 ACTION_COLUMNS = ("ticker", "ex_date", "type", "ratio_or_amount", "source")
+OPTIONAL_ACTION_COLUMNS = ("pay_date", "listing_date")
 
 _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS store_meta (key VARCHAR PRIMARY KEY, value VARCHAR)""",
@@ -70,11 +71,30 @@ _SCHEMA = (
         ticker VARCHAR NOT NULL, ex_date DATE NOT NULL, type VARCHAR NOT NULL,
         ratio_or_amount DOUBLE, source VARCHAR NOT NULL, run_id VARCHAR NOT NULL,
         PRIMARY KEY (ticker, ex_date, type, source))""",
+    # migration for stores created before P1-T06 (plan section 3: optional dates)
+    "ALTER TABLE corporate_actions ADD COLUMN IF NOT EXISTS pay_date DATE",
+    "ALTER TABLE corporate_actions ADD COLUMN IF NOT EXISTS listing_date DATE",
     """CREATE TABLE IF NOT EXISTS ingest_runs (
         run_id VARCHAR PRIMARY KEY, source VARCHAR NOT NULL,
         started_at TIMESTAMP, finished_at TIMESTAMP, start_date DATE, end_date DATE,
         tickers VARCHAR, rows_in BIGINT, rows_written BIGINT, rows_changed BIGINT,
         rows_dropped BIGINT, status VARCHAR, raw_path VARCHAR)""",
+    # Derived tables (P1-T06); rebuilt per source, never part of prices_daily.
+    """CREATE TABLE IF NOT EXISTS prices_adjusted (
+        ticker VARCHAR NOT NULL, date DATE NOT NULL, source VARCHAR NOT NULL,
+        price_basis VARCHAR NOT NULL,
+        adj_open DOUBLE, adj_high DOUBLE, adj_low DOUBLE, adj_close DOUBLE, adj_factor DOUBLE,
+        adj_version VARCHAR NOT NULL, dq_error BOOLEAN NOT NULL,
+        PRIMARY KEY (ticker, date, source))""",
+    """CREATE TABLE IF NOT EXISTS prices_exec (
+        ticker VARCHAR NOT NULL, date DATE NOT NULL, source VARCHAR NOT NULL,
+        open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT,
+        ref_price DOUBLE, ceiling DOUBLE, floor DOUBLE,
+        price_basis VARCHAR NOT NULL, stock_factor DOUBLE,
+        PRIMARY KEY (ticker, date, source))""",
+    """CREATE TABLE IF NOT EXISTS exec_exclusions (
+        source VARCHAR NOT NULL, ticker VARCHAR NOT NULL, kind VARCHAR NOT NULL,
+        date DATE, detail VARCHAR NOT NULL)""",
     # "check" is a reserved word in SQL; it is always quoted. ticker is '' for dataset-wide checks.
     """CREATE TABLE IF NOT EXISTS dq_results (
         run_id VARCHAR NOT NULL, "check" VARCHAR NOT NULL, ticker VARCHAR NOT NULL,
@@ -289,7 +309,8 @@ class MarketStore:
             self._require_kind(found, "corporate-action frame")
         if frame.empty:
             return UpsertResult(0, 0)
-        incoming = frame[list(ACTION_COLUMNS)].drop_duplicates(
+        extra = [c for c in OPTIONAL_ACTION_COLUMNS if c in frame.columns]
+        incoming = frame[[*ACTION_COLUMNS, *extra]].drop_duplicates(
             ["ticker", "ex_date", "type", "source"]
         )
         con = self._con
@@ -298,7 +319,25 @@ class MarketStore:
             "a.ticker = i.ticker AND a.ex_date = CAST(i.ex_date AS DATE) "
             "AND a.type = i.type AND a.source = i.source"
         )
-        diff = "a.ratio_or_amount IS DISTINCT FROM i.ratio_or_amount"
+        diff = " OR ".join(
+            f"a.{c} IS DISTINCT FROM {'CAST(i.' + c + ' AS DATE)' if c in extra else 'i.' + c}"
+            for c in ("ratio_or_amount", *extra)
+        )
+        diff = f"({diff})"
+        sets = ", ".join(
+            ["ratio_or_amount = i.ratio_or_amount", *(f"{c} = CAST(i.{c} AS DATE)" for c in extra)]
+        )
+        names = ", ".join(["ticker", "ex_date", "type", "ratio_or_amount", "source", *extra])
+        values = ", ".join(
+            [
+                "i.ticker",
+                "CAST(i.ex_date AS DATE)",
+                "i.type",
+                "i.ratio_or_amount",
+                "i.source",
+                *(f"CAST(i.{c} AS DATE)" for c in extra),
+            ]
+        )
         try:
             with self.transaction():
                 changed = _count(
@@ -317,17 +356,14 @@ class MarketStore:
                 )
                 _run(
                     con,
-                    "UPDATE corporate_actions AS a SET "  # noqa: S608
-                    "ratio_or_amount = i.ratio_or_amount, run_id = ? "
+                    f"UPDATE corporate_actions AS a SET {sets}, run_id = ? "  # noqa: S608
                     f"FROM incoming_actions i WHERE {key} AND {diff}",
                     [run_id],
                 )
                 _run(
                     con,
-                    "INSERT INTO corporate_actions "  # noqa: S608
-                    "(ticker, ex_date, type, ratio_or_amount, source, run_id) "
-                    "SELECT i.ticker, CAST(i.ex_date AS DATE), i.type, i.ratio_or_amount, "
-                    "i.source, ? FROM incoming_actions i WHERE NOT EXISTS "
+                    f"INSERT INTO corporate_actions ({names}, run_id) "  # noqa: S608
+                    f"SELECT {values}, ? FROM incoming_actions i WHERE NOT EXISTS "
                     f"(SELECT 1 FROM corporate_actions a WHERE {key})",
                     [run_id],
                 )
@@ -469,6 +505,101 @@ class MarketStore:
         frame["ex_date"] = [
             d.date() if isinstance(d, pd.Timestamp) else d for d in frame["ex_date"]
         ]
+        return frame
+
+    # ------------------------------------------------------------ derived series (P1-T06)
+
+    def latest_run_id(self, source: str) -> str | None:
+        """Newest ingest run (by ``started_at``) of one source, or None."""
+        row = _first(
+            _run(
+                self._con,
+                "SELECT run_id FROM ingest_runs WHERE source = ? "
+                "ORDER BY started_at DESC, run_id DESC LIMIT 1",
+                [source],
+            )
+        )
+        return None if row is None else str(row[0])
+
+    def get_meta(self, key: str) -> str | None:
+        row = _first(_run(self._con, "SELECT value FROM store_meta WHERE key = ?", [key]))
+        return None if row is None else str(row[0])
+
+    def rebuilt_through_run(self, source: str) -> str | None:
+        """Latest ingest run of ``source`` that the derived tables had seen at the last rebuild."""
+        return self.get_meta(f"rebuilt_through_run:{source}")
+
+    def replace_derived(
+        self,
+        source: str,
+        adjusted: pd.DataFrame,
+        execution: pd.DataFrame,
+        exclusions: pd.DataFrame,
+        through_run: str | None = None,
+    ) -> None:
+        """Atomically replace this source's rows of ``prices_adjusted``, ``prices_exec`` and
+        ``exec_exclusions`` and record ``through_run`` (the source's latest ingest run seen) in
+        ``store_meta``. Never touches ``prices_daily`` or ``corporate_actions``."""
+        self._require_kind(kind_of_source(source), "derived price frame (source name)")
+        con = self._con
+        with self.transaction():
+            _run(con, "DELETE FROM store_meta WHERE key = ?", [f"rebuilt_through_run:{source}"])
+            _run(
+                con,
+                "INSERT INTO store_meta VALUES (?, ?)",
+                [f"rebuilt_through_run:{source}", through_run or ""],
+            )
+            for table, frame in (
+                ("prices_adjusted", adjusted),
+                ("prices_exec", execution),
+                ("exec_exclusions", exclusions),
+            ):
+                _run(con, f"DELETE FROM {table} WHERE source = ?", [source])  # noqa: S608
+                if frame.empty:
+                    continue
+                con.register("incoming_derived", frame)
+                try:
+                    columns = ", ".join(f'"{c}"' for c in frame.columns)
+                    selects = ", ".join(
+                        f'CAST("{c}" AS DATE)' if c == "date" else f'"{c}"' for c in frame.columns
+                    )
+                    _run(
+                        con,
+                        f"INSERT INTO {table} ({columns}) "  # noqa: S608
+                        f"SELECT {selects} FROM incoming_derived",
+                    )
+                finally:
+                    con.unregister("incoming_derived")
+
+    def derived_sources(self) -> list[str]:
+        rows = _run(self._con, "SELECT DISTINCT source FROM prices_exec ORDER BY source")
+        return [str(r[0]) for r in rows]
+
+    def read_execution(
+        self, source: str, tickers: list[str], start: date, end: date
+    ) -> pd.DataFrame:
+        """Execution rows of one source for ``tickers`` in ``[start, end]``."""
+        frame = self._con.execute(
+            "SELECT * FROM prices_exec WHERE source = ? AND list_contains(?, ticker) "
+            "AND date BETWEEN ? AND ? ORDER BY ticker, date",
+            [source, tickers, start, end],
+        ).df()
+        frame["date"] = [d.date() if isinstance(d, pd.Timestamp) else d for d in frame["date"]]
+        return frame
+
+    def read_exclusions(self, source: str) -> pd.DataFrame:
+        frame = self._con.execute(
+            "SELECT * FROM exec_exclusions WHERE source = ? ORDER BY ticker, date, kind",
+            [source],
+        ).df()
+        frame["date"] = [d.date() if isinstance(d, pd.Timestamp) else None for d in frame["date"]]
+        return frame
+
+    def read_adjusted(self, source: str) -> pd.DataFrame:
+        frame = self._con.execute(
+            "SELECT * FROM prices_adjusted WHERE source = ? ORDER BY ticker, date", [source]
+        ).df()
+        frame["date"] = [d.date() if isinstance(d, pd.Timestamp) else d for d in frame["date"]]
         return frame
 
     def latest_date(self, ticker: str | None = None) -> date | None:
