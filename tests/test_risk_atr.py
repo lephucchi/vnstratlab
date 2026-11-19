@@ -54,3 +54,23 @@ def test_atr_short_history_is_nan_and_validates() -> None:
         atr(f["high"], f["low"], f["close"], n=0)
     with pytest.raises(ValueError, match="same length"):
         atr(f["high"], f["low"].iloc[:3], f["close"])
+
+
+def test_atr_ex_date_factor_removes_the_mechanical_gap() -> None:
+    # Rows 0-19: close 30,000, range +/- 300 (TR = 600). Rows 20-29: close 20,000 after a 50 %
+    # bonus (factor 1.5 on row 20). Without the factor TR_20 = max(600, 9,700, 10,300) =
+    # 10,300 and ATR20 = (600 x 13 + 10,300) / 14 = 1,292.9 (still far above 400 later).
+    # With it: previous close 30,000 / 1.5 = 20,000, ATR19 = 600 / 1.5 = 400, TR_20 = 600 ->
+    # ATR20 = (400 x 13 + 600) / 14 = 414.29; then TR = 600 each row, so 600 - ATR_k shrinks
+    # by 13/14 per session.
+    close = pd.Series([30_000.0] * 20 + [20_000.0] * 10)
+    high, low = close + 300, close - 300
+    raw = atr(high, low, close)
+    assert raw.iloc[20] == pytest.approx((600 * 13 + 10_300) / 14)
+    factors = [1.0] * 20 + [1.5] + [1.0] * 9
+    fixed = atr(high, low, close, ex_factor=factors)
+    assert fixed.iloc[19] == pytest.approx(600)
+    assert fixed.iloc[20] == pytest.approx((400 * 13 + 600) / 14)
+    assert fixed.iloc[29] == pytest.approx(600 - (600 - (400 * 13 + 600) / 14) * (13 / 14) ** 9)
+    with pytest.raises(ValueError, match="ex_factor"):
+        atr(high, low, close, ex_factor=[1.0])

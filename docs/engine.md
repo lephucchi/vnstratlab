@@ -180,17 +180,29 @@ reports show how often each rule bound.
 - **Stop and rebalance on the same day:** the stop wins. The stopped ticker enters a cooldown
   (`risk.stop_cooldown_sessions`, default = one decision period) during which the risk layer
   will not re-buy it.
-- **Implementation (P1-T12).** The entry price is the average fill price (slippage included) and
-  the ATR is ATR14 at the close before the fill (Wilder, `vnstratlab.risk.atr`); adds are
-  share-weighted. A stock dividend rescales the entry in the post-event share basis. A position
-  without a defined ATR (fewer than 14 sessions of history) has no stop. A stop turns the
-  pending (or a new) sell for that ticker into a full exit that survives later decisions until
-  filled; if it is cancelled by the unfilled-sell policy the stop fires again at the next close.
+- **Implementation (P1-T12).** The entry is kept per fill (lot): price = fill price (slippage
+  included), ATR = ATR14 at the close before the fill (Wilder, `vnstratlab.risk.atr`). The
+  position entry is the share-weighted average over lots; a sale shrinks all lots pro rata
+  (average price and ATR stay), so a later add averages against the shares really held. A
+  position without a defined ATR (fewer than 14 sessions of history) has no stop. A stop turns
+  the pending (or a new) sell for that ticker into a full exit that survives later decisions
+  until filled, and cancels that ticker's pending buys ("stop triggered"); if the exit is
+  cancelled by the unfilled-sell policy the stop fires again at the next close.
+- **Stock / bonus ex-dates.** On the ex-date lots bought before it are rescaled to the
+  post-event basis (shares x (1 + ratio), price and ATR / (1 + ratio)); a late-applied action
+  leaves lots bought on or after the ex-date untouched. In the ATR series the previous close and
+  the accumulated ATR are divided by (1 + ratio) on the ex-date row (factors come from the run's
+  stock actions at construction; `atr()` stays pure and takes them as `ex_factor`), so the
+  mechanical drop is not counted as volatility. Actions added later through `add_actions` do not
+  reach the precomputed ATR series.
 - **Cooldown.** `stop_cooldown_sessions` is `null` in `defaults.yaml`, meaning "one decision
   period of the book's horizon"; the caller resolves it to sessions (`run_simulation(...,
-  cooldown_sessions=n)`) and the run fails if neither is given. A stop at the close of session
-  `i` blocks buys of that ticker in decisions at sessions `i .. i + n` (the layer keeps an
-  existing holding at its current weight, never increases it).
+  cooldown_sessions=n)`, `n >= 1`) and the run fails if neither is given. The cooldown starts
+  at the session the stop exit completes (its last fill, which can be later than the trigger
+  because of settlement or floor blocks): decisions at that session and the following `n - 1`
+  are blocked. While the exit is pending the ticker is also blocked. Buy orders of a ticker in
+  cooldown are refused at resolution ("stop cooldown"). The layer keeps an existing holding at
+  its current weight, never increases it.
 - **Circuit breaker.** Stateless: `equity <= peak x (1 - circuit_breaker_drawdown_pct)` with
   `peak` = running maximum of closing equity, starting at the initial capital, never reset. While
   active, no weight may exceed its held weight (sells and exits pass) and pending buys are

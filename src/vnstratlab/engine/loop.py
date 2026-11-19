@@ -137,6 +137,16 @@ class _Bar(NamedTuple):
     floor: float
 
 
+@dataclass
+class _Lot:
+    """Shares bought in one fill, for the stop entry price and ATR (risk layer only)."""
+
+    qty: float
+    price: float
+    atr: float
+    day: date
+
+
 @dataclass(frozen=True)
 class _Action:
     ex_date: date
@@ -343,10 +353,11 @@ class Simulator:
 
     def _init_risk(self, prices: pd.DataFrame, cooldown_sessions: int | None) -> None:
         self._risk_events: list[tuple[date, str, str, str]] = []
-        self._cooldown: dict[str, int] = {}  # ticker -> session index of its last stop
+        self._cooldown: dict[str, int] = {}  # ticker -> session index its stop exit completed
         self._cooldown_n = 0
         self._atr_series: dict[str, dict[date, float]] = {}
         self._atr_now: dict[str, float] = {}
+        self._lots: dict[str, list[_Lot]] = {}
         self._entries: dict[str, tuple[float, float, float]] = {}  # shares, avg price, avg ATR
         self._peak = self.params.capital
         self._breaker = False
@@ -356,15 +367,21 @@ class Simulator:
         n = cooldown_sessions
         if n is None:
             n = self._risk.config.stop_cooldown_sessions
-        if n is None or n < 0:
+        if n is None or n < 1:
             raise ValueError(
-                "risk needs stop_cooldown_sessions >= 0: set risk.stop_cooldown_sessions or pass "
+                "risk needs stop_cooldown_sessions >= 1: set risk.stop_cooldown_sessions or pass "
                 "cooldown_sessions (one decision period of the book's horizon, in sessions)"
             )
         self._cooldown_n = n
         for ticker, group in prices.sort_values("date").groupby("ticker"):
-            values = atr(group["high"], group["low"], group["close"], ATR_WINDOW)
             dates = [pd.Timestamp(d).date() for d in group["date"]]
+            factors = [1.0] * len(dates)  # 1 + ratio on the stock ex-date row (ATR basis)
+            for action in self._actions:
+                if action.ticker == str(ticker) and action.kind == "stock":
+                    row = bisect.bisect_left(dates, action.ex_date)
+                    if row < len(dates):
+                        factors[row] *= 1 + action.value
+            values = atr(group["high"], group["low"], group["close"], ATR_WINDOW, factors)
             self._atr_series[str(ticker)] = dict(zip(dates, values.tolist(), strict=True))
 
     # -- orders
@@ -448,6 +465,13 @@ class Simulator:
     def _has_stop_order(self, ticker: str) -> bool:
         return any(o.stop and o.ticker == ticker for o in self._pending)
 
+    def _in_cooldown(self, ticker: str, now: int) -> bool:
+        """A stop exit is pending, or fewer than ``n`` sessions passed since it completed."""
+        if self._has_stop_order(ticker):
+            return True
+        done = self._cooldown.get(ticker)
+        return done is not None and now - done < self._cooldown_n
+
     def _close_risk(self, today: date, risk: RiskLayer) -> None:
         """Close steps 3b (ATR stops) and 3c (circuit breaker), after mark to market."""
         held = self.ledger.holdings()
@@ -461,7 +485,10 @@ class Simulator:
             existing = [o for o in self._pending if o.ticker == ticker and o.side == "sell"]
             order = existing[0] if existing else self.queue(ticker, "sell", held[ticker], today)
             order.qty, order.stop = held[ticker], True
-            self._cooldown[ticker] = self._index[today]
+            self._cooldown.pop(ticker, None)  # starts when the stop exit completes
+            for buy in [o for o in self._pending if o.ticker == ticker and o.side == "buy"]:
+                self._log(buy, today, "cancelled", "stop triggered")
+                self._drop(buy)
             detail = f"close {close:.2f} <= stop {stop:.2f}"
             self._risk_events.append((today, "stop_triggered", ticker, detail))
         equity = self.equity_now()
@@ -489,7 +516,8 @@ class Simulator:
             if ticker not in self._last_close:
                 raise ValueError(f"no price for {ticker} at decision on {today}")
         now = self._index[today]
-        cooldown = [t for t, i in self._cooldown.items() if now - i <= self._cooldown_n]
+        names = sorted(set(tickers) | set(self._cooldown))
+        cooldown = [t for t in names if self._in_cooldown(t, now)]
         history = None
         if risk.config.vol_target_annual is not None:
             history = pd.Series(self._returns, dtype=float)
@@ -602,11 +630,11 @@ class Simulator:
             )
             self.ledger.add_shares(a.ticker, new, max(listing, today))
             self._bonus.append((a.ticker, a.ex_date, new, today))
-        entry = self._entries.get(a.ticker)
-        if entry is not None:  # keep the stop in the post-event share basis
-            q, price, atr_entry = entry
-            f = 1 + a.value
-            self._entries[a.ticker] = (q * f, price / f, atr_entry / f)
+        f = 1 + a.value
+        for lot in self._lots.get(a.ticker, []):
+            if lot.day < a.ex_date:  # only lots bought before the ex-date change basis
+                lot.qty, lot.price, lot.atr = lot.qty * f, lot.price / f, lot.atr / f
+        self._refresh_entry(a.ticker)
         for order in self._pending:  # pending orders were sized in pre-event shares
             if order.ticker == a.ticker and order.created < a.ex_date:
                 scaled = order.qty * (1 + a.value)
@@ -676,6 +704,10 @@ class Simulator:
 
     def _resolve_buy(self, order: Order, today: date, bar: _Bar) -> None:
         p = self.params
+        if self._risk is not None and self._in_cooldown(order.ticker, self._index[today]):
+            self._log(order, today, "cancelled", "stop cooldown")
+            self._drop(order)
+            return
         if buy_blocked_by_ceiling(bar.open, bar.ceiling):
             self._log(order, today, "blocked_ceiling", f"open {bar.open} >= ceiling {bar.ceiling}")
             self._unfilled(order, today, "open at ceiling")
@@ -708,7 +740,7 @@ class Simulator:
         sellable = after_sessions(self.calendar, today, self.params.rules.settle_offset)
         self.ledger.add_shares(order.ticker, piece.qty, sellable)
         if self._risk is not None:
-            self._track_entry(order.ticker, piece.qty, price)
+            self._track_entry(order.ticker, piece.qty, price, today)
         self._trade(order, today, bar, piece.qty, price, fee, 0.0, piece.lot)
 
     def _fill_sell(self, order: Order, today: date, bar: _Bar, piece: Piece) -> None:
@@ -717,8 +749,8 @@ class Simulator:
         notional = piece.qty * price
         fee, tax = costs.fee(notional), costs.tax(notional, "sell")
         self.ledger.remove_shares(order.ticker, piece.qty, today)
-        if self.ledger.shares(order.ticker) <= EPS:
-            self._entries.pop(order.ticker, None)
+        if self._risk is not None:
+            self._reduce_entry(order, today, piece.qty)
         net = notional - fee - tax
         release = after_sessions(self.calendar, today, self.params.proceeds_offset)
         if release <= today:
@@ -727,19 +759,43 @@ class Simulator:
             self.ledger.credit_pending(release, net)
         self._trade(order, today, bar, piece.qty, price, fee, tax, piece.lot)
 
-    def _track_entry(self, ticker: str, qty: float, price: float) -> None:
+    def _track_entry(self, ticker: str, qty: float, price: float, today: date) -> None:
         """Entry price and ATR14 (as of the previous close) per position, share-weighted over
         adds; the stop is ``entry - atr_stop_multiple x ATR`` (engine.md section 7)."""
-        q0, p0, a0 = self._entries.get(ticker, (0.0, 0.0, math.nan))
-        a = self._atr_now.get(ticker, math.nan)
-        total = q0 + qty
-        if math.isnan(a0):
-            atr_avg = a
-        elif math.isnan(a):
-            atr_avg = a0
-        else:
-            atr_avg = (q0 * a0 + qty * a) / total
-        self._entries[ticker] = (total, (q0 * p0 + qty * price) / total, atr_avg)
+        lot = _Lot(qty, price, self._atr_now.get(ticker, math.nan), today)
+        self._lots.setdefault(ticker, []).append(lot)
+        self._refresh_entry(ticker)
+
+    def _reduce_entry(self, order: Order, today: date, sold: float) -> None:
+        """A sale shrinks every lot pro rata: shares fall, average price and ATR stay.
+        When the position is gone the entry is dropped and, for a stop exit, the cooldown
+        starts."""
+        ticker = order.ticker
+        left = self.ledger.shares(ticker)
+        lots = self._lots.get(ticker, [])
+        total = sum(x.qty for x in lots)
+        if left <= EPS or total <= EPS:
+            self._lots.pop(ticker, None)
+            self._entries.pop(ticker, None)
+            if order.stop:
+                self._cooldown[ticker] = self._index[today]
+            return
+        keep = max(total - sold, 0.0) / total
+        for x in lots:
+            x.qty *= keep
+        self._refresh_entry(ticker)
+
+    def _refresh_entry(self, ticker: str) -> None:
+        """Aggregate entry: shares, average price, average ATR over lots with an ATR."""
+        lots = self._lots.get(ticker, [])
+        total = sum(x.qty for x in lots)
+        if not lots or total <= EPS:
+            self._entries.pop(ticker, None)
+            return
+        known = [x for x in lots if not math.isnan(x.atr)]
+        weight = sum(x.qty for x in known)
+        atr_avg = sum(x.qty * x.atr for x in known) / weight if weight > EPS else math.nan
+        self._entries[ticker] = (total, sum(x.qty * x.price for x in lots) / total, atr_avg)
 
     def _trade(
         self, order: Order, today: date, bar: _Bar, qty: float, price: float, fee: float,

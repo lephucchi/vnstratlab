@@ -1133,3 +1133,145 @@ def test_risk_off_by_default_has_no_risk_output(engine_cfg: AppConfig) -> None:
     res = run_simulation(prices, None, {days[2]: weights(AAA=0.5)}, CAL, executable(engine_cfg))
     assert res.risk_events is None
     assert "risk_events" not in res.frames()
+
+
+# ---------------------------------------------------------------- risk layer review fixes
+
+
+def _flat(lo: int, hi: int, px: float) -> dict[int, dict[str, float]]:
+    return {
+        i: {"open": px, "close": px, "ceiling": px * 1.07, "floor": px * 0.93, "ref_price": px}
+        for i in range(lo, hi)
+    }
+
+
+def _risk_sim(cfg: AppConfig, prices: pd.DataFrame, n: int = 2) -> Simulator:
+    return Simulator(
+        prices, None, CAL, executable(cfg), risk=RiskLayer(cfg.risk), cooldown_sessions=n
+    )
+
+
+def test_partial_sell_then_add_keeps_the_right_average(engine_cfg: AppConfig) -> None:
+    days = make_days(26)
+    prices = wide(synthetic_prices(synthetic_bars("AAA", days, 50_000, over=_flat(20, 26, 60_000))))
+    sim = _risk_sim(engine_cfg, prices)
+    plan = {14: [("AAA", "buy", 300)], 18: [("AAA", "sell", 200)], 20: [("AAA", "buy", 200)]}
+    for i, d in enumerate(sim.sessions):
+        sim.open_session(d)
+        sim.mark(d)
+        for ticker, side, qty in plan.get(i, []):
+            sim.queue(ticker, side, qty, d)
+        sim.record(d)
+    # Buy 300 @ 50,050 (ATR 1,500); sell 200 -> 100 @ 50,050 left; add 200 @ 60,060 (ATR
+    # about 2,160.7): entry = (100 x 50,050 + 200 x 60,060) / 300 = 56,723.33,
+    # ATR = (100 x 1,500 + 200 x 2,160.7) / 300 = 1,940.5 -> stop 56,723.33 - 3,881 = 52,842.
+    qty, price, atr_avg = sim._entries["AAA"]
+    assert qty == sim.ledger.shares("AAA") == 300
+    assert price == pytest.approx(56_723.33, abs=0.01)
+    assert atr_avg == pytest.approx(1_940.5, rel=1e-3)
+    assert price - 2 * atr_avg == pytest.approx(52_842, rel=1e-3)
+
+
+def test_carried_buy_is_cancelled_when_the_stop_fires(engine_cfg: AppConfig) -> None:
+    days = make_days(26)
+    over = _flat(18, 26, 47_000)
+    over[16] = {"open": 53_500, "close": 50_000, "ceiling": 53_500}  # open at the ceiling
+    over[17] = {"open": 53_500, "close": 47_000, "ceiling": 53_500}
+    prices = wide(synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over)))
+    params = dataclasses.replace(executable(engine_cfg), unfilled_buy="carry")
+    targets = {days[14]: weights(AAA=0.10), days[15]: weights(AAA=0.15)}
+    res = run_simulation(
+        prices, None, targets, CAL, params, risk=RiskLayer(engine_cfg.risk), cooldown_sessions=10
+    )
+    # The idx 16 / 17 opens sit at the ceiling: the extra buy is carried. The stop fires at the
+    # idx 17 close: carried buys are cancelled and nothing is bought after it.
+    late = res.trades[(res.trades["side"] == "buy") & (res.trades["session"] > days[17])]
+    assert late.empty
+    assert "stop triggered" in set(res.order_events["reason"])
+
+
+def test_cooldown_starts_when_the_stop_exit_completes(engine_cfg: AppConfig) -> None:
+    days, prices = stop_scenario(16)  # stop at close idx 16, shares only sellable at idx 18
+    keep = weights(AAA=0.15)
+    # Exit completes at idx 18; n = 2 -> decisions at closes 18 and 19 blocked, 20 free (a
+    # cooldown counted from the trigger at 16 would have expired before the exit).
+    targets = {days[14]: keep, days[19]: keep, days[20]: keep}
+    res = run_risk(engine_cfg, prices, targets, cooldown=2)
+    buys = res.trades[res.trades["side"] == "buy"]
+    assert sorted(set(buys["session"])) == [days[15], days[21]]
+
+
+def test_buy_order_in_cooldown_is_refused_at_resolution(engine_cfg: AppConfig) -> None:
+    days, prices = stop_scenario(17)
+    sim = _risk_sim(engine_cfg, prices)
+    for i, d in enumerate(sim.sessions):
+        if i == 14:
+            sim.queue("AAA", "buy", 300, days[13])
+        if i == 19:  # stop exit completed at idx 18: a stray buy for idx 19 is refused
+            sim.queue("AAA", "buy", 100, days[18])
+        sim.open_session(d)
+        sim.mark(d)
+        sim.record(d)
+    res = sim.result()
+    assert (res.trades["side"] == "buy").sum() == 1
+    assert ("cancelled", "stop cooldown") in {
+        (r.event, r.reason) for r in res.order_events.itertuples()
+    }
+
+
+def test_late_stock_action_rescales_only_pre_ex_entries(engine_cfg: AppConfig) -> None:
+    days = make_days(26)
+    prices = wide(synthetic_prices(synthetic_bars("AAA", days, 50_000, over=_flat(16, 26, 40_000))))
+    sim = _risk_sim(engine_cfg, prices)
+    act = synthetic_actions(
+        {"ticker": "AAA", "ex_date": days[16], "type": "stock", "ratio_or_amount": 0.25}
+    )
+    for i, d in enumerate(sim.sessions):
+        if i == 18:
+            sim.add_actions(act)  # published two sessions after its ex-date
+        sim.open_session(d)
+        sim.mark(d)
+        if i == 16:
+            sim.queue("AAA", "buy", 100, d)
+        sim.record(d)
+    # 100 shares bought at the idx 17 open: 40,000 x 1.001 = 40,040, after the ex-date, so the
+    # late action must not touch them (the bonus applies to nothing held at the ex-date).
+    qty, price, _ = sim._entries["AAA"]
+    assert (qty, price) == (sim.ledger.shares("AAA"), pytest.approx(40_040))
+
+
+def test_stock_ex_date_rescales_entry_and_stop(engine_cfg: AppConfig) -> None:
+    days = make_days(26)
+    over = _flat(17, 26, 40_000)
+    prices = wide(synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over)))
+    act = synthetic_actions(
+        {"ticker": "AAA", "ex_date": days[17], "type": "stock", "ratio_or_amount": 0.25}
+    )
+    sim = Simulator(
+        prices,
+        act,
+        CAL,
+        executable(engine_cfg),
+        risk=RiskLayer(engine_cfg.risk),
+        cooldown_sessions=2,
+    )
+    for i, d in enumerate(sim.sessions):
+        if i == 15:
+            sim.queue("AAA", "buy", 400, days[14])
+        sim.open_session(d)
+        sim.mark(d)
+        sim.record(d)
+    # 400 @ 50,050, ATR 1,500; ex-date 25 %: 500 shares, entry 50,050 / 1.25 = 40,040,
+    # ATR 1,500 / 1.25 = 1,200 (the gap to 40,000 is not volatility) -> no stop at close 40,000
+    # (stop 40,040 - 2 x about 1,200 = 37,640).
+    assert sim.ledger.shares("AAA") == 500
+    qty, price, _ = sim._entries["AAA"]
+    assert (qty, price) == (pytest.approx(500), pytest.approx(40_040))
+    assert sim.result().risk_events is not None
+    assert sim.result().risk_events.empty  # no stop fired
+
+
+def test_simulator_requires_cooldown_of_at_least_one(engine_cfg: AppConfig) -> None:
+    _days, prices = stop_scenario(17)
+    with pytest.raises(ValueError, match="stop_cooldown_sessions"):
+        _risk_sim(engine_cfg, prices, n=0)
