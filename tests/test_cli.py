@@ -78,3 +78,25 @@ def test_doctor_never_prints_secret_values(
     assert "telegram_bot_token" in result.output
     assert "vnstock" not in result.output.lower()
     assert "set" in result.output
+
+
+@pytest.mark.parametrize("args", [["--help"], ["--version"], ["data", "--help"]])
+def test_help_and_version_do_not_import_the_heavy_libraries(args: list[str]) -> None:
+    import subprocess
+    import sys
+
+    code = (
+        "import sys\n"
+        "from vnstratlab.cli import app\n"
+        "try:\n"
+        f"    app({args!r})\n"
+        "except SystemExit:\n"
+        "    pass\n"
+        "heavy = [m for m in ('pandas', 'numpy', 'duckdb', 'pyarrow') if m in sys.modules]\n"
+        "print('HEAVY=' + ','.join(heavy))\n"
+    )
+    done = subprocess.run(  # noqa: S603
+        [sys.executable, "-I", "-c", code], capture_output=True, text=True, check=False
+    )
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip().endswith("HEAVY="), done.stdout

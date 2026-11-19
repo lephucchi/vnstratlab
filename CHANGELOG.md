@@ -14,6 +14,15 @@ All notable changes are documented here. The format follows
   `stock_dividend_listing_lag_sessions` in `hose.yaml` (all `VERIFY`). Values are frozen by the owner
   at merge.
 
+### Fixed
+- **Engine (P1-T11b):** late corporate actions use the holdings at pre-open of the ex-date;
+  stock events rescale only pending orders created before the ex-date (also with no shares held);
+  turnover divides by the previous close's equity (first session: initial capital).
+- **Data:** the synthetic market declares the sessions it suspended; a trailing gap made only of
+  such sessions is a `missing_ticker` warning ("declared suspension"), so synthetic ingests no
+  longer end in `failed_dq`. Undeclared gaps (raw sources) keep their severity.
+- **CLI:** `vnstratlab --help` and `--version` no longer import pandas, numpy or duckdb.
+
 ### Changed
 - **Data source (ADR-007):** Yahoo Finance becomes the interim Phase 1 price source through an
   optional adapter (P1-T37); the data pipeline is a separate layer (`vnstratlab.data`); known

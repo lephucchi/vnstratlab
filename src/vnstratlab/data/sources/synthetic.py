@@ -67,6 +67,7 @@ def ex_price(kind: str, prev_close: float, amount: float, ticks: TickTable) -> f
 class _Simulation:
     prices: pd.DataFrame
     actions: pd.DataFrame
+    suspended: frozenset[tuple[str, date]] = frozenset()
 
 
 class SyntheticSource:
@@ -106,6 +107,19 @@ class SyntheticSource:
         keep = actions["ticker"].isin(list(tickers)) & (actions["ex_date"] >= start)
         return actions[keep].reset_index(drop=True)
 
+    def declared_suspensions(
+        self, tickers: Sequence[str], start: date, end: date
+    ) -> set[tuple[str, date]]:
+        """``(ticker, session)`` pairs this source left without a bar on purpose.
+
+        Optional hook of the ingest pipeline: the data-quality check downgrades a trailing gap
+        made only of such sessions to a warning (docs/data-pipeline.md section 5a).
+        """
+        wanted = set(tickers)
+        return {
+            (t, d) for t, d in self._simulate(end).suspended if t in wanted and start <= d <= end
+        }
+
     # ------------------------------------------------------------------ simulation
 
     def _simulate(self, end: date) -> _Simulation:
@@ -125,12 +139,14 @@ class SyntheticSource:
         regime = 1
         price_chunks: list[pd.DataFrame] = []
         action_rows: list[tuple[str, date, str, float]] = []
+        suspended: set[tuple[str, date]] = set()
         tickers = np.array(self._tickers, dtype=object)
 
         for day in self._calendar.trading_days(syn.start, end):
             draws = _Draws.take(rng, n)
             regime = int(np.searchsorted(np.cumsum(_TRANSITION[regime]), draws.regime))
             active = draws.suspension >= syn.suspension_probability
+            suspended.update((self._tickers[i], day) for i in np.flatnonzero(~active))
             ref, events = self._reference(close, draws, event_prob, active)
             action_rows += [(self._tickers[i], day, kind, amount) for i, kind, amount in events]
             ceiling, floor = ticks.limits(ref)
@@ -161,7 +177,9 @@ class SyntheticSource:
                 )
             )
             close = np.where(active, close_, close)
-        return _Simulation(_finish_prices(price_chunks), _finish_actions(action_rows))
+        return _Simulation(
+            _finish_prices(price_chunks), _finish_actions(action_rows), frozenset(suspended)
+        )
 
     def _reference(
         self,

@@ -397,6 +397,7 @@ def ingest(
                 ticks=ticks,
                 through=through,
                 incomplete_years=incomplete_years(cfg, start, end),
+                declared_suspensions=_declared_suspensions(source, tickers, start, end),
             )
             status = final_status(status, dq)
             with store.transaction():
@@ -431,6 +432,20 @@ def ingest(
         refetched=got.refetched,
         dq=tuple(dq),
     )
+
+
+def _declared_suspensions(
+    source: DataSource, tickers: list[str], start: date, end: date
+) -> frozenset[tuple[str, date]]:
+    """Sessions the source says it suspended (optional hook; the synthetic market has one).
+
+    A source without ``declared_suspensions`` declares nothing, so its trailing gaps stay as
+    strict as the severity table says.
+    """
+    hook = getattr(source, "declared_suspensions", None)
+    if hook is None:
+        return frozenset()
+    return frozenset((str(t), d) for t, d in hook(tickers, start, end))
 
 
 def _prev_close(store: MarketStore | None, source_name: str, rescaled: set[str]) -> PrevClose:

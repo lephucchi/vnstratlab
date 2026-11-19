@@ -6,6 +6,7 @@ actions and settlement first, then sells, then buys, then mark to market and dec
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import math
 from collections.abc import Mapping, Sequence
@@ -150,7 +151,8 @@ class SimResult:
     """Run outputs (engine.md section 11).
 
     ``turnover`` per session = sum of |notional| (qty x fill price, buys and sells) of that
-    session's fills / that session's closing equity; 0 on days without fills.
+    session's fills / equity at the previous close (the first session: initial capital); 0 on
+    days without fills.
     """
 
     returns: pd.Series
@@ -315,6 +317,11 @@ class Simulator:
         self._returns: dict[date, float] = {}
         self._turnover: dict[date, float] = {}
         self._traded_seen = 0
+        # holdings at each session's pre-open (before actions and fills), for late entitlement
+        self._preopen_dates: list[date] = []
+        self._preopen: list[dict[str, float]] = []
+        # bonus shares created by stock actions: (ticker, ex_date, new shares, apply session)
+        self._bonus: list[tuple[str, date, float, date]] = []
 
     # -- orders
 
@@ -329,6 +336,7 @@ class Simulator:
     def open_session(self, today: date) -> list[tuple[Any, ...]]:
         """Pre-open then open: corporate actions, releases, fills. Returns today's new trades."""
         first = len(self._trades)
+        self._snapshot_preopen(today)
         self._apply_actions(today)
         self.ledger.release_cash(today)
         orders = sorted(self._pending, key=lambda o: (o.side == "buy", o.ticker, o.order_id))
@@ -358,7 +366,7 @@ class Simulator:
         self._returns[today] = equity / self._prev_equity - 1.0
         traded = sum(abs(t[7]) for t in self._trades[self._traded_seen :])  # notional column
         self._traded_seen = len(self._trades)
-        self._turnover[today] = traded / equity if equity > 0 else 0.0
+        self._turnover[today] = traded / self._prev_equity if self._prev_equity > 0 else 0.0
         self._prev_equity = equity
 
     def decide(self, today: date, weights: pd.Series) -> None:
@@ -393,7 +401,7 @@ class Simulator:
         return total
 
     def _replace_pending(self, wanted: dict[tuple[str, Side], float], today: date) -> None:
-        """New decision supersedes pending orders; same ticker and side keep id and age."""
+        """New decision supersedes pending orders; same ticker and side keep id and carry count."""
         old = {(o.ticker, o.side): o for o in self._pending}
         kept: list[Order] = []
         for key, qty in wanted.items():
@@ -402,6 +410,7 @@ class Simulator:
                 order = Order(self._next_id, key[0], key[1], qty, today)
                 self._next_id += 1
             order.qty = qty
+            order.created = today  # re-sized on today's close: a new decision
             kept.append(order)
         for order in old.values():
             self._events.add(order, today, "cancelled", "superseded by new decision")
@@ -414,6 +423,32 @@ class Simulator:
             self._actions + _actions(corporate_actions), key=lambda a: (a.ex_date, a.ticker)
         )
 
+    def _snapshot_preopen(self, today: date) -> None:
+        held = self.ledger.holdings()
+        if self._preopen and self._preopen[-1] == held:
+            held = self._preopen[-1]  # share the dict when nothing changed
+        self._preopen_dates.append(today)
+        self._preopen.append(held)
+
+    def _entitled(self, ticker: str, ex_date: date) -> float:
+        """Shares held at pre-open of the ex-date (before actions and fills of that session).
+
+        If the ex-date is not a simulated session, the first session on or after it is used
+        (the same holdings: nothing trades in between). If the ex-date precedes the first
+        simulated session, that session's pre-open holdings apply, i.e. zero at the start.
+
+        Bonus shares of a stock action with an earlier ex-date count too, even when that action
+        was applied after the snapshot was taken (late): credits applied before the snapshot's
+        session are already in it. Actions with the same ex-date never feed each other.
+        """
+        i = min(bisect.bisect_left(self._preopen_dates, ex_date), len(self._preopen) - 1)
+        taken = self._preopen_dates[i]
+        shares = self._preopen[i].get(ticker, 0.0)
+        for t, ex, new, applied in self._bonus:
+            if t == ticker and ex < ex_date and applied >= taken:
+                shares += new
+        return shares
+
     def _apply_actions(self, today: date) -> None:
         for action in self._actions:
             if action.ex_date > today:
@@ -423,28 +458,33 @@ class Simulator:
             if action.kind == "cash":
                 self._cash_dividend(action)
             else:
-                self._stock_dividend(action)
+                self._stock_dividend(action, today)
 
     def _cash_dividend(self, a: _Action) -> None:
-        shares = self.ledger.shares(a.ticker)
+        """Receivable on the shares held at pre-open of the ex-date, even if applied late."""
+        shares = self._entitled(a.ticker, a.ex_date)
         if shares <= EPS:
             return
         pay = a.pay_date or a.ex_date + timedelta(days=self.params.rules.dividend_lag_days)
         self.ledger.credit_pending(pay, shares * a.value)
 
-    def _stock_dividend(self, a: _Action) -> None:
-        shares = self.ledger.shares(a.ticker)
-        if shares <= EPS:
-            return
-        new = shares * a.value
+    def _stock_dividend(self, a: _Action, today: date) -> None:
+        """New shares on the ex-date holdings (added even if sold since, when applied late).
+
+        The new shares are sellable from ``listing_date`` (or the lag fallback), never before
+        the session the action is applied. Pending orders created before the ex-date scale by
+        ``1 + ratio`` (also when nothing is held); later ones were sized after the event.
+        """
+        new = self._entitled(a.ticker, a.ex_date) * a.value
         new = float(math.floor(new + EPS)) if self.params.lots else new
         if new > EPS:
             listing = a.listing_date or after_sessions(
                 self.calendar, a.ex_date, self.params.rules.listing_lag_sessions
             )
-            self.ledger.add_shares(a.ticker, new, listing)
+            self.ledger.add_shares(a.ticker, new, max(listing, today))
+            self._bonus.append((a.ticker, a.ex_date, new, today))
         for order in self._pending:  # pending orders were sized in pre-event shares
-            if order.ticker == a.ticker:
+            if order.ticker == a.ticker and order.created < a.ex_date:
                 scaled = order.qty * (1 + a.value)
                 order.qty = float(math.floor(scaled + EPS)) if self.params.lots else scaled
 

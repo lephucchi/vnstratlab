@@ -15,6 +15,7 @@ Adjusted-price checks and alerts belong to P1-T06 / P1-T08 and are out of scope 
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING
@@ -86,12 +87,16 @@ def run_checks(
     ticks: TickTable,
     through: date | None = None,
     incomplete_years: frozenset[int] = frozenset(),
+    declared_suspensions: Collection[tuple[str, date]] = frozenset(),
 ) -> list[DQResult]:
     """Run every check for one ingest run.
 
     ``through`` is the last session whose bar is final (the run end, or the day before a
     partial-bar cutoff); sessions after it are not expected. ``incomplete_years`` are years with
-    an incomplete holiday list: absences in them only warn. Findings are sorted errors first.
+    an incomplete holiday list: absences in them only warn. ``declared_suspensions`` are the
+    ``(ticker, session)`` pairs the source itself says it suspended (only the synthetic market
+    declares any); a trailing gap made only of such sessions is a warning. Findings are sorted
+    errors first.
     """
     run = store.get_run(run_id)
     if run is None:
@@ -101,7 +106,9 @@ def run_checks(
     sessions = calendar.trading_days(run.start_date, last)
     results = [
         *check_duplicate_rows(frame, run_id, run.start_date, run.end_date),
-        *check_missing_ticker(frame, run_id, run.start_date, sessions, incomplete_years),
+        *check_missing_ticker(
+            frame, run_id, run.start_date, sessions, incomplete_years, declared_suspensions
+        ),
         *check_stale_data(frame, run_id, sessions, incomplete_years),
         *check_row_rules(
             frame,
@@ -221,6 +228,7 @@ def check_missing_ticker(
     start: date,
     sessions: list[date],
     weak_years: frozenset[int] = frozenset(),
+    declared: Collection[tuple[str, date]] = frozenset(),
 ) -> list[DQResult]:
     """Sessions of the run range without a row, per ticker.
 
@@ -229,7 +237,9 @@ def check_missing_ticker(
     the usual cause, for every price basis. A trailing gap (the ticker is behind at the end of
     the range, or has no row on any session) follows the severity table: warning for
     split-adjusted or derived-limit data and when every missing session is in a year with an
-    incomplete holiday list (GAP-05), else error.
+    incomplete holiday list (GAP-05), else error. A trailing gap whose every session the source
+    declared as a suspension (``declared``) is a warning "declared suspension"; an undeclared
+    gap keeps the table's severity.
     """
     if frame.empty or not sessions:
         return []
@@ -277,7 +287,10 @@ def check_missing_ticker(
             )
         if trailing:
             weak = all(s.year in weak_years for s in trailing)
-            severity = "warning" if soft or weak else "error"
+            if all((str(ticker), s) in declared for s in trailing):
+                severity, detail = "warning", f"declared suspension: {detail}"
+            else:
+                severity = "warning" if soft or weak else "error"
             out.append(DQResult(run_id, "missing_ticker", str(ticker), date_, severity, detail))
     return out
 
