@@ -208,7 +208,9 @@ class Executor(Protocol):
 | market.duckdb | `universe_membership` | ticker, index_code, effective_from, effective_to, source_url |
 | market.duckdb | `prices_daily` | ticker, date, open, high, low, close, volume, value, ref_price, ceiling, floor, source, ingested_at |
 | market.duckdb | `corporate_actions` | ticker, ex_date, type (cash/stock/bonus/rights), ratio_or_amount, source; optional `pay_date`, `listing_date` (ADR-003 §6, added by P1-T06) |
-| market.duckdb | `prices_adjusted` | ticker, date, adj_open … adj_close, adj_factor |
+| market.duckdb | `prices_adjusted` | ticker, date, source, price_basis, adj_open … adj_close, adj_factor, adj_version, dq_error (signals; rebuilt per source, P1-T06) |
+| market.duckdb | `prices_exec` | ticker, date, source, open … close, volume, ref_price, ceiling, floor, price_basis, stock_factor (execution series the engine reads; `exec_reconstructed` for Yahoo rows, stored rows unchanged for raw/synthetic; P1-T06) |
+| market.duckdb | `exec_exclusions` | source, ticker, kind (`scale_discontinuity` / `precondition_unverifiable` / `dq_error` / `no_reference`), date, detail (what P1-T06 left out of `prices_exec`) |
 | market.duckdb | `fundamentals_q` | ticker, fiscal_period, metric, value, **published_at**, ingested_at |
 | market.duckdb | `features_daily` | ticker, date, feature columns…, feature_version |
 | market.duckdb | `news_raw` | news_id, ticker, published_at, title, body_or_url, source, collected_at |
