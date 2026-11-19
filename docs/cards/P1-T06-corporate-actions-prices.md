@@ -71,8 +71,11 @@ due: 2026-11-26
 3. `split_adjusted` fixture with one 10 % event: `exec(t)` before the ex-date = adjusted × 1.1,
    rounded to the nearest tick; after = adjusted; `ref` on the ex-date = theoretical ex-price
    rounded down to the tick; ceiling/floor match HOSE rules (hand numbers).
-4. Precondition: a fixture whose stored event ratio is wrong fails the ex-date check, the ticker
-   is excluded, and the count appears in the rebuild report.
+4. Scale check (amended by the manager after G2 round 1): a fixture whose stored history is not
+   in one scale at a stock ex-date (unrescaled history, jump above the tolerance) fails the
+   `scale_discontinuity` check, the ticker is excluded, and the count appears in the rebuild
+   report. A wrong but consistently applied ratio cannot be detected this way (the ratio cancels);
+   this is recorded under GAP-06.
 5. Bad row: a fixture row with high < open is omitted from the execution series and counted;
    no value is invented.
 6. Engine accepts the execution frame: `run_simulation` on a rebuilt synthetic fixture runs and
