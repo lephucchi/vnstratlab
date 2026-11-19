@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795095124532,
+  "lastUpdate": 1795095564996,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -558,6 +558,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00024476164038845485",
             "extra": "mean: 13.025083272726658 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ee775d0f5e9b56c8d3c501a4261cd945b55ca410",
+          "message": "feat(risk): risk layer, stops, circuit breaker (P1-T12) (#28)\n\nCloses #26. Pure risk layer (ATR sizing at 1 % equity risk, max weight per ticker, max positions, vol scaling, circuit breaker with alert flag), lot-based ATR stops with stop_pending_settlement, cooldown from stop exit (risk.stop_cooldown_sessions, null = one decision period, owner to confirm), ex-date factor in ATR, rebalance threshold. Opt-in: without a risk layer the simulator is unchanged. G2 approve (round 2).",
+          "timestamp": "2026-11-19T20:38:49+07:00",
+          "tree_id": "dfaf3e4fd3b92e06e4e65c90aa9646bb68f9ef81",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/ee775d0f5e9b56c8d3c501a4261cd945b55ca410"
+        },
+        "date": 1795095564273,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 73.04210971850193,
+            "unit": "iter/sec",
+            "range": "stddev: 0.000248236329407642",
+            "extra": "mean: 13.690732699998875 msec\nrounds: 10"
           }
         ]
       }
