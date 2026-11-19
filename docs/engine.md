@@ -191,10 +191,19 @@ reports show how often each rule bound.
 - **Stock / bonus ex-dates.** On the ex-date lots bought before it are rescaled to the
   post-event basis (shares x (1 + ratio), price and ATR / (1 + ratio)); a late-applied action
   leaves lots bought on or after the ex-date untouched. In the ATR series the previous close and
-  the accumulated ATR are divided by (1 + ratio) on the ex-date row (factors come from the run's
-  stock actions at construction; `atr()` stays pure and takes them as `ex_factor`), so the
-  mechanical drop is not counted as volatility. Actions added later through `add_actions` do not
-  reach the precomputed ATR series.
+  the accumulated ATR are divided by (1 + ratio) on the ex-date row (`atr()` stays pure and takes
+  the factors as `ex_factor`), so the mechanical drop is not counted as volatility. Actions added
+  later through `add_actions` update the factors and recompute that ticker's ATR series; the
+  latest ATR read and the ATR of lots bought on or after the ex-date are rebased when the action
+  is applied (a read from before the ex-date, including the one a fill at the ex-date open uses,
+  is divided by 1 + ratio; later reads are re-taken from the recomputed series), so from the apply session on the ATR state equals a run that knew the action up
+  front. Reads and stops of earlier sessions are not rewritten (no lookahead): a run that learns
+  an action after its ex-date still carries what happened in between.
+- **Lots and the ledger.** A sale shrinks lots to the ledger's remaining shares, so lot totals
+  never drift after floored bonuses or late credits. Shares added without a lot (a late bonus on
+  shares sold since the ex-date) get a lot with entry price = the
+  ticker's last close before the apply session (execution basis) and ATR = the current ATR (the
+  lot remembers that session as its ATR read, so later late actions re-read the same session).
 - **Cooldown.** `stop_cooldown_sessions` is `null` in `defaults.yaml`, meaning "one decision
   period of the book's horizon"; the caller resolves it to sessions (`run_simulation(...,
   cooldown_sessions=n)`, `n >= 1`) and the run fails if neither is given. The cooldown starts

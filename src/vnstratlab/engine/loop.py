@@ -145,6 +145,7 @@ class _Lot:
     price: float
     atr: float
     day: date
+    read: date | None = None  # session the ATR was read at (default: the one before ``day``)
 
 
 @dataclass(frozen=True)
@@ -357,6 +358,10 @@ class Simulator:
         self._cooldown_n = 0
         self._atr_series: dict[str, dict[date, float]] = {}
         self._atr_now: dict[str, float] = {}
+        self._atr_day: dict[str, date] = {}  # session of each ticker's latest ATR read
+        self._ohlc: dict[str, tuple[list[date], pd.DataFrame]] = {}
+        self._factors: dict[str, list[float]] = {}  # 1 + ratio on stock ex-date rows (ATR basis)
+        self._factor_keys: set[tuple[str, date, str, float]] = set()
         self._lots: dict[str, list[_Lot]] = {}
         self._entries: dict[str, tuple[float, float, float]] = {}  # shares, avg price, avg ATR
         self._peak = self.params.capital
@@ -375,14 +380,34 @@ class Simulator:
         self._cooldown_n = n
         for ticker, group in prices.sort_values("date").groupby("ticker"):
             dates = [pd.Timestamp(d).date() for d in group["date"]]
-            factors = [1.0] * len(dates)  # 1 + ratio on the stock ex-date row (ATR basis)
-            for action in self._actions:
-                if action.ticker == str(ticker) and action.kind == "stock":
-                    row = bisect.bisect_left(dates, action.ex_date)
-                    if row < len(dates):
-                        factors[row] *= 1 + action.value
-            values = atr(group["high"], group["low"], group["close"], ATR_WINDOW, factors)
-            self._atr_series[str(ticker)] = dict(zip(dates, values.tolist(), strict=True))
+            self._ohlc[str(ticker)] = (dates, group[["high", "low", "close"]])
+            self._factors[str(ticker)] = [1.0] * len(dates)
+        for ticker, (dates, frame) in self._ohlc.items():
+            values = atr(frame["high"], frame["low"], frame["close"], ATR_WINDOW)
+            self._atr_series[ticker] = dict(zip(dates, values.tolist(), strict=True))
+        self._add_factors(self._actions)
+
+    def _add_factors(self, actions: Sequence[_Action]) -> None:
+        """Fold new stock actions into the ex-date factors and recompute the affected tickers'
+        ATR series (``atr`` stays pure). Each action counts once, whenever it becomes known."""
+        touched: set[str] = set()
+        for action in actions:
+            if action.kind != "stock" or action.key in self._factor_keys:
+                continue
+            self._factor_keys.add(action.key)
+            if action.ticker not in self._ohlc:
+                continue
+            dates = self._ohlc[action.ticker][0]
+            row = bisect.bisect_left(dates, action.ex_date)
+            if row < len(dates):
+                self._factors[action.ticker][row] *= 1 + action.value
+                touched.add(action.ticker)
+        for ticker in sorted(touched):
+            dates, frame = self._ohlc[ticker]
+            values = atr(
+                frame["high"], frame["low"], frame["close"], ATR_WINDOW, self._factors[ticker]
+            )
+            self._atr_series[ticker] = dict(zip(dates, values.tolist(), strict=True))
 
     # -- orders
 
@@ -411,6 +436,7 @@ class Simulator:
         if self._risk is not None:
             for ticker in self._bars[today]:
                 self._atr_now[ticker] = self._atr_series[ticker].get(today, math.nan)
+                self._atr_day[ticker] = today
             self._close_risk(today, self._risk)
 
     def equity_now(self) -> float:
@@ -566,9 +592,10 @@ class Simulator:
     def add_actions(self, corporate_actions: pd.DataFrame) -> None:
         """Add actions (e.g. published after their ex-date). Each action is applied exactly
         once, at the pre-open of the first session on or after its ex-date."""
-        self._actions = sorted(
-            self._actions + _actions(corporate_actions), key=lambda a: (a.ex_date, a.ticker)
-        )
+        added = _actions(corporate_actions)
+        self._actions = sorted(self._actions + added, key=lambda a: (a.ex_date, a.ticker))
+        if self._risk is not None:
+            self._add_factors(added)
 
     def _snapshot_preopen(self, today: date) -> None:
         held = self.ledger.holdings()
@@ -634,11 +661,60 @@ class Simulator:
         for lot in self._lots.get(a.ticker, []):
             if lot.day < a.ex_date:  # only lots bought before the ex-date change basis
                 lot.qty, lot.price, lot.atr = lot.qty * f, lot.price / f, lot.atr / f
-        self._refresh_entry(a.ticker)
+        if self._risk is not None:
+            self._rebase_late_lots(a)
         for order in self._pending:  # pending orders were sized in pre-event shares
             if order.ticker == a.ticker and order.created < a.ex_date:
                 scaled = order.qty * (1 + a.value)
                 order.qty = float(math.floor(scaled + EPS)) if self.params.lots else scaled
+
+    def _rebase_late_lots(self, a: _Action) -> None:
+        """After a stock action is applied (risk layer only): bring the ATR state onto the
+        post-event series and make the lots match the ledger.
+
+        The latest ATR read and the ATR of lots bought on or after the ex-date (before a late
+        apply) were taken in the old basis. A read from before the ex-date is divided by
+        ``1 + ratio`` (that includes the open of the ex-date itself); a read from on or after it
+        is re-taken from the recomputed series at the same session. A late action thus leaves the
+        same state as one known up front. Lot shares are
+        then synced to the ledger: more shares than lots (bonus on sold shares) get a lot at the
+        last close before this session with the current ATR; fewer (floored bonus) shrink all
+        lots pro rata.
+        """
+        ticker = a.ticker
+        series = self._atr_series.get(ticker, {})
+        f = 1 + a.value
+        if ticker in self._atr_day:
+            read = self._atr_day[ticker]
+            if read < a.ex_date:
+                self._atr_now[ticker] = self._atr_now.get(ticker, math.nan) / f
+            else:
+                self._atr_now[ticker] = series.get(read, math.nan)
+        lots = self._lots.get(ticker, [])
+        for lot in lots:
+            if lot.day >= a.ex_date:
+                prev = lot.read or self._prev_session(ticker, lot.day)
+                value = series.get(prev, math.nan) if prev is not None else math.nan
+                lot.atr = value / f if prev is not None and prev < a.ex_date else value
+        held = self.ledger.shares(ticker)
+        total = sum(x.qty for x in lots)
+        tol = EPS * max(1.0, held)
+        if held > total + tol and ticker in self._last_close:
+            seen = self._atr_day[ticker]  # the close the price and the ATR come from
+            lots.append(
+                _Lot(held - total, self._last_close[ticker], self._atr_now.get(ticker, math.nan),
+                     seen, seen)
+            )  # fmt: skip
+            self._lots[ticker] = lots
+        elif total > held + tol:
+            for x in lots:
+                x.qty *= held / total
+        self._refresh_entry(ticker)
+
+    def _prev_session(self, ticker: str, day: date) -> date | None:
+        dates = self._ohlc[ticker][0]
+        i = bisect.bisect_left(dates, day)
+        return dates[i - 1] if i > 0 else None
 
     def _log(self, order: Order, today: date, event: EventKind, reason: str) -> None:
         self._events.add(order, today, event, reason)
@@ -780,7 +856,7 @@ class Simulator:
             if order.stop:
                 self._cooldown[ticker] = self._index[today]
             return
-        keep = max(total - sold, 0.0) / total
+        keep = left / total  # the ledger's remaining shares: no drift after floors / late credits
         for x in lots:
             x.qty *= keep
         self._refresh_entry(ticker)
