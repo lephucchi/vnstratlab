@@ -16,6 +16,7 @@ EventKind = Literal[
     "blocked_cash",
     "carried",
     "queued_until_sellable",
+    "stop_pending_settlement",
     "stale_order",
     "cancelled",
 ]
@@ -32,6 +33,7 @@ class Order:
     qty: float
     created: date
     carried: int = 0
+    stop: bool = False  # created by an ATR stop (engine.md section 7)
 
 
 class EventLog:
