@@ -1446,3 +1446,85 @@ def test_lot_totals_always_equal_ledger_shares(engine_cfg: AppConfig) -> None:
             for ticker, side, qty in plan.get(i, []):
                 sim.queue(ticker, side, qty, d)  # type: ignore[arg-type]
             sim.record(d)
+
+
+@pytest.mark.parametrize("late_at", [None, 23])
+def test_lot_bought_at_the_ex_date_open_has_a_post_event_atr(
+    engine_cfg: AppConfig, late_at: int | None
+) -> None:
+    days = make_days(30)
+    prices = _bonus_prices(20, 1.5)
+    act = _bonus_action(days, 20, 0.5)
+    plan: Plan = {19: [("AAA", "buy", 300)]}  # fills at the idx 20 open, the ex-date
+    sim, _ = _drive(
+        engine_cfg, prices, act if late_at is None else None,
+        None if late_at is None else (late_at, act), plan,
+    )  # fmt: skip
+    # Fill at 50,000 / 1.5 = 33,333.33 x 1.001 = 33,366.67 (post-event). ATR19 = 1,500 in the
+    # pre-event basis, so the lot's ATR is 1,500 / 1.5 = 1,000 and the stop
+    # 33,366.67 - 2 x 1,000 = 31,366.67 (not 33,366.67 - 3,000 = 30,366.67).
+    lot = sim._lots["AAA"][0]
+    assert lot.price == pytest.approx(33_366.67, abs=0.01)
+    assert lot.atr == pytest.approx(1_000)
+    assert lot.price - 2 * lot.atr == pytest.approx(31_366.67, abs=0.01)
+
+
+def test_residual_lot_keeps_the_session_its_atr_was_read_at(engine_cfg: AppConfig) -> None:
+    days = make_days(40)
+    over = _flat(18, 40, 40_000)
+    prices = wide(synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over)))
+    a1 = _bonus_action(days, 18, 0.25)
+    a2 = _bonus_action(days, 19, 0.10)
+    plan: Plan = {14: [("AAA", "buy", 100)], 18: [("AAA", "sell", 100)]}
+    sim = Simulator(
+        prices, None, CAL, executable(engine_cfg), risk=RiskLayer(engine_cfg.risk),
+        cooldown_sessions=2,
+    )  # fmt: skip
+    for i, d in enumerate(sim.sessions):
+        if i == 21:
+            sim.add_actions(a1)  # sold position: residual lot, ATR read at the idx 20 close
+        if i == 25:
+            sim.add_actions(a2)
+        sim.open_session(d)
+        sim.mark(d)
+        if i == 21:
+            first = sim._lots["AAA"][-1].atr  # ATR20 = 1,259.8 (hand numbers: see above)
+            assert first == pytest.approx(1_259.8, abs=0.1)
+        for ticker, side, qty in plan.get(i, []):
+            sim.queue(ticker, side, qty, d)  # type: ignore[arg-type]
+        sim.record(d)
+    # The late a2 (ex idx 19) divides the series from row 19 on; the residual lot's ATR is the
+    # recomputed value at the session it was read (idx 20), not one session back (idx 19).
+    series = sim._atr_series["AAA"]
+    residual = [x for x in sim._lots["AAA"] if x.day == days[20]]
+    assert residual
+    assert residual[0].atr == pytest.approx(series[days[20]])
+    assert residual[0].atr != pytest.approx(series[days[19]])
+    assert sum(x.qty for x in sim._lots["AAA"]) == pytest.approx(sim.ledger.shares("AAA"))
+
+
+@pytest.mark.parametrize("ratio", [0.15, 0.1, 0.3, 0.07, 0.33, 0.2])
+def test_lot_sync_tolerance_is_relative_with_fractional_shares(
+    engine_cfg: AppConfig, ratio: float
+) -> None:
+    days = make_days(30)
+    prices = _bonus_prices(20, 1 + ratio)
+    act = _bonus_action(days, 20, ratio)
+    params = make_params(engine_cfg, "executable", 1e12, lots=False)
+    plan: Plan = {
+        12: [("AAA", "buy", 3_333_333.3333333)],
+        13: [("AAA", "buy", 7_177_777.777777)],
+        14: [("AAA", "buy", 1_312_345.67891)],
+        16: [("AAA", "sell", 987_654.321987)],
+    }
+    sim = Simulator(prices, act, CAL, params, risk=RiskLayer(engine_cfg.risk), cooldown_sessions=2)
+    for i, d in enumerate(sim.sessions):
+        sim.open_session(d)
+        sim.mark(d)
+        for ticker, side, qty in plan.get(i, []):
+            sim.queue(ticker, side, qty, d)  # type: ignore[arg-type]
+        sim.record(d)
+    # Shares of about 1e7 carry float noise above an absolute 1e-9: no spurious residual lot
+    # (three buys, three lots) and the lots still add up to the ledger.
+    assert len(sim._lots["AAA"]) == 3
+    assert sum(x.qty for x in sim._lots["AAA"]) == pytest.approx(sim.ledger.shares("AAA"))

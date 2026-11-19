@@ -194,14 +194,16 @@ reports show how often each rule bound.
   the accumulated ATR are divided by (1 + ratio) on the ex-date row (`atr()` stays pure and takes
   the factors as `ex_factor`), so the mechanical drop is not counted as volatility. Actions added
   later through `add_actions` update the factors and recompute that ticker's ATR series; the
-  latest ATR read and the ATR of lots bought after the ex-date are re-read from it when the action
-  is applied, so from the apply session on the ATR state equals a run that knew the action up
+  latest ATR read and the ATR of lots bought on or after the ex-date are rebased when the action
+  is applied (a read from before the ex-date, including the one a fill at the ex-date open uses,
+  is divided by 1 + ratio; later reads are re-taken from the recomputed series), so from the apply session on the ATR state equals a run that knew the action up
   front. Reads and stops of earlier sessions are not rewritten (no lookahead): a run that learns
   an action after its ex-date still carries what happened in between.
 - **Lots and the ledger.** A sale shrinks lots to the ledger's remaining shares, so lot totals
   never drift after floored bonuses or late credits. Shares added without a lot (a late bonus on
   shares sold since the ex-date) get a lot with entry price = the
-  ticker's last close before the apply session (execution basis) and ATR = the current ATR.
+  ticker's last close before the apply session (execution basis) and ATR = the current ATR (the
+  lot remembers that session as its ATR read, so later late actions re-read the same session).
 - **Cooldown.** `stop_cooldown_sessions` is `null` in `defaults.yaml`, meaning "one decision
   period of the book's horizon"; the caller resolves it to sessions (`run_simulation(...,
   cooldown_sessions=n)`, `n >= 1`) and the run fails if neither is given. The cooldown starts

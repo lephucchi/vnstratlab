@@ -145,6 +145,7 @@ class _Lot:
     price: float
     atr: float
     day: date
+    read: date | None = None  # session the ATR was read at (default: the one before ``day``)
 
 
 @dataclass(frozen=True)
@@ -671,31 +672,41 @@ class Simulator:
         """After a stock action is applied (risk layer only): bring the ATR state onto the
         post-event series and make the lots match the ledger.
 
-        The latest ATR read and the ATR of lots bought after the ex-date (before a late apply)
-        were taken from the old series; they are re-read from the recomputed one at the same
-        session, so a late action leaves the same state as one known up front. Lot shares are
+        The latest ATR read and the ATR of lots bought on or after the ex-date (before a late
+        apply) were taken in the old basis. A read from before the ex-date is divided by
+        ``1 + ratio`` (that includes the open of the ex-date itself); a read from on or after it
+        is re-taken from the recomputed series at the same session. A late action thus leaves the
+        same state as one known up front. Lot shares are
         then synced to the ledger: more shares than lots (bonus on sold shares) get a lot at the
         last close before this session with the current ATR; fewer (floored bonus) shrink all
         lots pro rata.
         """
         ticker = a.ticker
         series = self._atr_series.get(ticker, {})
+        f = 1 + a.value
         if ticker in self._atr_day:
-            self._atr_now[ticker] = series.get(self._atr_day[ticker], math.nan)
+            read = self._atr_day[ticker]
+            if read < a.ex_date:
+                self._atr_now[ticker] = self._atr_now.get(ticker, math.nan) / f
+            else:
+                self._atr_now[ticker] = series.get(read, math.nan)
         lots = self._lots.get(ticker, [])
         for lot in lots:
-            if lot.day > a.ex_date:
-                prev = self._prev_session(ticker, lot.day)
-                lot.atr = series.get(prev, math.nan) if prev is not None else math.nan
+            if lot.day >= a.ex_date:
+                prev = lot.read or self._prev_session(ticker, lot.day)
+                value = series.get(prev, math.nan) if prev is not None else math.nan
+                lot.atr = value / f if prev is not None and prev < a.ex_date else value
         held = self.ledger.shares(ticker)
         total = sum(x.qty for x in lots)
-        if held > total + EPS and ticker in self._last_close:
+        tol = EPS * max(1.0, held)
+        if held > total + tol and ticker in self._last_close:
+            seen = self._atr_day[ticker]  # the close the price and the ATR come from
             lots.append(
                 _Lot(held - total, self._last_close[ticker], self._atr_now.get(ticker, math.nan),
-                     self._prev_day(ticker))
+                     seen, seen)
             )  # fmt: skip
             self._lots[ticker] = lots
-        elif total > held + EPS:
+        elif total > held + tol:
             for x in lots:
                 x.qty *= held / total
         self._refresh_entry(ticker)
@@ -704,9 +715,6 @@ class Simulator:
         dates = self._ohlc[ticker][0]
         i = bisect.bisect_left(dates, day)
         return dates[i - 1] if i > 0 else None
-
-    def _prev_day(self, ticker: str) -> date:
-        return self._atr_day.get(ticker, date.min)
 
     def _log(self, order: Order, today: date, event: EventKind, reason: str) -> None:
         self._events.add(order, today, event, reason)
