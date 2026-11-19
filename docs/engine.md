@@ -195,8 +195,8 @@ reports show how often each rule bound.
   stock actions at construction; `atr()` stays pure and takes them as `ex_factor`), so the
   mechanical drop is not counted as volatility. Actions added later through `add_actions` do not
   reach the precomputed ATR series.
-- **Cooldown.** `stop_cooldown_sessions` is `null` in `defaults.yaml`, meaning "one decision
-  period of the book's horizon"; the caller resolves it to sessions (`run_simulation(...,
+- **Cooldown** (owner-confirmed 2026-11-19, "follow best practice"). `stop_cooldown_sessions`
+  is `null` in `defaults.yaml`, meaning "one decision period of the book's horizon"; the caller resolves it to sessions (`run_simulation(...,
   cooldown_sessions=n)`, `n >= 1`) and the run fails if neither is given. The cooldown starts
   at the session the stop exit completes (its last fill, which can be later than the trigger
   because of settlement or floor blocks): decisions at that session and the following `n - 1`

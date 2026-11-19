@@ -145,8 +145,9 @@ computation is `vnstratlab.data.adjust.build_series`, the engine input is
   earlier level whenever a new event arrives. Level and liquidity features (price level, value
   traded, lot cost) must use `prices_exec` (point-in-time, raw-like). Features are recomputed when
   `adj_version` changes and never mixed across versions.
-- **Dividend amounts**: used as stored. Whether Yahoo's amounts are split-adjusted is undecided
-  (no evidence in the repository fixtures); `adjust.DIVIDENDS_SPLIT_ADJUSTED` is the switch.
+- **Dividend amounts**: Yahoo's cash amounts are split-adjusted (verified 2026-11-19, see
+  [data-source-yahoo.md §5](reports/data-source-yahoo.md)); P1-T06b multiplies them by
+  `F(ex_date)` (`adjust.DIVIDENDS_SPLIT_ADJUSTED = True`).
 
 Refresh and resume (Yahoo): `vnstratlab ingest` without `--from` starts at the earliest per-ticker
 start over the universe. A ticker's start is its `data.yahoo.overlap_sessions`-th most recent

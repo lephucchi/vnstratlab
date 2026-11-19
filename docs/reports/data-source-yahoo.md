@@ -66,10 +66,15 @@ kept in the repository**; findings are described qualitatively.
 ## 5. Open questions
 
 1. Which Yahoo entity and regional terms apply to a user in Vietnam (ToS §13–14 not reviewed).
-2. Whether trading volume is adjusted for splits the same way as prices. P1-T06 assumes it is and
-   divides volume by `F(t)` in the execution series.
-   Whether Yahoo's dividend amounts are split-adjusted is also open: the repository fixtures are
-   hand-built and cannot answer it (P1-T06 finding), so amounts are used as stored and
-   `vnstratlab.data.adjust.DIVIDENDS_SPLIT_ADJUSTED` (default False) is the one switch to flip once
-   a real sample is compared against a raw source.
+2. ~~Volume and dividend scaling.~~ **Answered 2026-11-19** (manager, on the owner's local store;
+   no prices are reproduced here). Method: HOSE quantities and dividends are round in the raw
+   share basis (volume in multiples of 10 shares; cash dividends a percentage of the 10,000 VND
+   par, i.e. multiples of 50 VND), so multiplying by `F(t)` restores roundness only if the source
+   divided by it.
+   - **Dividends are split-adjusted.** Of 54 cash dividends followed by a stock event, 2 are round
+     as stored and 49 are round after `× F(ex_date)`; all 7 without a later event are round as
+     stored. P1-T06b sets `DIVIDENDS_SPLIT_ADJUSTED = True`.
+   - **Volume is split-adjusted.** Of 26,669 rows before a stock event, 20.6 % are multiples of
+     10 as stored and 71.6 % after `÷ F(t)` (float storage explains the rest); 99.6 % of rows
+     without a later event are multiples of 10. The P1-T06 assumption (`volume ÷ F`) stands.
 3. How Yahoo treats repeated requests from datacenter IPs (not tested; CI never calls it).
