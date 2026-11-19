@@ -10,7 +10,7 @@ All notable changes are documented here. The format follows
 - **Corporate actions and execution prices (P1-T06):** `vnstratlab data rebuild` builds
   `prices_adjusted` (signals), `prices_exec` (`exec_reconstructed` rows the engine accepts) and
   `exec_exclusions` from the stored Yahoo rows and corporate actions; bad source rows, rows without
-  a reference and tickers failing the stock ex-date precondition are omitted and counted.
+  a reference and tickers failing the stock ex-date scale-discontinuity check are omitted and counted.
   `corporate_actions` gains nullable `pay_date` and `listing_date` (migrated on open). New
   `load_execution_frame` for the engine input.
 - **Simulator core (P1-T11, ADR-003):** pure `vnstratlab.engine` (HOSE ticks, limits, lots, 

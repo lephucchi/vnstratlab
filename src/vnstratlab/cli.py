@@ -462,6 +462,7 @@ def data_rebuild(
     source: Annotated[
         str | None, typer.Option("--source", help="Data source; default data.source in config.")
     ] = None,
+    dry_run: DryRun = False,
 ) -> None:
     """Rebuild adjusted prices and the execution series from the stored data (offline)."""
     from vnstratlab.data.pipeline import rebuild
@@ -483,12 +484,13 @@ def data_rebuild(
         typer.echo(f"error: no store at {db_path}: run `vnstratlab ingest` first", err=True)
         raise typer.Exit(code=1)
     try:
-        with MarketStore(db_path, kind_of_source(name)) as store:
-            report = rebuild(store, name, TickTable.from_config(cfg))
+        with MarketStore(db_path, kind_of_source(name), read_only=dry_run) as store:
+            report = rebuild(store, name, TickTable.from_config(cfg), dry_run=dry_run)
     except SourceError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from None
-    typer.echo(f"rebuilt {name}: {report.price_rows} price rows")
+    verb = "would rebuild" if dry_run else "rebuilt"
+    typer.echo(f"{verb} {name}: {report.price_rows} price rows")
     typer.echo(
         f"  prices_adjusted {report.adjusted_rows} rows, prices_exec {report.exec_rows} rows"
     )
@@ -504,6 +506,8 @@ def data_rebuild(
         typer.echo(f"    ... {len(report.exclusions) - _MAX_ERRORS} more (table exec_exclusions)")
     for warning in report.warnings:
         typer.echo(f"warning: {warning}", err=True)
+    if dry_run:
+        typer.echo("dry run: nothing was written")
 
 
 @data_app.command("gaps")

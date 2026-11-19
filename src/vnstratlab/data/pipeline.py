@@ -30,6 +30,7 @@ from vnstratlab.data.protocol import (
 from vnstratlab.data.quality import (
     DQResult,
     build_calendar,
+    check_row_rules,
     final_status,
     incomplete_years,
     run_checks,
@@ -697,18 +698,41 @@ def terms_notice(source: DataSource) -> str:
 # ------------------------------------------------------------------ derived series (P1-T06)
 
 
-def rebuild(store: MarketStore, source_name: str, ticks: TickTable) -> RebuildReport:
+def rebuild(
+    store: MarketStore, source_name: str, ticks: TickTable, dry_run: bool = False
+) -> RebuildReport:
     """Rebuild ``prices_adjusted``, ``prices_exec`` and ``exec_exclusions`` of one source.
 
     Idempotent and deterministic. ``prices_daily`` and ``corporate_actions`` are only read.
-    Sessions with an error-level finding in the latest ingest run are omitted from the
-    execution series.
+    Bad source rows are found here, not taken from a run's findings: the error-level per-row
+    checks (``quality.check_row_rules``) run over the whole stored history of the source, so a
+    later clean run, another source's run or a crashed run never re-admits an old bad row and a
+    corrected row (new revision) is no longer omitted. ``dry_run`` computes the report and writes
+    nothing.
     """
     prices = store.read_source_prices(source_name)
+    if prices.empty:
+        raise SourceError(f"no rows for source {source_name!r}: nothing to rebuild")
     actions = store.read_corporate_actions(sorted({str(t) for t in prices["ticker"]}))
     actions = actions[actions["source"] == source_name]
-    result = build_series(prices, actions, ticks, bad_rows=store.latest_dq_errors())
-    store.replace_derived(source_name, result.adjusted, result.execution, result.exclusions)
+    findings = check_row_rules(
+        prices,
+        "rebuild",
+        min(prices["date"]),
+        max(prices["date"]),
+        ticks,
+        store.last_stock_event_dates(source_name),
+    )
+    bad = {(r.ticker, r.date) for r in findings if r.severity == "error"}
+    result = build_series(prices, actions, ticks, bad_rows=bad)
+    if not dry_run:
+        store.replace_derived(
+            source_name,
+            result.adjusted,
+            result.execution,
+            result.exclusions,
+            through_run=store.latest_run_id(source_name),
+        )
     return result.report
 
 
@@ -719,6 +743,7 @@ class ExecutionFrame:
     prices: pd.DataFrame
     actions: pd.DataFrame
     exclusions: pd.DataFrame
+    stale: bool = False  # a newer ingest run of the source exists than the one last rebuilt
 
 
 def load_execution_frame(
@@ -730,7 +755,7 @@ def load_execution_frame(
 ) -> ExecutionFrame:
     """Execution prices and actions of ``tickers`` in ``[start, end]`` from the rebuilt tables.
 
-    ``source`` defaults to the only rebuilt source. Tickers excluded by the precondition check
+    ``source`` defaults to the only rebuilt source. Tickers excluded by the scale check
     have no rows; they are listed in ``exclusions`` together with omitted bad sessions.
     """
     if not store.has_table("prices_exec"):
@@ -751,6 +776,17 @@ def load_execution_frame(
     actions = execution_actions(actions, split).drop(columns=["source", "run_id"])
     exclusions = store.read_exclusions(source)
     exclusions = exclusions[exclusions["ticker"].isin(tickers)].reset_index(drop=True)
+    latest = store.latest_run_id(source)
+    stale = latest is not None and (store.rebuilt_through_run(source) or "") != latest
+    if stale:
+        log.warning(
+            "execution series of %s is older than ingest run %s: run `vnstratlab data rebuild`",
+            source,
+            latest,
+        )
     return ExecutionFrame(
-        frame.drop(columns=["source", "stock_factor"]), actions.reset_index(drop=True), exclusions
+        frame.drop(columns=["source", "stock_factor"]),
+        actions.reset_index(drop=True),
+        exclusions,
+        stale,
     )

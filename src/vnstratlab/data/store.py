@@ -509,16 +509,25 @@ class MarketStore:
 
     # ------------------------------------------------------------ derived series (P1-T06)
 
-    def latest_dq_errors(self) -> set[tuple[str, date]]:
-        """``(ticker, date)`` of the error-level findings of the latest run (by ``started_at``)."""
-        runs = self.recent_runs(1)
-        if not runs:
-            return set()
-        return {
-            (r.ticker, r.date)
-            for r in self.read_dq_results(runs[0].run_id)
-            if r.severity == "error" and r.ticker
-        }
+    def latest_run_id(self, source: str) -> str | None:
+        """Newest ingest run (by ``started_at``) of one source, or None."""
+        row = _first(
+            _run(
+                self._con,
+                "SELECT run_id FROM ingest_runs WHERE source = ? "
+                "ORDER BY started_at DESC, run_id DESC LIMIT 1",
+                [source],
+            )
+        )
+        return None if row is None else str(row[0])
+
+    def get_meta(self, key: str) -> str | None:
+        row = _first(_run(self._con, "SELECT value FROM store_meta WHERE key = ?", [key]))
+        return None if row is None else str(row[0])
+
+    def rebuilt_through_run(self, source: str) -> str | None:
+        """Latest ingest run of ``source`` that the derived tables had seen at the last rebuild."""
+        return self.get_meta(f"rebuilt_through_run:{source}")
 
     def replace_derived(
         self,
@@ -526,12 +535,20 @@ class MarketStore:
         adjusted: pd.DataFrame,
         execution: pd.DataFrame,
         exclusions: pd.DataFrame,
+        through_run: str | None = None,
     ) -> None:
         """Atomically replace this source's rows of ``prices_adjusted``, ``prices_exec`` and
-        ``exec_exclusions``. Never touches ``prices_daily`` or ``corporate_actions``."""
+        ``exec_exclusions`` and record ``through_run`` (the source's latest ingest run seen) in
+        ``store_meta``. Never touches ``prices_daily`` or ``corporate_actions``."""
         self._require_kind(kind_of_source(source), "derived price frame (source name)")
         con = self._con
         with self.transaction():
+            _run(con, "DELETE FROM store_meta WHERE key = ?", [f"rebuilt_through_run:{source}"])
+            _run(
+                con,
+                "INSERT INTO store_meta VALUES (?, ?)",
+                [f"rebuilt_through_run:{source}", through_run or ""],
+            )
             for table, frame in (
                 ("prices_adjusted", adjusted),
                 ("prices_exec", execution),

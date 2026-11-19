@@ -21,16 +21,19 @@ Nothing is repaired or invented: a session with an error-level data-quality find
 no usable reference price, is left out of the execution series (the engine reads a missing row as
 a suspension) and counted.
 
-Precondition (engine.md section 2). On each stock ex-date the reconstructed open must lie near
-``reconstructed_prev_close / (1 + ratio)``. Within one share basis the expected value is the
-previous close divided by ``1 + ratio`` and a correct event gives an open inside the +/- 7 % daily
-limit of that price, so the tolerance is the HOSE limit plus 1 % for tick rounding
-(:func:`precondition_tolerance`). Because Yahoo's history is continuous across the ex-date, the
-stored ratio cancels out of this comparison: it detects a stored history that is *not* in one
-scale at the event (an unrescaled store, GAP-08, or an event whose ratio disagrees with how the
-source rescaled), not a ratio the source applied consistently. Reverse splits and small ratios
-below the tolerance cannot be detected this way (GAP-06). A ticker that fails is excluded from
-execution and the exclusion is counted.
+Scale-discontinuity check (engine.md section 2). The reconstruction assumes the stored history
+is in ONE share scale. At each stock ex-date the first good session ``j`` on or after it is
+compared with the previous good session ``p``: the reconstructed open
+``open[j] * F(j)`` must lie within tolerance of ``close[p] * F(j)``, the previous reconstructed
+close divided by every event ratio between the two sessions. ``F(p) / F(j)`` is exactly the
+product of those ratios, so the stored ratios cancel and the test is ``|open[j] / close[p] - 1| <=
+tolerance``: a plain discontinuity test on the stored series. The tolerance is the HOSE limit plus
+1 % for tick rounding (:func:`precondition_tolerance`). It catches a store that is not in one
+scale at an event (an unrescaled history, GAP-08) or a jump beyond the daily limit. It does NOT
+detect a stored ratio that is wrong but was applied consistently by the source, a reverse split,
+or an event whose true ratio is below the tolerance (GAP-06). A ticker that fails is excluded
+from execution (kind ``scale_discontinuity``); an event with only bad sessions after it is
+excluded as ``precondition_unverifiable``. Every exclusion is counted.
 """
 
 from __future__ import annotations
@@ -114,7 +117,8 @@ class Exclusion:
     """One thing left out of the execution series (``date`` is the session, or for a
     precondition failure the ex-date of the failing event).
 
-    Kinds: ``precondition`` (the whole ticker), ``dq_error`` (one session with an error-level
+    Kinds: ``scale_discontinuity`` / ``precondition_unverifiable`` (the whole ticker),
+    ``dq_error`` (one session with an error-level
     data-quality finding), ``no_reference`` (one session without a usable reference price).
     """
 
@@ -231,7 +235,11 @@ def build_series(
         exclusions += found
         if dropped_all:
             excluded.append(name)
-            excluded_rows += int((group["price_basis"] == SPLIT_ADJUSTED).sum())
+            # rows dropped only because of the ticker; bad rows are counted as dq_error
+            only_ticker = (group["price_basis"] == SPLIT_ADJUSTED).to_numpy() & ~np.array(
+                [(name, d) in bad for d in group["date"]], dtype=bool
+            )
+            excluded_rows += int(only_ticker.sum())
         execution.append(built)
 
     adj = _concat(adjusted, ADJUSTED_COLUMNS)
@@ -333,26 +341,40 @@ def _precondition(
     skip: npt.NDArray[np.bool_],
     tolerance: float,
 ) -> Exclusion | None:
-    """First stock ex-date whose reconstructed open is out of tolerance, or None."""
+    """First stock event whose ex-date shows a scale discontinuity (see module docstring)."""
     ordinals = np.array([d.toordinal() for d in dates], dtype=np.int64)
-    combined: dict[date, float] = {}
-    for ex_date, ratio in events.stock:
-        combined[ex_date] = combined.get(ex_date, 1.0) * (1.0 + ratio)
-    for ex_date in sorted(combined):
-        j = int(np.searchsorted(ordinals, ex_date.toordinal(), side="left"))
-        if j <= 0 or j >= len(dates) or skip[j]:
-            continue  # nothing to compare with (or the row is a bad source row)
-        expected = close[j - 1] * stock_f[j - 1] / combined[ex_date]
+    good = np.flatnonzero(~skip)
+    checked: set[int] = set()
+    for ex_date, _ in events.stock:
+        start = int(np.searchsorted(ordinals, ex_date.toordinal(), side="left"))
+        if start >= len(dates):
+            continue  # no stored session on or after the ex-date: nothing to execute
+        after = good[good >= start]
+        if len(after) == 0:
+            return Exclusion(
+                ticker,
+                "precondition_unverifiable",
+                ex_date,
+                "every stored session on or after the ex-date is a bad source row",
+            )
+        j = int(after[0])
+        before = good[good < j]
+        if len(before) == 0 or j in checked:
+            continue  # no earlier session to compare with, or already compared
+        checked.add(j)
+        p = int(before[-1])
+        expected = close[p] * stock_f[j]
         observed = open_[j] * stock_f[j]
         deviation = abs(observed / expected - 1.0)
         if not deviation <= tolerance:
+            ratios = [r for d, r in events.stock if dates[p] < d <= dates[j]]
             return Exclusion(
                 ticker,
-                "precondition",
+                "scale_discontinuity",
                 ex_date,
-                f"open {observed:.2f} vs expected {expected:.2f} "
-                f"(deviation {deviation:.1%} > {tolerance:.1%}, event ratio "
-                f"{combined[ex_date] - 1.0:.4f})",
+                f"open {open_[j]:.2f} on {dates[j]} vs previous close {close[p]:.2f} on "
+                f"{dates[p]} (deviation {deviation:.1%} > {tolerance:.1%}; stored event "
+                f"ratio(s) {', '.join(f'{r:.4f}' for r in ratios)})",
             )
     return None
 

@@ -26,7 +26,7 @@ from vnstratlab.data.adjust import (
 from vnstratlab.data.pipeline import load_execution_frame, rebuild
 from vnstratlab.data.protocol import SourceError, TickTable, universe_tickers
 from vnstratlab.data.sources.synthetic import SyntheticSource
-from vnstratlab.data.store import DQRecord, MarketStore, RunRecord
+from vnstratlab.data.store import MarketStore, RunRecord
 from vnstratlab.engine import make_params, run_simulation
 
 TICKS = TickTable([(0, 10), (10_000, 50), (50_000, 100)], 0.07)
@@ -204,8 +204,8 @@ def test_nearest_tick_rounds_to_the_closest_grid_price() -> None:
 # ------------------------------------------------------------------ criterion 4
 
 
-def test_wrong_ratio_fails_the_precondition_and_the_ticker_is_excluded() -> None:
-    # AAA: stored event 10 % but the history was NOT rescaled for it (a 25 % event):
+def test_scale_discontinuity_excludes_the_ticker() -> None:
+    # AAA: stored event 10 % but the history is not in one scale at it (a 25 % jump):
     # closes 50,000 then the ex-date open 40,000 = 50,000 / 1.25.
     # expected open = reconstructed prev close / 1.1 = (50,000 x 1.1) / 1.1 = 50,000
     # observed 40,000 -> deviation 20 % > tolerance 7 % + 1 % = 8 %
@@ -218,7 +218,7 @@ def test_wrong_ratio_fails_the_precondition_and_the_ticker_is_excluded() -> None
     assert report.excluded_tickers == ("AAA",)
     assert report.excluded_ticker_rows == 5
     assert set(result.execution["ticker"]) == {"BBB"}
-    (item,) = [e for e in report.exclusions if e.kind == "precondition"]
+    (item,) = [e for e in report.exclusions if e.kind == "scale_discontinuity"]
     assert (item.ticker, item.date) == ("AAA", D[3])
     assert "20.0%" in item.detail
     assert len(result.adjusted[result.adjusted["ticker"] == "AAA"]) == 5  # signals unaffected
@@ -228,6 +228,47 @@ def test_unrescaled_history_with_the_right_ratio_is_flagged_too() -> None:
     # stored 50,000 then an ex-date open of 45,500: 45,500 / 50,000 - 1 = -9 % > 8 %
     prices = bars("AAA", [50_000.0] * 3 + [45_500.0] * 2, "split_adjusted")
     assert build_series(prices, STOCK, TICKS).report.excluded_tickers == ("AAA",)
+
+
+def test_ex_date_row_that_is_bad_is_compared_with_the_next_good_session() -> None:
+    # stored 50,000 throughout, ex-date D[3] row is bad; D[4] (next good) opens 50,000: fine
+    prices = bars("AAA", [50_000.0] * 5, "split_adjusted")
+    ok = build_series(prices, STOCK, TICKS, bad_rows={("AAA", D[3])})
+    assert ok.report.excluded_tickers == ()
+    # same, but D[4] opens at 40,000: 20 % off the previous good close -> discontinuity
+    jump = bars("AAA", [50_000.0] * 4 + [40_000.0], "split_adjusted")
+    out = build_series(jump, STOCK, TICKS, bad_rows={("AAA", D[3])})
+    assert out.report.excluded_tickers == ("AAA",)
+    kinds = [e.kind for e in out.report.exclusions]
+    assert "scale_discontinuity" in kinds
+    assert str(D[4]) in out.report.exclusions[-1].detail
+
+
+def test_event_with_only_bad_sessions_after_it_is_unverifiable() -> None:
+    prices = bars("AAA", [50_000.0] * 5, "split_adjusted")
+    bad = {("AAA", D[3]), ("AAA", D[4])}
+    result = build_series(prices, STOCK, TICKS, bad_rows=bad)
+    assert result.report.excluded_tickers == ("AAA",)
+    kinds = sorted(e.kind for e in result.report.exclusions)
+    assert kinds == ["dq_error", "dq_error", "precondition_unverifiable"]
+    # rows dropped only because of the ticker: D0..D2 (bad rows are counted once, as dq_error)
+    assert result.report.excluded_ticker_rows == 3
+    assert result.report.bad_rows_omitted == 2
+
+
+def test_two_events_inside_one_suspension_are_not_a_false_exclusion() -> None:
+    # sessions D0, D1 then a suspension over D2 and D3 (10 % events on both), resume D4.
+    # stored closes 46,000; resume open 45,500 = -1.1 % (inside 8 %).
+    # old formula: expected = 46,000 x 1.21 / 1.1 = 50,600 -> 10.1 % off (false exclusion);
+    # now expected = close[p] x F[j] = 46,000 -> deviation 1.1 %
+    days = [D[0], D[1], D[4]]
+    prices = bars("AAA", [46_000.0, 46_000.0, 45_500.0], "split_adjusted", days=days)
+    acts = events(("AAA", D[2], "stock", 0.10), ("AAA", D[3], "stock", 0.10))
+    result = build_series(prices, acts, TICKS)
+    assert result.report.excluded_tickers == ()
+    assert result.execution["stock_factor"].tolist() == pytest.approx([1.21, 1.21, 1.0])
+    # exec before = 46,000 x 1.21 = 55,660 -> nearest 100 = 55,700
+    assert result.execution["close"].tolist()[:2] == [55_700.0, 55_700.0]
 
 
 # ------------------------------------------------------------------ criterion 5
@@ -337,28 +378,78 @@ def test_rebuild_is_idempotent_and_leaves_source_tables_alone(tmp_path: Path) ->
         assert acts == _table_rows(store, "corporate_actions")
 
 
-def test_rebuild_uses_error_findings_of_the_latest_run(tmp_path: Path) -> None:
+def _bad_raw() -> pd.DataFrame:
+    raw = bars("AAA", [50_000.0] * 5, "raw")
+    raw.loc[1, ["open", "high"]] = [50_100.0, 49_900.0]  # high < open: error-level
+    return raw
+
+
+def _run(store: MarketStore, run_id: str, source: str, minute: int) -> None:
+    stamp = datetime(2026, 11, 6, 12, minute, tzinfo=UTC)
+    store.record_run(
+        RunRecord(run_id, source, stamp, stamp, D[0], D[4], "AAA", 5, 5, 0, 0, "ok", None)
+    )
+
+
+def test_old_bad_row_stays_excluded_after_later_clean_and_foreign_runs(tmp_path: Path) -> None:
     with _store(tmp_path) as store:
-        _fill(store, split_adjusted_case(), STOCK)
-        for run_id, minute in (("old", 1), ("new", 2)):
-            stamp = datetime(2026, 11, 6, 12, minute, tzinfo=UTC)
-            store.record_run(
-                RunRecord(run_id, "yahoo", stamp, stamp, D[0], D[4], "AAA", 5, 5, 0, 0, "ok", None)
-            )
-        store.record_dq_results(
-            [
-                DQRecord("old", "ohlc_inconsistent", "AAA", D[0], "error", "x"),  # older run
-                DQRecord("new", "ohlc_inconsistent", "AAA", D[2], "error", "x"),
-                DQRecord("new", "large_move", "AAA", D[1], "warning", "x"),
-                DQRecord("new", "stale_data", "", D[4], "error", "dataset-wide"),
-            ]
-        )
+        _fill(store, _bad_raw(), events())
+        _run(store, "r1", "yahoo", 1)
+        _run(store, "clean-incremental", "yahoo", 2)  # a later run that found nothing
+        _run(store, "foreign", "other", 3)  # another source's newest run
         report = rebuild(store, "yahoo", TICKS)
         assert report.bad_rows_omitted == 1
         loaded = load_execution_frame(store, ["AAA"], D[0], D[4])
-        assert D[2] not in set(loaded.prices["date"])
+        assert D[1] not in set(loaded.prices["date"])
         assert len(loaded.prices) == 4
         assert loaded.exclusions[["ticker", "kind"]].values.tolist() == [["AAA", "dq_error"]]
+        assert not loaded.stale
+
+
+def test_corrected_row_is_no_longer_excluded(tmp_path: Path) -> None:
+    with _store(tmp_path) as store:
+        _fill(store, _bad_raw(), events())
+        assert rebuild(store, "yahoo", TICKS).bad_rows_omitted == 1
+        fixed = _bad_raw()
+        fixed.loc[1, ["open", "high"]] = [50_000.0, 50_000.0]  # new revision of the same key
+        assert store.upsert_prices(fixed, "r2", NOW).changed == 1
+        report = rebuild(store, "yahoo", TICKS)
+        assert report.bad_rows_omitted == 0
+        assert len(store.read_execution("yahoo", ["AAA"], D[0], D[4])) == 5
+
+
+def test_stale_flag_and_warning_when_a_newer_run_exists(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with _store(tmp_path) as store:
+        _fill(store, split_adjusted_case(), STOCK)
+        _run(store, "r1", "yahoo", 1)
+        rebuild(store, "yahoo", TICKS)
+        assert store.rebuilt_through_run("yahoo") == "r1"
+        assert not load_execution_frame(store, ["AAA"], D[0], D[4]).stale
+        _run(store, "r2", "yahoo", 2)
+        with caplog.at_level("WARNING"):
+            loaded = load_execution_frame(store, ["AAA"], D[0], D[4])
+        assert loaded.stale
+        assert "data rebuild" in caplog.text
+        rebuild(store, "yahoo", TICKS)
+        assert not load_execution_frame(store, ["AAA"], D[0], D[4]).stale
+
+
+def test_dry_run_writes_nothing_and_empty_source_is_an_error(tmp_path: Path) -> None:
+    with _store(tmp_path) as store:
+        with pytest.raises(SourceError, match="no rows for source 'yahoo'"):
+            rebuild(store, "yahoo", TICKS)
+        _fill(store, split_adjusted_case(), STOCK)
+        report = rebuild(store, "yahoo", TICKS, dry_run=True)
+        assert report.exec_rows == 5
+        assert _table_rows(store, "prices_exec") == []
+        assert store.rebuilt_through_run("yahoo") is None
+        rebuild(store, "yahoo", TICKS)
+        before = _table_rows(store, "prices_exec")
+        with pytest.raises(SourceError, match="no rows for source 'gone'"):
+            rebuild(store, "gone", TICKS)
+        assert before == _table_rows(store, "prices_exec")  # nothing deleted
 
 
 def test_derived_rows_of_the_wrong_kind_are_refused(tmp_path: Path) -> None:
@@ -393,7 +484,7 @@ def test_excluded_ticker_is_reported_by_the_loader(tmp_path: Path) -> None:
         loaded = load_execution_frame(store, ["AAA", "BBB"], D[0], D[4])
     assert report.excluded_tickers == ("AAA",)
     assert set(loaded.prices["ticker"]) == {"BBB"}
-    assert loaded.exclusions[["ticker", "kind"]].values.tolist() == [["AAA", "precondition"]]
+    assert loaded.exclusions[["ticker", "kind"]].values.tolist() == [["AAA", "scale_discontinuity"]]
     assert loaded.exclusions["date"].tolist() == [D[3]]
 
 

@@ -148,3 +148,18 @@ def test_data_rebuild_of_a_source_without_a_store_exits_1(
     assert runner.invoke(app, args).exit_code == 0
     result = runner.invoke(app, ["data", "rebuild", "--source", "yahoo"])  # no real store
     assert result.exit_code == 1
+
+
+def test_data_rebuild_dry_run_prints_the_report_and_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("APP_HOME", str(home))
+    args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-06"]
+    assert runner.invoke(app, args).exit_code == 0
+    result = runner.invoke(app, ["data", "rebuild", "--source", "synthetic", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "would rebuild synthetic" in result.output
+    assert "dry run: nothing was written" in result.output
+    with MarketStore(home / "data" / "market-synthetic.duckdb", "synthetic", read_only=True) as s:
+        assert s.derived_sources() == []
