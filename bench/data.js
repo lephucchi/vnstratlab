@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1794983177736,
+  "lastUpdate": 1795092309324,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -496,6 +496,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002764022411666604",
             "extra": "mean: 10.433634125000424 msec\nrounds: 8"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "039bc059f327972e91818cd641ff09c45d40e6f5",
+          "message": "fix(engine): P1-T11b review findings, declared suspensions, CLI import time (#25)\n\nCloses #24. Late-action entitlement from ex-date holdings (bonus credit list), turnover over previous-close equity, only pre-ex pending orders rescale on stock events, synthetic declared suspensions downgrade trailing DQ gaps to warnings, lazy heavy imports in the CLI. G2 approve (round 3).",
+          "timestamp": "2026-11-19T19:44:26+07:00",
+          "tree_id": "9464af6cd59e7686ecdac6725cfeeee2dc6cdbf8",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/039bc059f327972e91818cd641ff09c45d40e6f5"
+        },
+        "date": 1795092308642,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 138.68815704379662,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00011570698250826308",
+            "extra": "mean: 7.2104210000007996 msec\nrounds: 16"
           }
         ]
       }
