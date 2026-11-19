@@ -399,7 +399,7 @@ class Simulator:
         return total
 
     def _replace_pending(self, wanted: dict[tuple[str, Side], float], today: date) -> None:
-        """New decision supersedes pending orders; same ticker and side keep id and age."""
+        """New decision supersedes pending orders; same ticker and side keep id and carry count."""
         old = {(o.ticker, o.side): o for o in self._pending}
         kept: list[Order] = []
         for key, qty in wanted.items():
@@ -438,6 +438,18 @@ class Simulator:
         i = bisect.bisect_left(self._preopen_dates, ex_date)
         return self._preopen[min(i, len(self._preopen) - 1)].get(ticker, 0.0)
 
+    def _credit_snapshots(self, ticker: str, ex_date: date, new: float) -> None:
+        """Add bonus shares to the pre-open snapshots dated after the ex-date.
+
+        An action applied late creates its shares after those snapshots were taken, yet a later
+        action of the same ticker (ex-date after this one) is entitled to them.
+        """
+        start = bisect.bisect_right(self._preopen_dates, ex_date)
+        for i in range(start, len(self._preopen)):
+            snap = dict(self._preopen[i])  # copy: dicts are shared while unchanged
+            snap[ticker] = snap.get(ticker, 0.0) + new
+            self._preopen[i] = snap
+
     def _apply_actions(self, today: date) -> None:
         for action in self._actions:
             if action.ex_date > today:
@@ -471,6 +483,7 @@ class Simulator:
                 self.calendar, a.ex_date, self.params.rules.listing_lag_sessions
             )
             self.ledger.add_shares(a.ticker, new, max(listing, today))
+            self._credit_snapshots(a.ticker, a.ex_date, new)
         for order in self._pending:  # pending orders were sized in pre-event shares
             if order.ticker == a.ticker and order.created < a.ex_date:
                 scaled = order.qty * (1 + a.value)
