@@ -56,7 +56,15 @@ def test_schema_is_idempotent(tmp_path: Path) -> None:
                 "SELECT table_name FROM information_schema.tables"
             ).fetchall()
         }
-    assert {"prices_daily", "corporate_actions", "ingest_runs", "store_meta"} <= tables
+    assert {
+        "prices_daily",
+        "corporate_actions",
+        "ingest_runs",
+        "store_meta",
+        "prices_adjusted",
+        "prices_exec",
+        "exec_exclusions",
+    } <= tables
 
 
 def test_new_rows_get_revision_zero_and_metadata(tmp_path: Path) -> None:

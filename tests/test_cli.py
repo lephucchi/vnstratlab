@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from datetime import date
+from pathlib import Path
+
 import pytest
 from typer.testing import CliRunner
 
 from vnstratlab import __version__
 from vnstratlab.cli import app
+from vnstratlab.data.pipeline import load_execution_frame
+from vnstratlab.data.store import MarketStore
 
 runner = CliRunner()
 
@@ -100,3 +105,46 @@ def test_help_and_version_do_not_import_the_heavy_libraries(args: list[str]) -> 
     )
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip().endswith("HEAVY="), done.stdout
+
+
+def test_data_rebuild_without_a_store_fails_and_names_the_fix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
+    result = runner.invoke(app, ["data", "rebuild", "--source", "synthetic"])
+    assert result.exit_code == 1
+    assert "ingest" in result.output
+
+
+def test_data_rebuild_reports_counts_and_is_repeatable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("APP_HOME", str(home))
+    args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-13"]
+    assert runner.invoke(app, args).exit_code == 0
+    first = runner.invoke(app, ["data", "rebuild", "--source", "synthetic"])
+    assert first.exit_code == 0, first.output
+    # synthetic rows are raw-like: the execution series is the stored rows unchanged
+    assert "rebuilt synthetic" in first.output
+    assert "excluded tickers 0" in first.output
+    assert "bad source rows omitted 0" in first.output
+    second = runner.invoke(app, ["data", "rebuild", "--source", "synthetic"])
+    assert second.output == first.output
+    with MarketStore(home / "data" / "market-synthetic.duckdb", "synthetic", read_only=True) as s:
+        stored = s.row_count()
+        assert len(s.read_adjusted("synthetic")) == stored
+        frame = load_execution_frame(s, ["ACB"], date(2026, 3, 2), date(2026, 3, 13))
+    assert stored > 0
+    assert set(frame.prices["price_basis"]) == {"synthetic"}
+
+
+def test_data_rebuild_of_a_source_without_a_store_exits_1(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("APP_HOME", str(home))
+    args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-04"]
+    assert runner.invoke(app, args).exit_code == 0
+    result = runner.invoke(app, ["data", "rebuild", "--source", "yahoo"])  # no real store
+    assert result.exit_code == 1

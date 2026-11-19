@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import pandas as pd
 
+from vnstratlab.data.adjust import RebuildReport, build_series, execution_actions
 from vnstratlab.data.protocol import (
     OPTIONAL_COLUMNS,
     REQUIRED_COLUMNS,
@@ -690,4 +691,66 @@ def terms_notice(source: DataSource) -> str:
         f"Data source '{name}' is an interim source. Its terms: {url}\n"
         "Use the data only for your own research; you are responsible for following the "
         "source's terms. vnstratlab never redistributes downloaded data."
+    )
+
+
+# ------------------------------------------------------------------ derived series (P1-T06)
+
+
+def rebuild(store: MarketStore, source_name: str, ticks: TickTable) -> RebuildReport:
+    """Rebuild ``prices_adjusted``, ``prices_exec`` and ``exec_exclusions`` of one source.
+
+    Idempotent and deterministic. ``prices_daily`` and ``corporate_actions`` are only read.
+    Sessions with an error-level finding in the latest ingest run are omitted from the
+    execution series.
+    """
+    prices = store.read_source_prices(source_name)
+    actions = store.read_corporate_actions(sorted({str(t) for t in prices["ticker"]}))
+    actions = actions[actions["source"] == source_name]
+    result = build_series(prices, actions, ticks, bad_rows=store.latest_dq_errors())
+    store.replace_derived(source_name, result.adjusted, result.execution, result.exclusions)
+    return result.report
+
+
+@dataclass(frozen=True)
+class ExecutionFrame:
+    """What ``run_simulation`` takes, plus what was left out (survivorship)."""
+
+    prices: pd.DataFrame
+    actions: pd.DataFrame
+    exclusions: pd.DataFrame
+
+
+def load_execution_frame(
+    store: MarketStore,
+    tickers: list[str],
+    start: date,
+    end: date,
+    source: str | None = None,
+) -> ExecutionFrame:
+    """Execution prices and actions of ``tickers`` in ``[start, end]`` from the rebuilt tables.
+
+    ``source`` defaults to the only rebuilt source. Tickers excluded by the precondition check
+    have no rows; they are listed in ``exclusions`` together with omitted bad sessions.
+    """
+    if not store.has_table("prices_exec"):
+        raise SourceError("no execution series in this store: run `vnstratlab data rebuild`")
+    sources = store.derived_sources()
+    if source is None:
+        if len(sources) != 1:
+            raise SourceError(
+                f"pass a source: rebuilt sources are {sources or 'none (run data rebuild)'}"
+            )
+        source = sources[0]
+    elif source not in sources:
+        raise SourceError(f"source {source!r} has no execution series: run `data rebuild`")
+    frame = store.read_execution(source, tickers, start, end)
+    split = {str(t) for t in frame.loc[frame["price_basis"] == "exec_reconstructed", "ticker"]}
+    actions = store.read_corporate_actions(tickers)
+    actions = actions[actions["source"] == source].reset_index(drop=True)
+    actions = execution_actions(actions, split).drop(columns=["source", "run_id"])
+    exclusions = store.read_exclusions(source)
+    exclusions = exclusions[exclusions["ticker"].isin(tickers)].reset_index(drop=True)
+    return ExecutionFrame(
+        frame.drop(columns=["source", "stock_factor"]), actions.reset_index(drop=True), exclusions
     )

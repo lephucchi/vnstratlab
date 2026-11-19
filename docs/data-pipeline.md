@@ -66,6 +66,9 @@ Plan §5.5 tables, with columns added by ADR-007:
 | `corporate_actions` | (ticker, ex_date, type, source) | `source`, `run_id` |
 | `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_changed, rows_dropped, status (`ok`, `ok_with_warnings`, `partial`, `failed_dq`, `dq_crashed`, `error`), raw_path |
 | `dq_results` | (run_id, check, ticker, date) | severity (`error` / `warning`), detail (P1-T38) |
+| `prices_adjusted` | (ticker, date, source) | `adj_open` … `adj_close`, `adj_factor`, `adj_version`, `dq_error` (P1-T06) |
+| `prices_exec` | (ticker, date, source) | execution series: `price_basis` `exec_reconstructed` (from `split_adjusted` rows) or the stored basis, `stock_factor` (P1-T06) |
+| `exec_exclusions` | (source, ticker, kind, date) | what was left out of `prices_exec`: `precondition`, `dq_error`, `no_reference` (P1-T06) |
 
 Rules: raw values are never overwritten silently; an upsert that changes a stored value
 increments `revision` and is counted in `ingest_runs`. Synthetic rows are labelled
@@ -97,9 +100,37 @@ as run warnings. Cash events hold VND per share.
 vnstratlab ingest --source synthetic --from 2020-01-01 --dry-run   # print, write nothing
 vnstratlab ingest --source yahoo --from 2015-01-01                  # backfill (needs [yahoo])
 vnstratlab ingest                                                   # refresh to the last session
+vnstratlab data rebuild [--source yahoo]                            # adjusted + execution series (offline)
 vnstratlab data status                                              # stores, runs, DQ, gaps
 vnstratlab data gaps                                                # gap register only
 ```
+
+### Adjusted and execution series (P1-T06)
+
+`vnstratlab data rebuild` reads `prices_daily` and `corporate_actions` of one source and
+replaces that source's rows in `prices_adjusted`, `prices_exec` and `exec_exclusions` in one
+transaction. It is offline, deterministic and idempotent (two runs give identical tables) and
+never writes `prices_daily` or `corporate_actions`. Run it after every `ingest`; the pure
+computation is `vnstratlab.data.adjust.build_series`, the engine input is
+`vnstratlab.data.pipeline.load_execution_frame(store, tickers, start, end)`.
+
+- **Adjusted (signals)**: backward ratio method. Stock events scale earlier `raw` / `synthetic`
+  rows by `1 / (1 + ratio)`; `split_adjusted` rows are never scaled by a split again; a cash
+  dividend `D` scales every earlier row by `1 - D / P` (`P` = close of the session before the
+  ex-date, in its raw share basis). `adj_version` hashes the method and the ticker's events.
+  `dq_error` marks rows with an error-level finding (kept, flagged).
+- **Execution**: engine.md section 2 formulas. `raw` / `synthetic` rows are copied unchanged.
+- **Left out, counted, never repaired**: sessions with an error-level finding in the latest ingest
+  run (`dq_error`, engine reads a missing row as a suspension), rows without a reference price
+  (`no_reference`) and tickers failing the stock ex-date precondition (`precondition`, every
+  `split_adjusted` row of the ticker). The command prints the counts; `exec_exclusions` lists them
+  and `load_execution_frame` returns them. Only the *latest* run's findings are used: rows that
+  failed in an older run with a different window are not omitted until a run covers them.
+- **Precondition**: tolerance = HOSE price limit + 1 % (8 %). It checks that the stored history is
+  in one scale across each stock ex-date; because Yahoo rescales history consistently the stored
+  ratio cancels out, so a ratio Yahoo applied consistently is not detectable (GAP-06).
+- **Dividend amounts**: used as stored. Whether Yahoo's amounts are split-adjusted is undecided
+  (no evidence in the repository fixtures); `adjust.DIVIDENDS_SPLIT_ADJUSTED` is the switch.
 
 Refresh and resume (Yahoo): `vnstratlab ingest` without `--from` starts at the earliest per-ticker
 start over the universe. A ticker's start is its `data.yahoo.overlap_sessions`-th most recent

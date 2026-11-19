@@ -457,6 +457,55 @@ def data_status(
     _echo_gap_list(open_gaps)
 
 
+@data_app.command("rebuild")
+def data_rebuild(
+    source: Annotated[
+        str | None, typer.Option("--source", help="Data source; default data.source in config.")
+    ] = None,
+) -> None:
+    """Rebuild adjusted prices and the execution series from the stored data (offline)."""
+    from vnstratlab.data.pipeline import rebuild
+    from vnstratlab.data.protocol import SourceError, TickTable
+    from vnstratlab.data.store import MarketStore, kind_of_source
+
+    _tolerant_output()
+    paths = get_paths()
+    try:
+        cfg = load_config(paths.home)
+    except ConfigError as exc:
+        typer.echo("config: INVALID", err=True)
+        for problem in exc.problems:
+            typer.echo(f"  {problem}", err=True)
+        raise typer.Exit(code=1) from None
+    name = source or cfg.data.source
+    db_path = paths.market_db_for(kind_of_source(name))
+    if not db_path.is_file():
+        typer.echo(f"error: no store at {db_path}: run `vnstratlab ingest` first", err=True)
+        raise typer.Exit(code=1)
+    try:
+        with MarketStore(db_path, kind_of_source(name)) as store:
+            report = rebuild(store, name, TickTable.from_config(cfg))
+    except SourceError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"rebuilt {name}: {report.price_rows} price rows")
+    typer.echo(
+        f"  prices_adjusted {report.adjusted_rows} rows, prices_exec {report.exec_rows} rows"
+    )
+    typer.echo(
+        f"  excluded tickers {len(report.excluded_tickers)} "
+        f"({report.excluded_ticker_rows} rows): {', '.join(report.excluded_tickers) or '-'}"
+    )
+    typer.echo(f"  bad source rows omitted {report.bad_rows_omitted}")
+    typer.echo(f"  rows without reference omitted {report.no_reference_omitted}")
+    for item in report.exclusions[:_MAX_ERRORS]:
+        typer.echo(f"    {item.kind} {item.ticker} {item.date or '-'}: {item.detail}")
+    if len(report.exclusions) > _MAX_ERRORS:
+        typer.echo(f"    ... {len(report.exclusions) - _MAX_ERRORS} more (table exec_exclusions)")
+    for warning in report.warnings:
+        typer.echo(f"warning: {warning}", err=True)
+
+
 @data_app.command("gaps")
 def data_gaps(
     status: Annotated[GapStatus | None, typer.Option("--status", help="Filter by status.")] = None,
