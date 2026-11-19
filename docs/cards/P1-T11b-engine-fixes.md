@@ -3,7 +3,7 @@ id: P1-T11b
 title: Close P1-T11 review findings, synthetic trailing-suspension DQ error, CLI import time
 milestone: M1.3 Engine
 release: v0.1.0
-status: in progress
+status: done
 branch: feat/P1-T11b-engine-fixes
 due: 2026-11-20
 ---
