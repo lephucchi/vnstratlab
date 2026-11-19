@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795092309324,
+  "lastUpdate": 1795095124532,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -527,6 +527,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00011570698250826308",
             "extra": "mean: 7.2104210000007996 msec\nrounds: 16"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "51a62401e224db2995a5faa2a5f368110d7c60e7",
+          "message": "feat(data): corporate actions, adjusted and execution prices (P1-T06) (#29)\n\nCloses #27. prices_adjusted for scale-invariant signals, prices_exec (exec_reconstructed) for the engine, exec_exclusions; rebuild recomputes error-level row checks over the full history; scale-discontinuity check (wrong-but-consistent ratios undetected, GAP-06); freshness flag; data rebuild --dry-run; corporate_actions pay_date/listing_date. G2 approve (round 2).",
+          "timestamp": "2026-11-19T20:31:29+07:00",
+          "tree_id": "6143cdb978e5e7a8745b7017dbc0117df83fdfad",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/51a62401e224db2995a5faa2a5f368110d7c60e7"
+        },
+        "date": 1795095123762,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 76.77494101660827,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00024476164038845485",
+            "extra": "mean: 13.025083272726658 msec\nrounds: 11"
           }
         ]
       }
