@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795095564996,
+  "lastUpdate": 1795097517489,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -589,6 +589,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.000248236329407642",
             "extra": "mean: 13.690732699998875 msec\nrounds: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1e4da7f3d823f4e908628716ce44189e34173e81",
+          "message": "fix(risk): ATR for late actions and exact lot tracking (P1-T12b) (#32)\n\nCloses #30. ATR series recomputed on late add_actions (no rewrite of used values), exact lot/ledger sync, lots for bonus shares without entry, ex-date-open lot ATR in post-event basis, residual lots keep their ATR read session, relative sync tolerance. G2 approve (round 1); round-2 fixes merged by owner decision without re-review.",
+          "timestamp": "2026-11-19T21:11:15+07:00",
+          "tree_id": "53cd2ef29c361afaee2237ca55a0fd42a27a3c3d",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/1e4da7f3d823f4e908628716ce44189e34173e81"
+        },
+        "date": 1795097516781,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 133.17106660817092,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00013481050564384252",
+            "extra": "mean: 7.509138625001022 msec\nrounds: 16"
           }
         ]
       }
