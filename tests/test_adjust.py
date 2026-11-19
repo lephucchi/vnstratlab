@@ -207,7 +207,7 @@ def test_nearest_tick_rounds_to_the_closest_grid_price() -> None:
 def test_scale_discontinuity_excludes_the_ticker() -> None:
     # AAA: stored event 10 % but the history is not in one scale at it (a 25 % jump):
     # closes 50,000 then the ex-date open 40,000 = 50,000 / 1.25.
-    # expected open = reconstructed prev close / 1.1 = (50,000 x 1.1) / 1.1 = 50,000
+    # expected open = close[p] x F[j] = 50,000 x 1 = 50,000 (the stored ratio cancels)
     # observed 40,000 -> deviation 20 % > tolerance 7 % + 1 % = 8 %
     bad = bars("AAA", [50_000.0] * 3 + [40_000.0] * 2, "split_adjusted")
     good = split_adjusted_case().assign(ticker="BBB")

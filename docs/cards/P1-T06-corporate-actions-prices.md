@@ -3,7 +3,7 @@ id: P1-T06
 title: Corporate actions, adjusted prices for signals, reconstructed prices for execution
 milestone: M1.1 Data
 release: v0.1.0
-status: in progress
+status: done
 branch: feat/P1-T06-corporate-actions-prices
 due: 2026-11-26
 ---

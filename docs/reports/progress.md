@@ -16,4 +16,5 @@ date       | card   | PR / commit      | summary                                
 2026-11-18 | ADR-003 | PR #21 squash   | ADR-003 accepted in part; card P1-T11 | docs | owner override after 2 G2 rounds
 2026-11-18 | P1-T11 | PR #23 squash    | simulator core (HOSE rules, ledger, order lifecycle, ideal/executable) | 456 passed | owner override; open: late-action entitlement, turnover denominator, pre-ex pending rescale (G2 request changes)
 2026-11-19 | P1-T11b | PR #25 squash    | close P1-T11 G2 findings (late-action entitlement via bonus credits, turnover / previous-close equity, pre-ex pending rescale), synthetic declared suspensions in DQ, lazy CLI imports | 483 passed, 97.45% | G2 approve (round 3)
+2026-11-19 | P1-T06 | PR #29 squash    | prices_adjusted (signals), prices_exec (exec_reconstructed), exec_exclusions; bad rows recomputed on rebuild; scale-discontinuity check; data rebuild --dry-run; pay/listing dates | 521 passed, 97.15% | G2 approve (round 2); open: [VERIFY] Yahoo dividend and volume scaling
 ```
