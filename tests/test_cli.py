@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from typer.testing import CliRunner
 
@@ -129,6 +130,9 @@ def test_data_rebuild_reports_counts_and_is_repeatable(
     assert "rebuilt synthetic" in first.output
     assert "excluded tickers 0" in first.output
     assert "bad source rows omitted 0" in first.output
+    assert "scale outlier rows omitted 0" in first.output
+    assert "rows before a scale step excluded 0 (suspect events 0)" in first.output
+    assert "non-HOSE history rows excluded 0" in first.output
     second = runner.invoke(app, ["data", "rebuild", "--source", "synthetic"])
     assert second.output == first.output
     with MarketStore(home / "data" / "market-synthetic.duckdb", "synthetic", read_only=True) as s:
@@ -163,3 +167,54 @@ def test_data_rebuild_dry_run_prints_the_report_and_writes_nothing(
     assert "dry run: nothing was written" in result.output
     with MarketStore(home / "data" / "market-synthetic.duckdb", "synthetic", read_only=True) as s:
         assert s.derived_sources() == []
+
+
+def test_data_rebuild_prints_counts_per_exclusion_kind(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("APP_HOME", str(home))
+    days = [date(2026, 11, d) for d in (2, 3, 4, 5, 6, 9, 10, 11)]
+    # AAA: the ex-date row D3 (Thu 11-05) is one out-of-scale session (57,500 vs 50,000);
+    # BBB: 50,000 then a persistent step to 57,500 from D3 (4 rows through the ex-date excluded)
+    closes = {
+        "AAA": [50_000.0] * 3 + [57_500.0] + [50_000.0] * 4,
+        "BBB": [50_000.0] * 3 + [57_500.0] * 5,
+    }
+    frames = []
+    for ticker, values in closes.items():
+        ref = [values[0], *values[:-1]]
+        frames.append(
+            pd.DataFrame(
+                {
+                    "ticker": ticker,
+                    "date": days,
+                    "open": values,
+                    "high": values,
+                    "low": values,
+                    "close": values,
+                    "volume": 1_000_000,
+                    "value": 0.0,
+                    "ref_price": ref,
+                    "ceiling": [r * 1.07 for r in ref],
+                    "floor": [r * 0.93 for r in ref],
+                    "source": "yahoo",
+                    "price_basis": "split_adjusted",
+                    "derived_limits": True,
+                }
+            )
+        )
+    acts = pd.DataFrame(
+        [(t, days[3], "stock", 0.15, "yahoo") for t in closes],
+        columns=["ticker", "ex_date", "type", "ratio_or_amount", "source"],
+    )
+    path = home / "data" / "market.duckdb"
+    with MarketStore(path, "real") as store:
+        store.upsert_prices(pd.concat(frames), "r1", datetime(2026, 11, 12, tzinfo=UTC))
+        store.upsert_corporate_actions(acts, "r1")
+    result = runner.invoke(app, ["data", "rebuild", "--source", "yahoo"])
+    assert result.exit_code == 0, result.output
+    assert "excluded tickers 0" in result.output
+    assert "scale outlier rows omitted 1" in result.output
+    assert "rows before a scale step excluded 4 (suspect events 1)" in result.output
+    assert "non-HOSE history rows excluded 0" in result.output

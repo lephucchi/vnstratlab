@@ -59,7 +59,7 @@ Interim price source: **yahoo**. Each gap is a known shortfall that is worked ar
 - Status: open · severity: medium · since 2026-11-18
 - Missing: No HNX/UPCoM symbols. ACB, LPB, VIB and SSB start in 2020-2021 (their HOSE listing), so a 2015 backfill gives a ragged panel.
 - Affects: prices_daily, universe, P1-T10, P1-T20, lab statistics
-- Workaround now: A ticker is tradable only from its first stored session; lab reports state the effective start per ticker and the number of tickers per period.
+- Workaround now: A ticker is tradable only from its first stored session; lab reports state the effective start per ticker and the number of tickers per period. Rows before the last session outside the HOSE band that precedes 60 in-band sessions are another exchange's history under the same symbol and are excluded from execution (non_hose_history, P1-T06b).
 - Closed by: CafeF files (cover HNX/UPCoM history) or another source — new card.
 
 ## GAP-05
@@ -79,7 +79,7 @@ Interim price source: **yahoo**. Each gap is a known shortfall that is worked ar
 - Status: open · severity: medium · since 2026-11-18
 - Missing: Only split factors (including stock dividends) and cash dividends; no rights issues, record dates or announcement dates; amounts unverified.
 - Affects: corporate_actions, P1-T06, P1-T11 cash-dividend accounting
-- Workaround now: Store what Yahoo gives with source=yahoo; no lookahead use of announcement dates. P1-T06 checks that the stored history is continuous across each stock ex-date (scale_discontinuity) and excludes failing tickers from execution; a stored ratio that is wrong but was applied consistently by Yahoo, a dropped reverse split, or a ratio below the 8 % tolerance is NOT detected.
+- Workaround now: Store what Yahoo gives with source=yahoo; no lookahead use of announcement dates. P1-T06 checks that the stored history is continuous across each stock ex-date (scale_discontinuity) and excludes failing tickers from execution; a stored ratio that is wrong but was applied consistently by Yahoo, a dropped reverse split, or a ratio below the 8 % tolerance is NOT detected. P1-T06b first classifies a failing event: up to 2 out-of-scale sessions that return to scale are omitted (scale_outlier_row, ticker kept); a persistent step by the stored ratio marks the event suspect (scale_step_before: rows through the ex-date are excluded and the event is never applied to holdings). Cash dividends are booked as amount x F(ex_date) (Yahoo amounts are split-adjusted).
 - Closed by: Corporate-action source (company/exchange disclosures) — new card.
 
 ## GAP-07

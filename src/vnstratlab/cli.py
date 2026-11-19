@@ -499,6 +499,12 @@ def data_rebuild(
         f"({report.excluded_ticker_rows} rows): {', '.join(report.excluded_tickers) or '-'}"
     )
     typer.echo(f"  bad source rows omitted {report.bad_rows_omitted}")
+    typer.echo(f"  scale outlier rows omitted {report.outlier_rows_omitted}")
+    typer.echo(
+        f"  rows before a scale step excluded {report.step_rows_excluded} "
+        f"(suspect events {report.suspect_events})"
+    )
+    typer.echo(f"  non-HOSE history rows excluded {report.non_hose_rows_excluded}")
     typer.echo(f"  rows without reference omitted {report.no_reference_omitted}")
     for item in report.exclusions[:_MAX_ERRORS]:
         typer.echo(f"    {item.kind} {item.ticker} {item.date or '-'}: {item.detail}")
