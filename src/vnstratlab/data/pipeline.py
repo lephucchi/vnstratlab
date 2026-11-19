@@ -756,7 +756,8 @@ def load_execution_frame(
     """Execution prices and actions of ``tickers`` in ``[start, end]`` from the rebuilt tables.
 
     ``source`` defaults to the only rebuilt source. Tickers excluded by the scale check
-    have no rows; they are listed in ``exclusions`` together with omitted bad sessions.
+    have no rows; they are listed in ``exclusions`` together with omitted sessions. Stock events
+    that the rebuild marked suspect (``scale_step_before``) are not returned as actions.
     """
     if not store.has_table("prices_exec"):
         raise SourceError("no execution series in this store: run `vnstratlab data rebuild`")
@@ -771,11 +772,24 @@ def load_execution_frame(
         raise SourceError(f"source {source!r} has no execution series: run `data rebuild`")
     frame = store.read_execution(source, tickers, start, end)
     split = {str(t) for t in frame.loc[frame["price_basis"] == "exec_reconstructed", "ticker"]}
-    actions = store.read_corporate_actions(tickers)
-    actions = actions[actions["source"] == source].reset_index(drop=True)
-    actions = execution_actions(actions, split).drop(columns=["source", "run_id"])
     exclusions = store.read_exclusions(source)
     exclusions = exclusions[exclusions["ticker"].isin(tickers)].reset_index(drop=True)
+    actions = store.read_corporate_actions(tickers)
+    actions = actions[actions["source"] == source].reset_index(drop=True)
+    # a suspect event (persistent scale step, P1-T06b) is no share-count event: never applied
+    suspect = {
+        (str(t), pd.Timestamp(d).date())
+        for t, k, d in zip(
+            exclusions["ticker"], exclusions["kind"], exclusions["date"], strict=True
+        )
+        if k == "scale_step_before"
+    }
+    is_suspect = [
+        t_type in ("stock", "bonus") and (str(t), pd.Timestamp(d).date()) in suspect
+        for t, d, t_type in zip(actions["ticker"], actions["ex_date"], actions["type"], strict=True)
+    ]
+    actions = actions[~np.array(is_suspect, dtype=bool)].reset_index(drop=True)
+    actions = execution_actions(actions, split).drop(columns=["source", "run_id"])
     latest = store.latest_run_id(source)
     stale = latest is not None and (store.rebuilt_through_run(source) or "") != latest
     if stale:

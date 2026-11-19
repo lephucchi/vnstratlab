@@ -124,13 +124,17 @@ def test_cash_dividend_scales_earlier_closes() -> None:
 
 def test_cash_dividend_on_split_adjusted_rows_uses_the_raw_basis() -> None:
     # stored 50,000 before a later 10 % event on D[4]: raw close was 55,000.
-    # dividend 2,200 on D[3] (raw basis): 2,200 / 55,000 = 0.04 -> factor 0.96 -> 48,000
+    # dividend 2,200 on D[3] (raw basis, flag off): 2,200 / 55,000 = 0.04 -> 0.96 -> 48,000
     prices = bars("AAA", [50_000.0] * 5, "split_adjusted")
     acts = events(("AAA", D[3], "cash", 2_200.0), ("AAA", D[4], "stock", 0.10))
-    out = build_series(prices, acts, TICKS).adjusted
+    out = build_series(prices, acts, TICKS, dividends_split_adjusted=False).adjusted
     assert out["adj_close"].tolist()[:3] == pytest.approx([48_000.0] * 3)
-    # if Yahoo's amounts were split-adjusted: 2,200 x F(D[3]) = 2,200 x 1.1 = 2,420 -> 0.044
-    flagged = build_series(prices, acts, TICKS, dividends_split_adjusted=True).adjusted
+    # amounts as stored (the flag off): 2,200 / 55,000 = 0.04
+    stored = build_series(prices, acts, TICKS, dividends_split_adjusted=False).adjusted
+    assert stored["adj_close"].tolist()[:3] == pytest.approx([48_000.0] * 3)
+    # Yahoo's amounts are split-adjusted (the default): 2,200 x F(D[3]) = 2,200 x 1.1 = 2,420
+    # -> 2,420 / 55,000 = 0.044 -> factor 0.956 -> 47,800
+    flagged = build_series(prices, acts, TICKS).adjusted
     assert flagged["adj_close"].tolist()[:3] == pytest.approx([50_000 * 0.956] * 3)
 
 
@@ -339,10 +343,10 @@ def test_bonus_counts_as_stock_and_two_events_on_one_date_combine() -> None:
     assert result.execution["close"].tolist() == [60_500.0] * 3 + [50_000.0] * 2
 
 
-def test_execution_actions_scales_dividends_only_when_asked() -> None:
+def test_execution_actions_scales_dividends_by_default_and_not_when_off() -> None:
     acts = events(("AAA", D[2], "cash", 1_000.0), ("AAA", D[3], "stock", 0.10))
-    assert execution_actions(acts, {"AAA"}).equals(acts)
-    scaled = execution_actions(acts, {"AAA"}, dividends_split_adjusted=True)
+    assert execution_actions(acts, {"AAA"}, dividends_split_adjusted=False).equals(acts)
+    scaled = execution_actions(acts, {"AAA"})  # the default: Yahoo amounts are split-adjusted
     # F(D[2]) = 1.1 (the event on D[3] is later): 1,000 x 1.1
     assert scaled["ratio_or_amount"].tolist() == pytest.approx([1_100.0, 0.10])
     assert execution_actions(acts.iloc[0:0], {"AAA"}, True).empty
@@ -580,3 +584,201 @@ def test_engine_runs_on_the_rebuilt_series_and_is_deterministic(
 
     with pytest.raises(ValueError, match="split_adjusted"):
         run_simulation(stored, loaded.actions, targets, calendar, params)
+
+
+# ------------------------------------------------------------------ P1-T06b: event-scale repair
+
+D8 = make_days(8)
+EVENT15 = events(("AAA", D8[3], "stock", 0.15))
+
+
+def test_isolated_outlier_row_is_omitted_and_the_ticker_stays() -> None:
+    # stored 50,000 on D0..D2, the ex-date row D3 sits at old scale 57,500 (= 50,000 x 1.15),
+    # D4..D7 are back at 50,000. Event 15 % on D3.
+    # expected open = close[p] x F[j] = 50,000 ; observed 57,500 -> 15 % > 8 % (fails).
+    # next good session D4: 50,000 -> 0 % <= 8 %: one outlier row (D3).
+    prices = bars("AAA", [50_000.0] * 3 + [57_500.0] + [50_000.0] * 4, "split_adjusted", days=D8)
+    result = build_series(prices, EVENT15, TICKS)
+    report = result.report
+    assert report.excluded_tickers == ()
+    assert report.outlier_rows_omitted == 1
+    assert [(e.kind, e.date) for e in report.exclusions] == [("scale_outlier_row", D8[3])]
+    out = result.execution
+    assert out["date"].tolist() == [*D8[:3], *D8[4:]]
+    # F = 1.15 before D3: 50,000 x 1.15 = 57,500 on D0..D2; D4..D7 stored x 1 = 50,000
+    assert out["close"].tolist() == [57_500.0] * 3 + [50_000.0] * 4
+    # D4 reference = last non-omitted close 50,000 x F[D4] (1) = 50,000, never the outlier 57,500;
+    # ceiling 53,500 / floor 46,500
+    assert out["ref_price"].tolist()[3:] == [50_000.0] * 4
+    assert out["ceiling"].tolist()[3] == 53_500.0
+    assert out["floor"].tolist()[3] == 46_500.0
+    assert len(result.adjusted) == 8  # signals untouched
+
+
+def test_two_session_outlier_is_omitted_three_falls_back_to_discontinuity() -> None:
+    # D3 and D4 at 57,500, D5 back at 50,000. m = 1: D4 57,500 is 15 % off (> 8 %); m = 2: D5
+    # 50,000 is 0 % off -> both rows omitted.
+    two = bars("AAA", [50_000.0] * 3 + [57_500.0] * 2 + [50_000.0] * 3, "split_adjusted", days=D8)
+    result = build_series(two, EVENT15, TICKS)
+    assert result.report.excluded_tickers == ()
+    assert result.report.outlier_rows_omitted == 2
+    assert [e.date for e in result.report.exclusions] == [D8[3], D8[4]]
+    assert result.execution["date"].tolist() == [*D8[:3], *D8[5:]]
+    assert result.execution["ref_price"].tolist()[3] == 50_000.0  # chained from D2, not D4
+    # three sessions D3..D5 at 57,500, D6 back at 50,000: m = 1, 2 fail (D4, D5 are 15 % off);
+    # D6 is the third following session -> not an outlier; it also returns to the old level,
+    # so it is not a persistent step either -> whole ticker excluded
+    three = bars("AAA", [50_000.0] * 3 + [57_500.0] * 3 + [50_000.0] * 2, "split_adjusted", days=D8)
+    out = build_series(three, EVENT15, TICKS)
+    assert out.report.excluded_tickers == ("AAA",)
+    assert out.report.outlier_rows_omitted == 0
+    assert [e.kind for e in out.report.exclusions] == ["scale_discontinuity"]
+    assert out.execution.empty
+
+
+def test_persistent_step_excludes_rows_through_the_ex_date_and_marks_the_event() -> None:
+    # stored 50,000 on D0..D2 then 57,500 (= 50,000 x 1.15) on D3..D7; event 15 % on D3.
+    # observed / (close[p] x G) = 57,500 / (50,000 x 1.15) = 1 -> a step by the ratio; D4, D5, D6
+    # stay 15 % away from 50,000 and D4 continues from D3 (0 %) -> suspect event.
+    prices = bars("AAA", [50_000.0] * 3 + [57_500.0] * 5, "split_adjusted", days=D8)
+    result = build_series(prices, EVENT15, TICKS)
+    report = result.report
+    assert report.excluded_tickers == ()
+    assert report.suspect_events == 1
+    assert report.step_rows_excluded == 4  # D0..D3
+    (item,) = report.exclusions
+    assert (item.kind, item.date, item.rows) == ("scale_step_before", D8[3], 4)
+    assert "4 execution rows" in item.detail
+    out = result.execution
+    assert out["date"].tolist() == D8[4:]
+    # later rows: F = 1 (the suspect event only concerns rows through D3, which are gone)
+    assert out["close"].tolist() == [57_500.0] * 4
+    assert out["ref_price"].tolist() == [57_500.0] * 4  # D4 ref = close(D3) = 57,500
+
+
+def test_suspect_event_is_not_returned_by_the_loader_and_the_engine_runs(
+    tmp_path: Path, cfg: AppConfig
+) -> None:
+    prices = bars("AAA", [50_000.0] * 3 + [57_500.0] * 5, "split_adjusted", days=D8)
+    acts = pd.concat([EVENT15, events(("AAA", D8[6], "cash", 500.0))])
+    with _store(tmp_path) as store:
+        _fill(store, prices, acts)
+        report = rebuild(store, "yahoo", TICKS)
+        loaded = load_execution_frame(store, ["AAA"], D8[0], D8[7])
+    assert report.suspect_events == 1
+    assert loaded.prices["date"].tolist() == D8[4:]
+    # the 15 % event is gone, the cash dividend stays (F = 1 after the suspect event: 500 x 1)
+    assert loaded.actions[["type", "ratio_or_amount"]].values.tolist() == [["cash", 500.0]]
+    assert loaded.exclusions[["kind", "date"]].values.tolist() == [["scale_step_before", D8[3]]]
+    params = make_params(cfg, "ideal")
+    targets = {D8[4]: pd.Series({"AAA": 0.5}), D8[6]: pd.Series(dtype=float)}
+    result = run_simulation(
+        loaded.prices, loaded.actions, targets, TradingCalendar.from_config(cfg), params
+    )
+    assert len(result.trades) > 0
+
+
+def test_genuine_correctly_scaled_event_passes_untouched() -> None:
+    # Yahoo-style history continuous at 50,000 across the 15 % event: deviation 0 %, nothing
+    # omitted; F = 1.15 before D3 -> 50,000 x 1.15 = 57,500 (the raw price before the event)
+    prices = bars("AAA", [50_000.0] * 8, "split_adjusted", days=D8)
+    result = build_series(prices, EVENT15, TICKS)
+    assert result.report.exclusions == ()
+    assert len(result.execution) == 8
+    assert result.execution["close"].tolist() == [57_500.0] * 3 + [50_000.0] * 5
+
+
+def test_pre_hose_history_is_excluded_after_the_last_out_of_band_session() -> None:
+    days = make_days(180)
+    # rows 0..99 alternate 50,000 / 54,750: moves +9.5 % and -8.68 % (both > 8 %) -> rows 1..99
+    # are out of band; rows 100..179 alternate 54,750 / 56,000 (+2.3 % / -2.2 %, row 100 is 0 %
+    # from row 99) -> 80 clean sessions >= 60 -> the first run starts at row 100, so the
+    # last out-of-band session is row 99: rows 0..99 (100 sessions) are excluded
+    closes = [50_000.0 if i % 2 == 0 else 54_750.0 for i in range(100)]
+    closes += [54_750.0 if i % 2 == 0 else 56_000.0 for i in range(80)]
+    result = build_series(bars("AAA", closes, "split_adjusted", days=days), events(), TICKS)
+    report = result.report
+    assert report.non_hose_rows_excluded == 100
+    (item,) = report.exclusions
+    assert (item.kind, item.date, item.rows) == ("non_hose_history", days[99], 100)
+    assert result.execution["date"].tolist() == days[100:]
+    assert report.excluded_tickers == ()
+
+
+def test_a_single_in_band_day_does_not_trigger_the_pre_hose_rule() -> None:
+    days = make_days(180)
+    closes = [50_000.0] * 180
+    closes[90] = 53_450.0  # +6.9 % (<= 8 %) then -6.5 %: both inside the band
+    result = build_series(bars("AAA", closes, "split_adjusted", days=days), events(), TICKS)
+    assert result.report.exclusions == ()
+    assert len(result.execution) == 180
+
+
+def test_pre_hose_rule_needs_a_clean_run_and_ignores_raw_sources() -> None:
+    days = make_days(100)
+    wild = [50_000.0 if i % 2 == 0 else 54_750.0 for i in range(100)]
+    # never 60 clean sessions in a row: nothing is excluded
+    never = build_series(bars("AAA", wild, "split_adjusted", days=days), events(), TICKS)
+    assert never.report.exclusions == ()
+    # raw rows are not touched even with a clean run after wild ones
+    mixed = wild[:30] + [50_000.0] * 70
+    assert (
+        build_series(bars("AAA", mixed, "raw", days=days), events(), TICKS).report.exclusions == ()
+    )
+
+
+def test_rows_are_counted_once_across_kinds() -> None:
+    days = make_days(180)
+    closes = [50_000.0 if i % 2 == 0 else 54_750.0 for i in range(100)] + [54_750.0] * 80
+    bad = {("AAA", days[5]), ("AAA", days[150])}
+    result = build_series(
+        bars("AAA", closes, "split_adjusted", days=days), events(), TICKS, bad_rows=bad
+    )
+    report = result.report
+    # row 5 is both bad and in the pre-HOSE window: counted as dq_error only; 99 other window rows
+    assert report.bad_rows_omitted == 2
+    assert report.non_hose_rows_excluded == 99
+    assert len(result.execution) == 180 - 2 - 99
+    assert report.exec_rows == len(result.execution)
+
+
+def test_split_adjusted_dividend_is_booked_in_the_split_adjusted_basis() -> None:
+    # cash 500 on D2, stock 10 % on D3: F(D2) = 1.1 -> 500 x 1.1 = 550
+    acts = events(("AAA", D[2], "cash", 500.0), ("AAA", D[3], "stock", 0.10))
+    prices = bars("AAA", [50_000.0] * 5, "split_adjusted")
+    adjusted = build_series(prices, acts, TICKS).adjusted
+    # previous close D1 in raw basis = 50,000 x F(D1) = 55,000 -> 550 / 55,000 = 0.01 -> 0.99
+    # (as stored, 500 / 55,000 = 0.00909 -> 0.990909)
+    assert adjusted["adj_factor"].tolist() == pytest.approx([0.99, 0.99, 1.0, 1.0, 1.0])
+    scaled = execution_actions(acts, {"AAA"})
+    assert scaled["ratio_or_amount"].tolist() == pytest.approx([550.0, 0.10])
+    # raw sources are unchanged: the amount stays 500 for a ticker not reconstructed
+    assert execution_actions(acts, set()).equals(acts)
+    raw = bars("AAA", [55_000.0] * 5, "raw")
+    one = build_series(raw, acts, TICKS).adjusted
+    # raw: 500 / 55,000 = 0.0090909 -> 0.9909091 for rows before D2, then / 1.1 before D3
+    assert one["adj_factor"].tolist() == pytest.approx(
+        [0.9909091 / 1.1, 0.9909091 / 1.1, 1 / 1.1, 1.0, 1.0]
+    )
+
+
+def test_rebuild_report_counts_each_kind_once_and_is_idempotent(tmp_path: Path) -> None:
+    out = bars("AAA", [50_000.0] * 3 + [57_500.0] + [50_000.0] * 4, "split_adjusted", days=D8)
+    step = bars("BBB", [50_000.0] * 3 + [57_500.0] * 5, "split_adjusted", days=D8)
+    acts = pd.concat([EVENT15, EVENT15.assign(ticker="BBB")])
+    with _store(tmp_path) as store:
+        _fill(store, pd.concat([out, step]), acts)
+        daily = _table_rows(store, "prices_daily")
+        stored_acts = _table_rows(store, "corporate_actions")
+        first = rebuild(store, "yahoo", TICKS)
+        derived = {t: _table_rows(store, t) for t in ("prices_adjusted", "prices_exec")}
+        exclusions = _table_rows(store, "exec_exclusions")
+        second = rebuild(store, "yahoo", TICKS)
+        assert first == second
+        assert derived == {t: _table_rows(store, t) for t in derived}
+        assert exclusions == _table_rows(store, "exec_exclusions")
+        assert daily == _table_rows(store, "prices_daily")
+        assert stored_acts == _table_rows(store, "corporate_actions")
+    assert (first.outlier_rows_omitted, first.step_rows_excluded, first.suspect_events) == (1, 4, 1)
+    assert first.exec_rows == 7 + 4  # AAA 8 - 1, BBB 8 - 4
+    assert [e.kind for e in first.exclusions] == ["scale_outlier_row", "scale_step_before"]

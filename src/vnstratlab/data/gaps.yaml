@@ -71,7 +71,9 @@ gaps:
     affects: [prices_daily, universe, P1-T10, P1-T20, lab statistics]
     workaround: >-
       A ticker is tradable only from its first stored session; lab reports state the effective
-      start per ticker and the number of tickers per period.
+      start per ticker and the number of tickers per period. Rows before the last session outside
+      the HOSE band that precedes 60 in-band sessions are another exchange's history under the
+      same symbol and are excluded from execution (non_hose_history, P1-T06b).
     close_by: CafeF files (cover HNX/UPCoM history) or another source — new card.
     since: 2026-11-18
 
@@ -104,7 +106,11 @@ gaps:
       checks that the stored history is continuous across each stock ex-date (scale_discontinuity)
       and excludes failing tickers from execution; a stored ratio that is wrong but was applied
       consistently by Yahoo, a dropped reverse split, or a ratio below the 8 % tolerance is NOT
-      detected.
+      detected. P1-T06b first classifies a failing event: up to 2 out-of-scale sessions that
+      return to scale are omitted (scale_outlier_row, ticker kept); a persistent step by the
+      stored ratio marks the event suspect (scale_step_before: rows through the ex-date are
+      excluded and the event is never applied to holdings). Cash dividends are booked as
+      amount x F(ex_date) (Yahoo amounts are split-adjusted).
     close_by: Corporate-action source (company/exchange disclosures) — new card.
     since: 2026-11-18
 

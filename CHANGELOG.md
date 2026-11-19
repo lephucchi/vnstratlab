@@ -36,6 +36,13 @@ All notable changes are documented here. The format follows
   period of the book's horizon, resolved by the caller); owner to confirm.
 
 ### Fixed
+- **Data (P1-T06b):** `data rebuild` no longer loses a ticker to a few out-of-scale Yahoo
+  sessions: up to 2 sessions that return to scale are omitted (`scale_outlier_row`), a persistent
+  step at a stored event excludes the rows through the ex-date (`scale_step_before`) and the event
+  is no longer returned as an action, and rows before the first 60 in-band sessions of a
+  `split_adjusted` ticker are excluded (`non_hose_history`, GAP-04). Yahoo cash dividends are
+  booked as `amount x F(ex_date)` (`DIVIDENDS_SPLIT_ADJUSTED = True`). The rebuild report prints a
+  count per kind; the `dq_error` detail no longer says "latest run".
 - **Engine (P1-T11b):** late corporate actions use the holdings at pre-open of the ex-date;
   stock events rescale only pending orders created before the ex-date (also with no shares held);
   turnover divides by the previous close's equity (first session: initial capital).

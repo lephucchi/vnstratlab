@@ -31,9 +31,34 @@ tolerance``: a plain discontinuity test on the stored series. The tolerance is t
 1 % for tick rounding (:func:`precondition_tolerance`). It catches a store that is not in one
 scale at an event (an unrescaled history, GAP-08) or a jump beyond the daily limit. It does NOT
 detect a stored ratio that is wrong but was applied consistently by the source, a reverse split,
-or an event whose true ratio is below the tolerance (GAP-06). A ticker that fails is excluded
-from execution (kind ``scale_discontinuity``); an event with only bad sessions after it is
-excluded as ``precondition_unverifiable``. Every exclusion is counted.
+or an event whose true ratio is below the tolerance (GAP-06).
+
+A failing event is classified before anything is excluded (P1-T06b; Yahoo evidence in
+docs/reports/data-source-yahoo.md):
+
+* outlier row (``scale_outlier_row``): the first ``k <= MAX_OUTLIER_SESSIONS`` good sessions from
+  the ex-date deviate, but the next good session is back within tolerance of the previous good
+  close in the same basis (``close[p] * F[j]``). Those ``k`` rows are omitted, the ticker stays.
+  The first session after them takes the last non-omitted close as its reference (the last traded
+  price, as after a suspension); no price is invented or interpolated.
+* persistent step (``scale_step_before``): the open steps by the stored event ratio (within
+  tolerance) and none of the next ``MAX_OUTLIER_SESSIONS + 1`` good sessions returns to the old
+  level, while the first of them continues from the new level. The event is *suspect*: it does not
+  match a real price adjustment at that date, so it is never applied to holdings
+  (``load_execution_frame`` drops it). Every row of the ticker through the first good session on or
+  after the ex-date is excluded (one exclusion row with the count, dated the ex-date); later rows
+  stay.
+* anything else keeps the whole-ticker exclusion (``scale_discontinuity``); an event with only bad
+  sessions after it is excluded as ``precondition_unverifiable``.
+
+Pre-HOSE history (``non_hose_history``, GAP-04): on a ``split_adjusted`` ticker a session whose
+open or close is more than the tolerance away from the previous stored close is outside the HOSE
+band. The execution series starts after the last such session that lies before the first run of
+``MIN_HOSE_RUN = 60`` consecutive in-band sessions; earlier rows are excluded (one exclusion row
+with the count, dated the last excluded session). Sessions within ``MAX_OUTLIER_SESSIONS`` of a
+stock ex-date are not tested (that is the scale check's job); a history with no such run is left
+as is. Every row is counted once, under the first of: ``dq_error``, ``non_hose_history``,
+``scale_outlier_row``, ``scale_step_before``.
 """
 
 from __future__ import annotations
@@ -55,10 +80,14 @@ if TYPE_CHECKING:
 ADJ_METHOD = "ratio-v1"
 EXEC_BASIS = "exec_reconstructed"
 SPLIT_ADJUSTED = "split_adjusted"
-# [VERIFY] Whether Yahoo's dividend amounts are split-adjusted is NOT settled by the repository
-# fixtures (docs/reports/data-source-yahoo.md). Until evidence says yes, amounts are used as
-# stored; flipping this (or passing the argument) multiplies them by F(ex_date).
-DIVIDENDS_SPLIT_ADJUSTED = False
+# Yahoo's cash dividend amounts are split-adjusted (evidence: docs/reports/data-source-yahoo.md
+# section 5): the raw-basis payment is amount * F(ex_date). Applies to ``split_adjusted`` rows
+# only; ``raw`` / ``synthetic`` amounts are used as stored.
+DIVIDENDS_SPLIT_ADJUSTED = True
+# Most consecutive good sessions from a stock ex-date that count as one out-of-scale episode.
+MAX_OUTLIER_SESSIONS = 2
+# Consecutive in-band sessions that end the pre-HOSE history window.
+MIN_HOSE_RUN = 60
 _TOLERANCE_SLACK = 0.01
 _STOCK_TYPES = ("stock", "bonus")
 
@@ -118,14 +147,17 @@ class Exclusion:
     precondition failure the ex-date of the failing event).
 
     Kinds: ``scale_discontinuity`` / ``precondition_unverifiable`` (the whole ticker),
-    ``dq_error`` (one session with an error-level
-    data-quality finding), ``no_reference`` (one session without a usable reference price).
+    ``dq_error`` (one session with an error-level data-quality finding), ``no_reference`` (one
+    session without a usable reference price), ``scale_outlier_row`` (one out-of-scale session),
+    ``scale_step_before`` (``rows`` sessions through a suspect event's first session; ``date`` is
+    the ex-date) and ``non_hose_history`` (``rows`` sessions up to ``date``).
     """
 
     ticker: str
     kind: str
     date: date | None
     detail: str
+    rows: int = 1
 
 
 @dataclass(frozen=True)
@@ -140,6 +172,10 @@ class RebuildReport:
     excluded_ticker_rows: int
     bad_rows_omitted: int
     no_reference_omitted: int
+    outlier_rows_omitted: int = 0
+    step_rows_excluded: int = 0
+    suspect_events: int = 0
+    non_hose_rows_excluded: int = 0
     exclusions: tuple[Exclusion, ...] = ()
     warnings: tuple[str, ...] = ()
 
@@ -230,22 +266,23 @@ def build_series(
     for ticker, group in frame.groupby("ticker", sort=True):
         name = str(ticker)
         events = _events(actions, name)
-        adjusted.append(_adjust(group, name, events, bad, dividends_split_adjusted, warnings))
-        built, found, dropped_all = _execution(group, name, events, bad, ticks, tolerance)
+        built, found, run = _execution(group, name, events, bad, ticks, tolerance)
         exclusions += found
-        if dropped_all:
+        if run.ticker_excluded:
             excluded.append(name)
-            # rows dropped only because of the ticker; bad rows are counted as dq_error
-            only_ticker = (group["price_basis"] == SPLIT_ADJUSTED).to_numpy() & ~np.array(
-                [(name, d) in bad for d in group["date"]], dtype=bool
-            )
-            excluded_rows += int(only_ticker.sum())
+            excluded_rows += run.ticker_rows  # rows not already counted under another kind
         execution.append(built)
+        # a suspect event (persistent step) is no share-count event: signals ignore it as well
+        applied = _Events([e for e in events.stock if e[0] not in run.suspect], events.cash)
+        adjusted.append(_adjust(group, name, applied, bad, dividends_split_adjusted, warnings))
 
     adj = _concat(adjusted, ADJUSTED_COLUMNS)
     exe = _concat(execution, EXEC_COLUMNS)
     exclusions.sort(key=lambda e: (e.ticker, e.date or date.min, e.kind))
-    kinds = [e.kind for e in exclusions]
+
+    def rows_of(kind: str) -> int:
+        return sum(e.rows for e in exclusions if e.kind == kind)
+
     report = RebuildReport(
         source=source,
         price_rows=len(frame),
@@ -253,8 +290,12 @@ def build_series(
         exec_rows=len(exe),
         excluded_tickers=tuple(excluded),
         excluded_ticker_rows=excluded_rows,
-        bad_rows_omitted=kinds.count("dq_error"),
-        no_reference_omitted=kinds.count("no_reference"),
+        bad_rows_omitted=rows_of("dq_error"),
+        no_reference_omitted=rows_of("no_reference"),
+        outlier_rows_omitted=rows_of("scale_outlier_row"),
+        step_rows_excluded=rows_of("scale_step_before"),
+        suspect_events=sum(1 for e in exclusions if e.kind == "scale_step_before"),
+        non_hose_rows_excluded=rows_of("non_hose_history"),
         exclusions=tuple(exclusions),
         warnings=tuple(warnings),
     )
@@ -304,7 +345,13 @@ def _adjust(
             continue  # no stored session before the ex-date: nothing to adjust
         # previous close in its raw share basis; split_adjusted closes are divided by F
         prev_raw = close[before] * (stock_f[before] if is_split[before] else 1.0)
-        paid = amount * (_factor_at(ex_date, events.stock) if dividends_split_adjusted else 1.0)
+        # only split_adjusted sources carry split-adjusted amounts; raw / synthetic stay as stored
+        scale = (
+            _factor_at(ex_date, events.stock)
+            if dividends_split_adjusted and is_split[before]
+            else 1.0
+        )
+        paid = amount * scale
         ratio_paid = paid / prev_raw
         if not np.isfinite(ratio_paid) or ratio_paid >= 1.0:
             warnings.append(f"{ticker} {ex_date}: cash dividend {amount} ignored (>= close)")
@@ -331,7 +378,67 @@ def _adjust(
 # ------------------------------------------------------------------ execution series
 
 
-def _precondition(
+@dataclass(frozen=True)
+class _Outlier:
+    row: int
+    previous: int
+    back: int  # first good session back within tolerance
+
+
+@dataclass(frozen=True)
+class _Step:
+    ex_dates: list[date]  # every stock ex-date whose first good session is ``first``
+    first: int
+    previous: int
+    detail: str
+
+
+@dataclass(frozen=True)
+class _ScaleCheck:
+    failure: Exclusion | None = None
+    outliers: list[_Outlier] = field(default_factory=list)
+    steps: list[_Step] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class _Run:
+    """Ticker-level outcome of :func:`_execution`."""
+
+    ticker_excluded: bool = False
+    ticker_rows: int = 0  # rows lost only to the ticker exclusion (not counted under another kind)
+    suspect: frozenset[date] = frozenset()  # ex-dates of suspect events
+
+
+def _non_hose_cut(
+    ordinals: npt.NDArray[np.int64],
+    open_: FloatArray,
+    close: FloatArray,
+    events: _Events,
+    tolerance: float,
+) -> int | None:
+    """Index of the last session of the pre-HOSE history, or ``None`` (see module docstring)."""
+    n = len(ordinals)
+    if n < MIN_HOSE_RUN:
+        return None
+    neutral = np.zeros(n, dtype=bool)
+    for ex_date, _ in events.stock:
+        start = int(np.searchsorted(ordinals, ex_date.toordinal(), side="left"))
+        neutral[start : start + MAX_OUTLIER_SESSIONS + 1] = True
+    outside = np.zeros(n, dtype=bool)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        move_open = np.abs(open_[1:] / close[:-1] - 1.0)
+        move_close = np.abs(close[1:] / close[:-1] - 1.0)
+    outside[1:] = ((move_open > tolerance) | (move_close > tolerance)) & ~neutral[1:]
+    run = 0
+    for i in range(n):
+        run = 0 if outside[i] else run + 1
+        if run >= MIN_HOSE_RUN:
+            first = i - MIN_HOSE_RUN + 1
+            return first - 1 if first > 0 else None
+    return None
+
+
+def _scale_check(
     ticker: str,
     dates: list[date],
     open_: FloatArray,
@@ -340,43 +447,97 @@ def _precondition(
     events: _Events,
     skip: npt.NDArray[np.bool_],
     tolerance: float,
-) -> Exclusion | None:
-    """First stock event whose ex-date shows a scale discontinuity (see module docstring)."""
+    after_date: date | None,
+) -> _ScaleCheck:
+    """Classify every stock event whose ex-date shows a scale discontinuity.
+
+    ``skip`` marks rows that cannot serve as a comparison (bad rows, pre-HOSE history); events on
+    or before ``after_date`` are not checked. Returns the first failure that cannot be repaired
+    (the whole ticker goes) or else the outlier rows and suspect steps found.
+    """
     ordinals = np.array([d.toordinal() for d in dates], dtype=np.int64)
-    good = np.flatnonzero(~skip)
-    checked: set[int] = set()
+    skip = skip.copy()
+    result = _ScaleCheck()
+    seen: dict[int, _Step | None] = {}
     for ex_date, _ in events.stock:
+        if after_date is not None and ex_date <= after_date:
+            continue
         start = int(np.searchsorted(ordinals, ex_date.toordinal(), side="left"))
         if start >= len(dates):
             continue  # no stored session on or after the ex-date: nothing to execute
-        after = good[good >= start]
+        after = np.flatnonzero(~skip[start:]) + start
         if len(after) == 0:
-            return Exclusion(
-                ticker,
-                "precondition_unverifiable",
-                ex_date,
-                "every stored session on or after the ex-date is a bad source row",
+            return _ScaleCheck(
+                Exclusion(
+                    ticker,
+                    "precondition_unverifiable",
+                    ex_date,
+                    "every stored session on or after the ex-date is a bad source row",
+                )
             )
         j = int(after[0])
-        before = good[good < j]
-        if len(before) == 0 or j in checked:
-            continue  # no earlier session to compare with, or already compared
-        checked.add(j)
+        before = np.flatnonzero(~skip[:j])
+        if len(before) == 0:
+            continue  # no earlier session to compare with
+        if j in seen:
+            step = seen[j]
+            if step is not None:
+                step.ex_dates.append(ex_date)  # the same step covers this event too
+            continue
+        seen[j] = None
         p = int(before[-1])
-        expected = close[p] * stock_f[j]
-        observed = open_[j] * stock_f[j]
-        deviation = abs(observed / expected - 1.0)
-        if not deviation <= tolerance:
-            ratios = [r for d, r in events.stock if dates[p] < d <= dates[j]]
-            return Exclusion(
+        level = close[p] * stock_f[j]
+
+        def off(i: int, level: float = level) -> float:
+            return abs(float(open_[i] * stock_f[i]) / level - 1.0)
+
+        deviation = off(j)
+        if deviation <= tolerance:
+            continue
+        back = next(
+            (
+                m
+                for m in range(1, MAX_OUTLIER_SESSIONS + 1)
+                if m < len(after) and off(int(after[m])) <= tolerance
+            ),
+            None,
+        )
+        if back is not None:  # the first `back` good sessions are out-of-scale rows
+            for i in after[:back]:
+                result.outliers.append(_Outlier(int(i), p, int(after[back])))
+                skip[i] = True
+            continue
+        ratios = [r for d, r in events.stock if dates[p] < d <= dates[j]]
+        total = float(np.prod([1.0 + r for r in ratios]))
+        following = [int(i) for i in after[1 : MAX_OUTLIER_SESSIONS + 2]]
+        stepped = abs(open_[j] / (close[p] * total) - 1.0) <= tolerance
+        stays = (
+            len(following) > 0
+            and all(not off(i) <= tolerance for i in following)
+            and abs(open_[following[0]] / close[j] - 1.0) <= tolerance
+        )
+        ratio_text = ", ".join(f"{r:.4f}" for r in ratios)
+        if stepped and stays:
+            detail = (
+                f"open {open_[j]:.2f} on {dates[j]} vs previous close {close[p]:.2f} on "
+                f"{dates[p]}: the level steps by the stored ratio(s) {ratio_text} and stays; the "
+                "event does not match a price adjustment and is not applied"
+            )
+            step = _Step([ex_date], j, p, detail)
+            seen[j] = step
+            result.steps.append(step)
+            continue
+        return _ScaleCheck(
+            Exclusion(
                 ticker,
                 "scale_discontinuity",
                 ex_date,
                 f"open {open_[j]:.2f} on {dates[j]} vs previous close {close[p]:.2f} on "
                 f"{dates[p]} (deviation {deviation:.1%} > {tolerance:.1%}; stored event "
-                f"ratio(s) {', '.join(f'{r:.4f}' for r in ratios)})",
+                f"ratio(s) {ratio_text})",
             )
-    return None
+        )
+    return result
 
 
 def _execution(
@@ -386,18 +547,20 @@ def _execution(
     bad: set[tuple[str, date]],
     ticks: TickTable,
     tolerance: float,
-) -> tuple[pd.DataFrame, list[Exclusion], bool]:
-    """``(execution rows, exclusions, ticker_excluded)`` for one ticker."""
+) -> tuple[pd.DataFrame, list[Exclusion], _Run]:
+    """``(execution rows, exclusions, ticker-level outcome)`` for one ticker."""
     dates = list(group["date"])
     ordinals = np.array([d.toordinal() for d in dates], dtype=np.int64)
     is_split = (group["price_basis"] == SPLIT_ADJUSTED).to_numpy()
     is_bad = np.array([(ticker, d) in bad for d in dates], dtype=bool)
     found = [
-        Exclusion(ticker, "dq_error", d, "error-level data-quality finding in the latest run")
+        Exclusion(
+            ticker, "dq_error", d, "error-level data-quality finding (row checks, full history)"
+        )
         for d, b in zip(dates, is_bad, strict=True)
         if b
     ]
-    keep = ~is_bad
+    claimed = is_bad.copy()  # every row is counted under exactly one kind
     open_ = group["open"].to_numpy(dtype=np.float64)
     high = group["high"].to_numpy(dtype=np.float64)
     low = group["low"].to_numpy(dtype=np.float64)
@@ -405,17 +568,81 @@ def _execution(
     stored_ref = group["ref_price"].to_numpy(dtype=np.float64)
     stock_f = _factor(ordinals, events.stock)
 
-    ticker_excluded = False
+    run = _Run()
+    omitted_outlier = np.zeros(len(group), dtype=bool)
     if is_split.any():
-        failure = _precondition(ticker, dates, open_, close, stock_f, events, is_bad, tolerance)
-        if failure is not None:
-            found.append(failure)
-            keep &= ~is_split
-            ticker_excluded = True
+        skip = is_bad.copy()
+        cut = _non_hose_cut(ordinals, open_, close, events, tolerance)
+        cut_date: date | None = None
+        if cut is not None:
+            cut_date = dates[cut]
+            window = np.zeros(len(group), dtype=bool)
+            window[: cut + 1] = True
+            window &= is_split & ~claimed
+            skip[: cut + 1] = True
+            if window.any():
+                found.append(
+                    Exclusion(
+                        ticker,
+                        "non_hose_history",
+                        cut_date,
+                        f"{int(window.sum())} sessions from {dates[int(np.argmax(window))]} to "
+                        f"{cut_date} move outside the HOSE band (another exchange's history, "
+                        "GAP-04)",
+                        int(window.sum()),
+                    )
+                )
+                claimed |= window
+        check = _scale_check(
+            ticker, dates, open_, close, stock_f, events, skip, tolerance, cut_date
+        )
+        if check.failure is not None:
+            found.append(check.failure)
+            run = _Run(True, int((is_split & ~claimed).sum()))
+        else:
+            for item in check.outliers:
+                found.append(
+                    Exclusion(
+                        ticker,
+                        "scale_outlier_row",
+                        dates[item.row],
+                        f"open {open_[item.row]:.2f} vs previous good close "
+                        f"{close[item.previous]:.2f} on {dates[item.previous]}; back in scale on "
+                        f"{dates[item.back]}",
+                    )
+                )
+                omitted_outlier[item.row] = True
+                claimed[item.row] = True
+            suspect: set[date] = set()
+            for step in check.steps:
+                window = np.zeros(len(group), dtype=bool)
+                window[: step.first + 1] = True
+                window &= is_split & ~claimed
+                count = int(window.sum())
+                claimed |= window
+                for k, ex_date in enumerate(step.ex_dates):
+                    suspect.add(ex_date)
+                    found.append(
+                        Exclusion(
+                            ticker,
+                            "scale_step_before",
+                            ex_date,
+                            f"{count if k == 0 else 0} execution rows through {dates[step.first]} "
+                            f"excluded; {step.detail}",
+                            count if k == 0 else 0,
+                        )
+                    )
+            run = _Run(False, 0, frozenset(suspect))
 
+    keep = ~claimed
+    if run.ticker_excluded:
+        keep &= ~is_split
     base = np.empty(len(group), dtype=np.float64)
     base[0] = stored_ref[0]
     base[1:] = close[:-1]
+    for i in range(1, len(group)):
+        if omitted_outlier[i - 1]:
+            base[i] = base[i - 1]  # last traded price before the omitted out-of-scale row(s)
     ref = ticks.round_down(base * stock_f)
     no_ref = is_split & ~np.isfinite(ref) & keep
     found += [
@@ -453,7 +680,7 @@ def _execution(
         }
     )
     out["volume"] = out["volume"].astype(np.int64)
-    return out[keep].reset_index(drop=True), found, ticker_excluded
+    return out[keep].reset_index(drop=True), found, run
 
 
 def execution_actions(

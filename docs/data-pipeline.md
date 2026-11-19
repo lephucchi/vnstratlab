@@ -68,7 +68,7 @@ Plan §5.5 tables, with columns added by ADR-007:
 | `dq_results` | (run_id, check, ticker, date) | severity (`error` / `warning`), detail (P1-T38) |
 | `prices_adjusted` | (ticker, date, source) | `adj_open` … `adj_close`, `adj_factor`, `adj_version`, `dq_error` (P1-T06) |
 | `prices_exec` | (ticker, date, source) | execution series: `price_basis` `exec_reconstructed` (from `split_adjusted` rows) or the stored basis, `stock_factor` (P1-T06) |
-| `exec_exclusions` | (source, ticker, kind, date) | what was left out of `prices_exec`: `scale_discontinuity`, `precondition_unverifiable`, `dq_error`, `no_reference` (P1-T06) |
+| `exec_exclusions` | (source, ticker, kind, date) | what was left out of `prices_exec`: `scale_discontinuity`, `precondition_unverifiable`, `dq_error`, `no_reference` (P1-T06), `scale_outlier_row`, `scale_step_before`, `non_hose_history` (P1-T06b) |
 
 Rules: raw values are never overwritten silently; an upsert that changes a stored value
 increments `revision` and is counted in `ingest_runs`. Synthetic rows are labelled
@@ -126,6 +126,19 @@ computation is `vnstratlab.data.adjust.build_series`, the engine input is
   `precondition_unverifiable` when only bad sessions follow the event; every `split_adjusted` row of
   the ticker that is not already a `dq_error`). The command prints the counts; `exec_exclusions`
   lists them and `load_execution_frame` returns them.
+- **Event-scale repair (P1-T06b)**: a failing stock ex-date is classified before a ticker is lost.
+  *Outlier row*: at most `MAX_OUTLIER_SESSIONS = 2` sessions from the ex-date are out of scale and
+  the next good session is back within tolerance of the previous good close: those rows are omitted
+  (`scale_outlier_row`), the next session's reference is the last non-omitted close (never an
+  invented price). *Persistent step*: the open steps by the stored ratio and stays: the event is
+  *suspect*; every row of the ticker through the first good session on or after the ex-date is
+  excluded (`scale_step_before`, one row per event with the count, dated the ex-date), later rows
+  stay, and `load_execution_frame` does not return the event as an action. Otherwise the whole
+  ticker is excluded as before. *Pre-HOSE history* (`non_hose_history`, GAP-04): on a
+  `split_adjusted` ticker the rows before the last session outside the HOSE band that precedes the
+  first run of `MIN_HOSE_RUN = 60` in-band sessions are excluded (one row with the count). Each row
+  is counted under the first of `dq_error`, `non_hose_history`, `scale_outlier_row`,
+  `scale_step_before`; the command prints one count per kind.
 - **Bad rows are recomputed, not read from a run**: rebuild runs the error-level per-row checks
   (`quality.check_row_rules`) over the whole stored history of the source. A later clean run,
   another source's run or a crashed run never re-admits an old bad row; a corrected row (new
@@ -145,8 +158,9 @@ computation is `vnstratlab.data.adjust.build_series`, the engine input is
   earlier level whenever a new event arrives. Level and liquidity features (price level, value
   traded, lot cost) must use `prices_exec` (point-in-time, raw-like). Features are recomputed when
   `adj_version` changes and never mixed across versions.
-- **Dividend amounts**: used as stored. Whether Yahoo's amounts are split-adjusted is undecided
-  (no evidence in the repository fixtures); `adjust.DIVIDENDS_SPLIT_ADJUSTED` is the switch.
+- **Dividend amounts**: Yahoo's cash amounts are split-adjusted (verified 2026-11-19, see
+  [data-source-yahoo.md §5](reports/data-source-yahoo.md)); P1-T06b multiplies them by
+  `F(ex_date)` (`adjust.DIVIDENDS_SPLIT_ADJUSTED = True`).
 
 Refresh and resume (Yahoo): `vnstratlab ingest` without `--from` starts at the earliest per-ticker
 start over the universe. A ticker's start is its `data.yahoo.overlap_sessions`-th most recent
