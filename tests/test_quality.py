@@ -887,3 +887,88 @@ def test_cli_exits_1_when_the_checks_crash(tmp_path: Path, monkeypatch: pytest.M
         assert store.connection.execute("SELECT status FROM ingest_runs").fetchall() == [
             ("dq_crashed",)
         ]
+
+
+# ------------------------------------------------------------------ declared suspensions (P1-T11b)
+
+
+def test_trailing_gap_of_declared_suspensions_is_a_warning(tmp_path: Path) -> None:
+    rows = [*bars("AAA"), *bars("BBB", days=DAYS[:3])]  # BBB stops after 4 March
+    declared = {("BBB", DAYS[3]), ("BBB", DAYS[4])}
+    with store_with(tmp_path, rows) as store:
+        found = findings(store, "missing_ticker", declared_suspensions=declared)
+    # both missing sessions (5 and 6 March) are declared -> warning instead of error
+    assert [(f.ticker, f.date, f.severity) for f in found] == [("BBB", DAYS[3], "warning")]
+    assert "declared suspension" in found[0].detail
+    assert "2 trailing session(s)" in found[0].detail
+
+
+def test_trailing_gap_with_an_undeclared_session_stays_an_error(tmp_path: Path) -> None:
+    rows = [*bars("AAA"), *bars("BBB", days=DAYS[:3])]
+    with store_with(tmp_path, rows) as store:
+        only_one = findings(store, "missing_ticker", declared_suspensions={("BBB", DAYS[4])})
+        other_ticker = findings(store, "missing_ticker", declared_suspensions={("AAA", DAYS[3])})
+        undeclared = findings(store, "missing_ticker")
+    assert [f.severity for f in only_one] == ["error"]  # 5 March is not declared
+    assert [f.severity for f in other_ticker] == ["error"]
+    assert [f.severity for f in undeclared] == ["error"]
+    assert "declared suspension" not in undeclared[0].detail
+
+
+def test_ticker_with_no_row_in_range_is_a_warning_when_all_sessions_declared(
+    tmp_path: Path,
+) -> None:
+    declared = {("BBB", d) for d in DAYS}
+    with store_with(tmp_path, missing_rows()) as store:
+        found = findings(store, "missing_ticker", declared_suspensions=declared)
+    assert [(f.ticker, f.severity) for f in found] == [("BBB", "warning")]
+
+
+def synthetic_cfg(home: Path, seed: int, probability: float) -> AppConfig:
+    base = load_config(home)
+    syn = base.data.synthetic.model_copy(
+        update={"seed": seed, "start": date(2026, 1, 5), "suspension_probability": probability}
+    )
+    return base.model_copy(update={"data": base.data.model_copy(update={"synthetic": syn})})
+
+
+def test_synthetic_declares_its_suspensions_and_ingest_downgrades_the_trailing_gap(
+    tmp_path: Path,
+) -> None:
+    from vnstratlab.data.sources.synthetic import SyntheticSource
+
+    cfg = synthetic_cfg(tmp_path / "home", seed=1, probability=0.3)
+    source = SyntheticSource(cfg)
+    end = date(2026, 3, 6)
+    declared = source.declared_suspensions(source.symbols(["VCB"]), date(2026, 1, 5), end)
+    assert declared == {(t, d) for t, d in declared if t == "VCB"}  # filtered to the request
+    paths = get_paths(tmp_path / "home")
+    report = ingest(cfg, paths, source, date(2026, 1, 5), end, clock=lambda: NOW)
+    trailing = [f for f in report.dq if f.check == "missing_ticker" and "trailing" in f.detail]
+    assert trailing, "probability 0.3 must leave trailing gaps"
+    assert {f.severity for f in trailing} == {"warning"}
+    assert all("declared suspension" in f.detail for f in trailing)
+    assert report.status != "failed_dq"
+
+
+def test_synthetic_ingest_has_no_error_finding_for_any_seed_or_range_end(tmp_path: Path) -> None:
+    from random import Random
+
+    from vnstratlab.data.sources.synthetic import SyntheticSource
+
+    rng = Random(20261119)  # noqa: S311
+    trailing_seen = 0
+    for seed in range(24):
+        home = tmp_path / f"h{seed}"
+        cfg = synthetic_cfg(home, seed=seed, probability=0.05)
+        end = date(2026, 2, 2) + timedelta(days=rng.randrange(0, 120))
+        while end.weekday() > 4:  # a weekend end is a valid range end too, but keep sessions
+            end += timedelta(days=1)
+        report = ingest(
+            cfg, get_paths(home), SyntheticSource(cfg), date(2026, 1, 5), end, clock=lambda: NOW
+        )
+        errors = [f for f in report.dq if f.severity == "error"]
+        assert errors == [], f"seed {seed}, end {end}: {errors}"
+        assert report.status != "failed_dq"
+        trailing_seen += sum(1 for f in report.dq if "declared suspension" in f.detail)
+    assert trailing_seen > 0  # the property is not vacuous

@@ -158,6 +158,11 @@ complete years). `stale_data` compares the newest stored date with the last comp
 session of the range, and, once per ticker, an interior hole (sessions after its first stored date
 without a row, before a later row of that ticker in the range). An interior hole is always a
 warning (a suspension is the usual cause); only a trailing gap follows the severity table.
+A source may declare the sessions it suspended on purpose (optional method
+`declared_suspensions(tickers, start, end)`; only the synthetic market has one). A trailing gap
+made only of declared sessions is a warning with detail "declared suspension"; a gap with any
+undeclared session, and every gap of a source without the method (raw HOSE data), keeps the
+table's severity.
 
 `duplicate_rows` is defensive: the primary key (ticker, date, source) already prevents duplicates
 in the store, so it only fires on a damaged file. `ohlc_inconsistent` and `close_outside_limits`

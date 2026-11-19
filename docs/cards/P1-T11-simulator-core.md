@@ -147,4 +147,6 @@ vectorised fast path (ADR-003 §2, deferred), PaperExecutor (P1-T24).
 - `tests/test_guardrails.py` bans the identifiers `place_order`, `submit_order`, `cancel_order`
   anywhere in `src/`: use other names (e.g. `cancel`, `OrderEvent.CANCELLED`). `Executor.submit`
   (plan §5.4) is fine.
+- Follow-ups from the G2 review (late-action entitlement, turnover denominator, pending rescale)
+  are closed by [P1-T11b](P1-T11b-engine-fixes.md).
 - Size: this card is large; if it does not fit one session, ship `rules`/`costs`/`ledger` first.

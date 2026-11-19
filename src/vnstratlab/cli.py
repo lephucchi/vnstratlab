@@ -14,9 +14,8 @@ import sys
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
-import duckdb
 import typer
 
 from vnstratlab import __version__
@@ -31,20 +30,18 @@ from vnstratlab.data.gaps import (
     gaps_summary_line,
     load_gaps,
 )
-from vnstratlab.data.pipeline import (
-    VN_TZ,
-    IngestReport,
-    default_start,
-    record_terms_acceptance,
-    terms_accepted,
-    terms_notice,
-    utc_now,
-)
-from vnstratlab.data.pipeline import ingest as ingest_data
-from vnstratlab.data.protocol import DataSource, SourceError, get_source, source_names
-from vnstratlab.data.store import DQRecord, Kind, MarketStore, RunRecord
-from vnstratlab.paths import AppPaths, get_paths
-from vnstratlab.settings import load_settings
+from vnstratlab.paths import get_paths
+
+# pandas, numpy and duckdb are imported inside the commands that need them (through
+# vnstratlab.data.pipeline / protocol / store), so `vnstratlab --help` and `--version` stay fast.
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from vnstratlab.config.models import AppConfig
+    from vnstratlab.data.pipeline import IngestReport
+    from vnstratlab.data.protocol import DataSource
+    from vnstratlab.data.store import DQRecord, Kind, RunRecord
+    from vnstratlab.paths import AppPaths
 
 app = typer.Typer(
     name="vnstratlab",
@@ -67,6 +64,20 @@ class Horizon(StrEnum):
 DryRun = Annotated[
     bool, typer.Option("--dry-run", help="Print what would be written; write nothing.")
 ]
+
+
+def utc_now() -> datetime:
+    """Current UTC time (delegates to the pipeline's clock; imported lazily)."""
+    from vnstratlab.data.pipeline import utc_now as pipeline_now
+
+    return pipeline_now()
+
+
+def get_source(name: str, cfg: AppConfig) -> DataSource:
+    """Build a data adapter by name (delegates to the registry; imported lazily)."""
+    from vnstratlab.data.protocol import get_source as registry_get
+
+    return registry_get(name, cfg)
 
 
 def _not_implemented(card: str) -> None:
@@ -116,6 +127,8 @@ def _echo_config_status() -> bool:
 @app.command()
 def doctor() -> None:
     """Check the installation: version, paths and which secrets are set (never their values)."""
+    from vnstratlab.settings import load_settings
+
     paths = get_paths()
     settings = load_settings()
     typer.echo(f"vnstratlab   {__version__}")
@@ -205,6 +218,8 @@ def _is_interactive() -> bool:
 
 def _require_extra(adapter: DataSource) -> None:
     """Exit 1 with the install hint, before any terms prompt, if the adapter's library is absent."""
+    from vnstratlab.data.protocol import SourceError
+
     module = getattr(adapter, "required_module", None)
     extra = adapter.info.requires_extra
     if module is None or extra is None:
@@ -217,6 +232,8 @@ def _require_extra(adapter: DataSource) -> None:
 
 def _require_terms(paths: AppPaths, adapter: DataSource, accept: bool, dry_run: bool) -> None:
     """ADR-007 section 2: show the notice once per interim source and store the acceptance."""
+    from vnstratlab.data.pipeline import record_terms_acceptance, terms_accepted, terms_notice
+
     if terms_accepted(paths, adapter):
         return
     typer.echo(terms_notice(adapter), err=True)
@@ -256,6 +273,10 @@ def ingest(
     ] = False,
 ) -> None:
     """Download or refresh market data into the local data directory."""
+    from vnstratlab.data.pipeline import VN_TZ, default_start
+    from vnstratlab.data.pipeline import ingest as ingest_data
+    from vnstratlab.data.protocol import SourceError, source_names
+
     _tolerant_output()
     start = _parse_date(from_date, "--from")
     end = _parse_date(to_date, "--to") or utc_now().astimezone(VN_TZ).date()  # Vietnam today
@@ -322,6 +343,11 @@ def _checks_dict(run_id: str, records: list[DQRecord]) -> dict[str, Any]:
 
 
 def _store_status(path: Path, kind: Kind) -> dict[str, Any]:
+    import duckdb
+
+    from vnstratlab.data.protocol import SourceError
+    from vnstratlab.data.store import MarketStore
+
     entry: dict[str, Any] = {"file": path.name, "kind": kind}
     try:
         with MarketStore(path, kind, read_only=True) as store:
