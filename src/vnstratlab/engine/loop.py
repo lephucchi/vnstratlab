@@ -320,6 +320,8 @@ class Simulator:
         # holdings at each session's pre-open (before actions and fills), for late entitlement
         self._preopen_dates: list[date] = []
         self._preopen: list[dict[str, float]] = []
+        # bonus shares created by stock actions: (ticker, ex_date, new shares, apply session)
+        self._bonus: list[tuple[str, date, float, date]] = []
 
     # -- orders
 
@@ -434,21 +436,18 @@ class Simulator:
         If the ex-date is not a simulated session, the first session on or after it is used
         (the same holdings: nothing trades in between). If the ex-date precedes the first
         simulated session, that session's pre-open holdings apply, i.e. zero at the start.
-        """
-        i = bisect.bisect_left(self._preopen_dates, ex_date)
-        return self._preopen[min(i, len(self._preopen) - 1)].get(ticker, 0.0)
 
-    def _credit_snapshots(self, ticker: str, ex_date: date, new: float) -> None:
-        """Add bonus shares to the pre-open snapshots dated after the ex-date.
-
-        An action applied late creates its shares after those snapshots were taken, yet a later
-        action of the same ticker (ex-date after this one) is entitled to them.
+        Bonus shares of a stock action with an earlier ex-date count too, even when that action
+        was applied after the snapshot was taken (late): credits applied before the snapshot's
+        session are already in it. Actions with the same ex-date never feed each other.
         """
-        start = bisect.bisect_right(self._preopen_dates, ex_date)
-        for i in range(start, len(self._preopen)):
-            snap = dict(self._preopen[i])  # copy: dicts are shared while unchanged
-            snap[ticker] = snap.get(ticker, 0.0) + new
-            self._preopen[i] = snap
+        i = min(bisect.bisect_left(self._preopen_dates, ex_date), len(self._preopen) - 1)
+        taken = self._preopen_dates[i]
+        shares = self._preopen[i].get(ticker, 0.0)
+        for t, ex, new, applied in self._bonus:
+            if t == ticker and ex < ex_date and applied >= taken:
+                shares += new
+        return shares
 
     def _apply_actions(self, today: date) -> None:
         for action in self._actions:
@@ -483,7 +482,7 @@ class Simulator:
                 self.calendar, a.ex_date, self.params.rules.listing_lag_sessions
             )
             self.ledger.add_shares(a.ticker, new, max(listing, today))
-            self._credit_snapshots(a.ticker, a.ex_date, new)
+            self._bonus.append((a.ticker, a.ex_date, new, today))
         for order in self._pending:  # pending orders were sized in pre-event shares
             if order.ticker == a.ticker and order.created < a.ex_date:
                 scaled = order.qty * (1 + a.value)

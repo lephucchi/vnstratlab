@@ -888,3 +888,52 @@ def test_bonus_on_bonus_compounds_from_ex_date_holdings(
 
 def test_sales_tax_in_hose_yaml_equals_costs_default(engine_cfg: AppConfig) -> None:
     assert engine_cfg.market.rules.sales_tax_pct.value == engine_cfg.costs.sales_tax_pct
+
+
+@pytest.mark.parametrize("order", ["stock_first", "cash_first"])
+@pytest.mark.parametrize("apply_session", [2, 7])
+def test_same_ex_date_actions_never_feed_each_other_when_ex_date_is_not_a_session(
+    engine_cfg: AppConfig, order: str, apply_session: int
+) -> None:
+    # Ex-date Wed 11-04 is absent from the price frame. Stock 10 % and cash 1,000 VND share it:
+    # entitlement for both is the 1,000 held at the next session's pre-open, in either row
+    # order, on time or late. Cash = 1,000 x 1,000 = 1,000,000 (not 1,100 x 1,000); shares 1,100.
+    acts = [_stock_action(date(2026, 11, 5)), _cash_action(date(2026, 11, 4))]
+    if order == "cash_first":
+        acts.reverse()
+    days = make_days(12)
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
+    prices = prices[prices["date"] != date(2026, 11, 4)]
+    sim = Simulator(prices, None, CAL, executable(engine_cfg))
+    for i, day in enumerate(sim.sessions):
+        if i == 1:
+            sim.queue("AAA", "buy", 1_000, sim.sessions[0])
+        if i == apply_session:
+            sim.add_actions(synthetic_actions(*acts))
+        sim.open_session(day)
+        sim.mark(day)
+        sim.record(day)
+    assert sim.ledger.shares("AAA") == 1_100
+    assert sim.ledger.cash_pending == pytest.approx(1_000_000)
+
+
+def test_late_bonus_does_not_leak_into_another_ticker(engine_cfg: AppConfig) -> None:
+    # AAA bonus (late) must not change the BBB cash entitlement: 500 BBB x 1,000 = 500,000
+    # (500 shares each, so cash is ample).
+    days = make_days(12)
+    prices = synthetic_prices(
+        synthetic_bars("AAA", days, 50_000), synthetic_bars("BBB", days, 50_000)
+    )
+    sim = Simulator(prices, None, CAL, executable(engine_cfg))
+    bbb = {**_cash_action(date(2026, 11, 6)), "ticker": "BBB", "pay_date": date(2026, 11, 30)}
+    for i, day in enumerate(sim.sessions):
+        if i == 1:
+            sim.queue("AAA", "buy", 500, days[0])
+            sim.queue("BBB", "buy", 500, days[0])
+        if i == 7:
+            sim.add_actions(synthetic_actions(_stock_action(date(2026, 11, 5)), bbb))
+        sim.open_session(day)
+        sim.mark(day)
+        sim.record(day)
+    assert sim.ledger.shares("AAA") == 550
+    assert sim.ledger.cash_pending == pytest.approx(500_000)
