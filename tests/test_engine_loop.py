@@ -23,6 +23,7 @@ from vnstratlab.calendar import TradingCalendar
 from vnstratlab.config.models import AppConfig
 from vnstratlab.engine import (
     SimParams,
+    SimResult,
     Simulator,
     make_params,
     period_returns,
@@ -31,6 +32,7 @@ from vnstratlab.engine import (
 )
 from vnstratlab.execution.base import Executor
 from vnstratlab.execution.sim import SimExecutor
+from vnstratlab.risk import RiskLayer
 
 CAL = TradingCalendar()
 NONE = pd.Series(dtype=float)
@@ -937,3 +939,197 @@ def test_late_bonus_does_not_leak_into_another_ticker(engine_cfg: AppConfig) -> 
         sim.record(day)
     assert sim.ledger.shares("AAA") == 550
     assert sim.ledger.cash_pending == pytest.approx(500_000)
+
+
+# ---------------------------------------------------------------- risk layer (P1-T12)
+
+
+def wide(prices: pd.DataFrame) -> pd.DataFrame:
+    """Give every bar a +/- 750 range around its open/close: constant prices then have
+    TR = 1,500 on every row, hence ATR14 = 1,500 (hand-computed)."""
+    out = prices.copy()
+    out["high"] = out[["open", "close"]].max(axis=1) + 750
+    out["low"] = out[["open", "close"]].min(axis=1) - 750
+    return out
+
+
+def run_risk(
+    cfg: AppConfig,
+    prices: pd.DataFrame,
+    targets: dict[date, pd.Series],
+    cooldown: int | None = 2,
+    **risk: float | None,
+) -> SimResult:
+    layer = RiskLayer(cfg.risk.model_copy(update=risk))
+    return run_simulation(
+        prices, None, targets, CAL, executable(cfg), risk=layer, cooldown_sessions=cooldown
+    )
+
+
+def stop_scenario(shock_idx: int) -> tuple[list[date], pd.DataFrame]:
+    """AAA flat at 50,000 (ATR 1,500) until the close of ``shock_idx``, then 47,000."""
+    days = make_days(26)
+    over: dict[int, dict[str, float]] = {shock_idx: {"close": 47_000}}
+    for i in range(shock_idx + 1, len(days)):
+        over[i] = {"open": 47_000, "close": 47_000}
+    return days, wide(synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over)))
+
+
+def test_stop_hit_on_close_sells_at_next_open(engine_cfg: AppConfig) -> None:
+    days, prices = stop_scenario(17)
+    # Close of idx 14: ATR14 = 1,500; equity 100,000,000; weight 0.15 -> 15,000,000 / 50,000
+    # = 300 shares (sizing cap 0.01 x 50,000 / (2 x 1,500) = 0.1667 does not bind).
+    # Buy fills idx 15 open 50,000 x 1.001 = 50,050 -> stop = 50,050 - 2 x 1,500 = 47,050.
+    # Shares sellable from idx 18. Close idx 17 = 47,000 <= 47,050 -> stop -> sell at idx 18.
+    res = run_risk(engine_cfg, prices, {days[14]: weights(AAA=0.15)})
+    sell = res.trades[res.trades["side"] == "sell"].iloc[0]
+    assert (sell["session"], sell["qty"]) == (days[18], 300)
+    assert sell["price"] == pytest.approx(47_000 * 0.999)  # 46,953
+    assert res.order_events.empty  # sellable on time: no queueing event
+    ev = res.risk_events
+    assert ev is not None
+    assert [(r.session, r.event, r.ticker) for r in ev.itertuples()] == [
+        (days[17], "stop_triggered", "AAA")
+    ]
+    assert res.positions[res.positions["date"] == days[18]].empty
+
+
+def test_stop_before_sellable_waits_for_t3(engine_cfg: AppConfig) -> None:
+    days, prices = stop_scenario(16)
+    # Same entry (idx 15, sellable idx 18). Close idx 16 = 47,000 <= 47,050 -> stop order for
+    # idx 17: shares not sellable -> logged stop_pending_settlement; sold at idx 18 (T+3).
+    res = run_risk(engine_cfg, prices, {days[14]: weights(AAA=0.15)})
+    assert [(r.session, r.event) for r in res.order_events.itertuples()] == [
+        (days[17], "stop_pending_settlement")
+    ]
+    sells = res.trades[res.trades["side"] == "sell"]
+    assert [(r.session, r.qty) for r in sells.itertuples()] == [(days[18], 300)]
+    # The loss is real: bought at 50,050, sold at 46,953 -> equity below capital by more than
+    # 300 x 3,097 = 929,100.
+    assert res.equity.iloc[-1]["equity"] < 100_000_000 - 300 * (50_050 - 46_953)
+
+
+def test_stop_beats_same_day_rebalance_and_cooldown_blocks_rebuy(engine_cfg: AppConfig) -> None:
+    days, prices = stop_scenario(17)
+    keep = weights(AAA=0.15)
+    # Stop at close idx 17 while the strategy still asks for AAA at that very close.
+    # Cooldown 2 sessions: decisions at idx 17 (same day), 18, 19 are blocked; idx 20 is free.
+    targets = {days[14]: keep, days[17]: keep, days[18]: keep, days[19]: keep, days[20]: keep}
+    res = run_risk(engine_cfg, prices, targets, cooldown=2)
+    sells = res.trades[res.trades["side"] == "sell"]
+    assert [(r.session, r.qty) for r in sells.itertuples()] == [(days[18], 300)]
+    buys = res.trades[res.trades["side"] == "buy"]
+    # (a re-buy can split into a round lot and an odd lot: compare the sessions)
+    assert sorted(set(buys["session"])) == [days[15], days[21]]  # no re-buy before 21
+
+
+def test_cooldown_must_be_resolved_by_the_caller(engine_cfg: AppConfig) -> None:
+    days, prices = stop_scenario(17)
+    assert engine_cfg.risk.stop_cooldown_sessions is None
+    with pytest.raises(ValueError, match="stop_cooldown_sessions"):
+        run_risk(engine_cfg, prices, {days[14]: weights(AAA=0.15)}, cooldown=None)
+    # A configured value is used when the caller passes none.
+    res = run_risk(
+        engine_cfg, prices, {days[14]: weights(AAA=0.15)}, cooldown=None, stop_cooldown_sessions=3
+    )
+    assert len(res.trades) == 2
+
+
+def test_sizing_applies_in_loop(engine_cfg: AppConfig) -> None:
+    days = make_days(20)
+    prices = wide(synthetic_prices(synthetic_bars("AAA", days, 50_000)))
+    # Request 0.30; ATR 1,500 -> cap 0.1667 -> 16,666,667 / 50,000 = 333 shares.
+    res = run_risk(engine_cfg, prices, {days[14]: weights(AAA=0.30)})
+    assert res.trades["qty"].sum() == 333  # 300 round lot + 33 odd lot
+
+
+def test_no_atr_history_means_no_new_entry(engine_cfg: AppConfig) -> None:
+    days = make_days(12)
+    prices = wide(synthetic_prices(synthetic_bars("AAA", days, 50_000)))
+    res = run_risk(engine_cfg, prices, {days[5]: weights(AAA=0.15)})  # only 6 rows: ATR is NaN
+    assert res.trades.empty
+
+
+def test_circuit_breaker_blocks_new_buys_then_rearms(engine_cfg: AppConfig) -> None:
+    days = make_days(26)
+    over = {17: {"close": 48_000}}  # AAA -4 % at the close of idx 17; back to 50,000 at idx 18
+    prices = wide(
+        synthetic_prices(
+            synthetic_bars("AAA", days, 50_000, over=over), synthetic_bars("BBB", days, 30_000)
+        )
+    )
+    # Breaker at 0.5 % drawdown. 300 AAA bought at 50,050: equity after the buy
+    # = 100,000,000 - slippage 300 x 50 (15,000) - fee 22,522.5 = 99,962,477.5 < the peak, which
+    # stays at the initial capital 100,000,000 -> threshold 100,000,000 x 0.995 = 99,500,000.
+    # Idx 17 close: 300 x 48,000 = 14,400,000 (-600,000) -> equity 99,362,477.5 <= threshold.
+    # Idx 18 close: back at 50,000 -> equity about 99.94 million > threshold -> re-armed.
+    both = weights(AAA=0.10, BBB=0.08)
+    targets = {days[14]: weights(AAA=0.15), days[17]: both, days[19]: both}
+    res = run_risk(engine_cfg, prices, targets, circuit_breaker_drawdown_pct=0.005)
+    ev = res.risk_events
+    assert ev is not None
+    assert [(r.session, r.event) for r in ev.itertuples()] == [
+        (days[17], "circuit_breaker_on"),
+        (days[18], "circuit_breaker_off"),
+    ]
+    buys = res.trades[res.trades["side"] == "buy"]
+    # Decision idx 17 (breaker on): BBB not bought. Decision idx 19 (re-armed): BBB buys at 20.
+    # (a buy can split into a round lot and an odd lot: compare ticker and session only)
+    assert sorted(set(zip(buys["ticker"], buys["session"], strict=True))) == [
+        ("AAA", days[15]),
+        ("BBB", days[20]),
+    ]
+
+
+def test_circuit_breaker_cancels_pending_buys(engine_cfg: AppConfig) -> None:
+    days = make_days(26)
+    over = {17: {"close": 48_000}}
+    prices = wide(synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over)))
+    layer = RiskLayer(engine_cfg.risk.model_copy(update={"circuit_breaker_drawdown_pct": 0.005}))
+    sim = Simulator(prices, None, CAL, executable(engine_cfg), risk=layer, cooldown_sessions=2)
+    for i, day in enumerate(sim.sessions):
+        sim.open_session(day)
+        if i == 17:  # a buy still pending when the breaker turns on at this close
+            sim.queue("AAA", "buy", 10, days[16])
+        sim.mark(day)
+        if i == 14:
+            sim.decide(day, weights(AAA=0.15))
+        sim.record(day)
+    kinds = [(r.event, r.reason) for r in sim.result().order_events.itertuples()]
+    assert ("cancelled", "circuit breaker active") in kinds
+
+
+def test_rebalance_threshold_skips_small_changes(engine_cfg: AppConfig) -> None:
+    days = make_days(22)
+    prices = wide(synthetic_prices(synthetic_bars("AAA", days, 50_000)))
+    # 300 shares held; equity at close idx 16 = 99,962,477.5 (cash 84,962,477.5 + 15,000,000).
+    # New weight 0.1575 -> 15,744,090 / 50,000 -> 314 shares: +14 shares = 700,000 of a
+    # 15,700,000 target (4.5 %).  Threshold 10 % -> skipped; threshold 2 % -> bought at idx 17.
+    targets = {days[14]: weights(AAA=0.15), days[16]: weights(AAA=0.1575)}
+    skipped = run_risk(engine_cfg, prices, targets)
+    assert [(r.session, r.qty) for r in skipped.trades.itertuples()] == [(days[15], 300)]
+    traded = run_risk(engine_cfg, prices, targets, rebalance_threshold_pct=0.02)
+    assert [(r.session, r.qty) for r in traded.trades.itertuples()] == [
+        (days[15], 300),
+        (days[17], 14),
+    ]
+
+
+def test_rebalance_threshold_never_skips_exits_or_entries(engine_cfg: AppConfig) -> None:
+    days = make_days(22)
+    prices = wide(synthetic_prices(synthetic_bars("AAA", days, 50_000)))
+    # Entry at idx 14 (0 -> 300 shares) and full exit decided at idx 17 (sellable from 18):
+    # both are 100 % changes and ignore the 10 % threshold.
+    res = run_risk(engine_cfg, prices, {days[14]: weights(AAA=0.15), days[17]: NONE})
+    assert [(r.side, r.session, r.qty) for r in res.trades.itertuples()] == [
+        ("buy", days[15], 300),
+        ("sell", days[18], 300),
+    ]
+
+
+def test_risk_off_by_default_has_no_risk_output(engine_cfg: AppConfig) -> None:
+    days = make_days(20)
+    prices = synthetic_prices(synthetic_bars("AAA", days, 50_000))
+    res = run_simulation(prices, None, {days[2]: weights(AAA=0.5)}, CAL, executable(engine_cfg))
+    assert res.risk_events is None
+    assert "risk_events" not in res.frames()

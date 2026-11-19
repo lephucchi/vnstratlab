@@ -28,6 +28,7 @@ risk:
   circuit_breaker_drawdown_pct: 0.10
   rebalance_threshold_pct: 0.10
   vol_target_annual: null      # null = off
+  stop_cooldown_sessions: null # null = one decision period of the book's horizon (caller resolves)
 
 lab:
   seed: 20261117

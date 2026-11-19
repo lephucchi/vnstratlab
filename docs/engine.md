@@ -180,6 +180,21 @@ reports show how often each rule bound.
 - **Stop and rebalance on the same day:** the stop wins. The stopped ticker enters a cooldown
   (`risk.stop_cooldown_sessions`, default = one decision period) during which the risk layer
   will not re-buy it.
+- **Implementation (P1-T12).** The entry price is the average fill price (slippage included) and
+  the ATR is ATR14 at the close before the fill (Wilder, `vnstratlab.risk.atr`); adds are
+  share-weighted. A stock dividend rescales the entry in the post-event share basis. A position
+  without a defined ATR (fewer than 14 sessions of history) has no stop. A stop turns the
+  pending (or a new) sell for that ticker into a full exit that survives later decisions until
+  filled; if it is cancelled by the unfilled-sell policy the stop fires again at the next close.
+- **Cooldown.** `stop_cooldown_sessions` is `null` in `defaults.yaml`, meaning "one decision
+  period of the book's horizon"; the caller resolves it to sessions (`run_simulation(...,
+  cooldown_sessions=n)`) and the run fails if neither is given. A stop at the close of session
+  `i` blocks buys of that ticker in decisions at sessions `i .. i + n` (the layer keeps an
+  existing holding at its current weight, never increases it).
+- **Circuit breaker.** Stateless: `equity <= peak x (1 - circuit_breaker_drawdown_pct)` with
+  `peak` = running maximum of closing equity, starting at the initial capital, never reset. While
+  active, no weight may exceed its held weight (sells and exits pass) and pending buys are
+  cancelled; it re-arms as soon as equity is above the threshold again.
 - Time exits (short horizon): positions are re-decided every decision day; no extra rule.
 
 ## 8. Cash ledger
@@ -241,6 +256,7 @@ and the owner accepts it, behind a CI property test proving it equals the event 
 | `trades` | per fill: qty, price, fee, tax, slippage, lot type | Cost analysis |
 | `order_events` | per blocked/carried/cancelled order + reason | Realism analysis |
 | `equity` | per session: cash buckets, positions value | Books, circuit breaker |
+| `risk_events` (only with a risk layer) | per `stop_triggered` (ticker) and `circuit_breaker_on` / `circuit_breaker_off` | Realism analysis, alerts (P1-T29) |
 | `run_manifest` | per run | Reproducibility (§13) |
 
 ## 12. Walk-forward and the lab

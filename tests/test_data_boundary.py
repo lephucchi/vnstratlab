@@ -167,6 +167,13 @@ def test_engine_stays_pure() -> None:
     assert offenders == []
 
 
+def test_risk_stays_pure() -> None:
+    files = list((SRC / "risk").rglob("*.py"))
+    assert len(files) >= 3  # atr, layer, __init__
+    offenders = [f"{p.name}: {v}" for p in files for v in _engine_violations(p)]
+    assert offenders == []
+
+
 def test_engine_purity_checker_detects_violations(tmp_path: Path) -> None:
     bad = tmp_path / "bad.py"
     bad.write_text(

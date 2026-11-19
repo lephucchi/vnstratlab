@@ -140,6 +140,7 @@ class Risk(_Model):
     circuit_breaker_drawdown_pct: Pct
     rebalance_threshold_pct: Pct
     vol_target_annual: PositiveFloat | None
+    stop_cooldown_sessions: PositiveInt | None = None
 
 
 class Engine(_Model):

@@ -14,6 +14,13 @@ All notable changes are documented here. The format follows
   `stock_dividend_listing_lag_sessions` in `hose.yaml` (all `VERIFY`). Values are frozen by the owner
   at merge.
 
+- **Risk layer (P1-T12):** pure `vnstratlab.risk` (Wilder `atr`, `RiskLayer`: stop cooldown,
+  1 %-at-risk ATR sizing, max weight, max positions, optional vol scaling, circuit breaker) and,
+  in the simulator, ATR stops on the close (`stop_pending_settlement` order event), the circuit
+  breaker, the rebalance threshold and a `risk_events` output; all opt-in (`risk=` argument), so
+  runs without it are unchanged. New config key `risk.stop_cooldown_sessions` (`null` = one decision
+  period of the book's horizon, resolved by the caller); owner to confirm.
+
 ### Fixed
 - **Engine (P1-T11b):** late corporate actions use the holdings at pre-open of the ex-date;
   stock events rescale only pending orders created before the ex-date (also with no shares held);

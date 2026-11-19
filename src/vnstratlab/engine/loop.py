@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import bisect
 import hashlib
+import logging
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -29,9 +30,12 @@ from vnstratlab.engine.rules import (
     sell_blocked_by_floor,
     target_quantity,
 )
+from vnstratlab.risk import ATR_WINDOW, RiskLayer, atr
 
 if TYPE_CHECKING:
     from vnstratlab.config.models import AppConfig
+
+log = logging.getLogger(__name__)
 
 Mode = Literal["ideal", "executable"]
 ALLOWED_BASES = ("raw", "synthetic", "exec_reconstructed")
@@ -72,6 +76,7 @@ EQUITY_COLUMNS = (
     "equity",
 )
 POSITION_COLUMNS = ("date", "ticker", "shares", "sellable", "close", "value")
+RISK_EVENT_COLUMNS = ("session", "event", "ticker", "detail")
 _ACTION_KINDS: dict[str, Literal["cash", "stock"] | None] = {
     "cash": "cash",
     "stock": "stock",
@@ -153,6 +158,10 @@ class SimResult:
     ``turnover`` per session = sum of |notional| (qty x fill price, buys and sells) of that
     session's fills / equity at the previous close (the first session: initial capital); 0 on
     days without fills.
+
+    ``risk_events`` (only when a risk layer is used, else ``None``): ``stop_triggered`` per
+    ticker and ``circuit_breaker_on`` / ``circuit_breaker_off`` on state changes (engine.md
+    section 11).
     """
 
     returns: pd.Series
@@ -161,9 +170,10 @@ class SimResult:
     trades: pd.DataFrame
     order_events: pd.DataFrame
     equity: pd.DataFrame
+    risk_events: pd.DataFrame | None = None
 
     def frames(self) -> dict[str, pd.DataFrame]:
-        return {
+        frames = {
             "returns": self.returns.rename("ret").reset_index(),
             "turnover": self.turnover.rename("turnover").reset_index(),
             "positions": self.positions,
@@ -171,6 +181,9 @@ class SimResult:
             "order_events": self.order_events,
             "equity": self.equity,
         }
+        if self.risk_events is not None:
+            frames["risk_events"] = self.risk_events
+        return frames
 
     def digest(self) -> str:
         """SHA-256 over every output frame (values, columns, order)."""
@@ -296,6 +309,9 @@ class Simulator:
         corporate_actions: pd.DataFrame | None,
         calendar: TradingCalendar,
         params: SimParams,
+        *,
+        risk: RiskLayer | None = None,
+        cooldown_sessions: int | None = None,
     ) -> None:
         self.params = params
         self.calendar = calendar
@@ -322,6 +338,34 @@ class Simulator:
         self._preopen: list[dict[str, float]] = []
         # bonus shares created by stock actions: (ticker, ex_date, new shares, apply session)
         self._bonus: list[tuple[str, date, float, date]] = []
+        self._risk = risk
+        self._init_risk(prices, cooldown_sessions)
+
+    def _init_risk(self, prices: pd.DataFrame, cooldown_sessions: int | None) -> None:
+        self._risk_events: list[tuple[date, str, str, str]] = []
+        self._cooldown: dict[str, int] = {}  # ticker -> session index of its last stop
+        self._cooldown_n = 0
+        self._atr_series: dict[str, dict[date, float]] = {}
+        self._atr_now: dict[str, float] = {}
+        self._entries: dict[str, tuple[float, float, float]] = {}  # shares, avg price, avg ATR
+        self._peak = self.params.capital
+        self._breaker = False
+        self._index = {d: i for i, d in enumerate(self.sessions)}
+        if self._risk is None:
+            return
+        n = cooldown_sessions
+        if n is None:
+            n = self._risk.config.stop_cooldown_sessions
+        if n is None or n < 0:
+            raise ValueError(
+                "risk needs stop_cooldown_sessions >= 0: set risk.stop_cooldown_sessions or pass "
+                "cooldown_sessions (one decision period of the book's horizon, in sessions)"
+            )
+        self._cooldown_n = n
+        for ticker, group in prices.sort_values("date").groupby("ticker"):
+            values = atr(group["high"], group["low"], group["close"], ATR_WINDOW)
+            dates = [pd.Timestamp(d).date() for d in group["date"]]
+            self._atr_series[str(ticker)] = dict(zip(dates, values.tolist(), strict=True))
 
     # -- orders
 
@@ -347,6 +391,10 @@ class Simulator:
     def mark(self, today: date) -> None:
         for ticker, bar in self._bars[today].items():
             self._last_close[ticker] = bar.close
+        if self._risk is not None:
+            for ticker in self._bars[today]:
+                self._atr_now[ticker] = self._atr_series[ticker].get(today, math.nan)
+            self._close_risk(today, self._risk)
 
     def equity_now(self) -> float:
         return self.ledger.cash_available + self.ledger.cash_pending + self._positions_value()
@@ -376,6 +424,10 @@ class Simulator:
         held = self.ledger.holdings()
         wanted: dict[tuple[str, Side], float] = {}
         p = self.params
+        threshold = 0.0
+        if self._risk is not None:
+            weights = self._apply_risk(self._risk, today, weights, equity, held)
+            threshold = self._risk.config.rebalance_threshold_pct
         for ticker in sorted(set(weights.index.astype(str)) | set(held)):
             weight = float(weights.get(ticker, 0.0))
             price = self._last_close.get(ticker)
@@ -383,9 +435,76 @@ class Simulator:
                 raise ValueError(f"no price for {ticker} at decision on {today}")
             target = target_quantity(weight * equity, price, p.rules, p.lots, p.odd_lots)
             delta = target - held.get(ticker, 0.0)
-            if abs(delta) > EPS:
-                wanted[(ticker, "buy" if delta > 0 else "sell")] = abs(delta)
+            if abs(delta) <= EPS:
+                continue
+            current = held.get(ticker, 0.0)
+            if current > EPS and target > EPS and abs(delta) < threshold * target:
+                continue  # 4f: change below rebalance_threshold_pct (exits, entries never skip)
+            wanted[(ticker, "buy" if delta > 0 else "sell")] = abs(delta)
         self._replace_pending(wanted, today)
+
+    # -- risk (engine.md sections 4 and 7)
+
+    def _has_stop_order(self, ticker: str) -> bool:
+        return any(o.stop and o.ticker == ticker for o in self._pending)
+
+    def _close_risk(self, today: date, risk: RiskLayer) -> None:
+        """Close steps 3b (ATR stops) and 3c (circuit breaker), after mark to market."""
+        held = self.ledger.holdings()
+        for ticker in sorted(held):
+            entry = self._entries.get(ticker)
+            if entry is None or math.isnan(entry[2]) or self._has_stop_order(ticker):
+                continue
+            stop, close = risk.stop_price(entry[1], entry[2]), self._last_close[ticker]
+            if close > stop:
+                continue
+            existing = [o for o in self._pending if o.ticker == ticker and o.side == "sell"]
+            order = existing[0] if existing else self.queue(ticker, "sell", held[ticker], today)
+            order.qty, order.stop = held[ticker], True
+            self._cooldown[ticker] = self._index[today]
+            detail = f"close {close:.2f} <= stop {stop:.2f}"
+            self._risk_events.append((today, "stop_triggered", ticker, detail))
+        equity = self.equity_now()
+        self._peak = max(self._peak, equity)
+        active = risk.breaker_active(equity, self._peak)
+        if active != self._breaker:
+            self._breaker = active
+            detail = f"equity {equity:.0f}, peak {self._peak:.0f}"
+            event = "circuit_breaker_on" if active else "circuit_breaker_off"
+            self._risk_events.append((today, event, "", detail))
+            log.warning("%s on %s: %s", event, today, detail)
+        if active:
+            for order in [o for o in self._pending if o.side == "buy"]:
+                self._log(order, today, "cancelled", "circuit breaker active")
+                self._drop(order)
+
+    def _apply_risk(
+        self, risk: RiskLayer, today: date, weights: pd.Series, equity: float,
+        held: dict[str, float],
+    ) -> pd.Series:  # fmt: skip
+        """Risk layer on the target weights; stopped positions are forced to exit (the stop
+        wins over a same-day rebalance) and cooled-down tickers are not re-bought."""
+        tickers = sorted(set(weights.index.astype(str)) | set(held))
+        for ticker in tickers:
+            if ticker not in self._last_close:
+                raise ValueError(f"no price for {ticker} at decision on {today}")
+        now = self._index[today]
+        cooldown = [t for t, i in self._cooldown.items() if now - i <= self._cooldown_n]
+        history = None
+        if risk.config.vol_target_annual is not None:
+            history = pd.Series(self._returns, dtype=float)
+        decision = risk.apply(
+            weights,
+            equity=equity,
+            prices_close={t: self._last_close[t] for t in tickers},
+            atr={t: self._atr_now.get(t, math.nan) for t in tickers},
+            held=held,
+            peak_equity=max(self._peak, equity),
+            cooldown=cooldown,
+            returns_history=history,
+        )
+        stopped = [t for t in held if self._has_stop_order(t)]
+        return decision.weights.drop(stopped, errors="ignore")
 
     # -- internals
 
@@ -483,6 +602,11 @@ class Simulator:
             )
             self.ledger.add_shares(a.ticker, new, max(listing, today))
             self._bonus.append((a.ticker, a.ex_date, new, today))
+        entry = self._entries.get(a.ticker)
+        if entry is not None:  # keep the stop in the post-event share basis
+            q, price, atr_entry = entry
+            f = 1 + a.value
+            self._entries[a.ticker] = (q * f, price / f, atr_entry / f)
         for order in self._pending:  # pending orders were sized in pre-event shares
             if order.ticker == a.ticker and order.created < a.ex_date:
                 scaled = order.qty * (1 + a.value)
@@ -527,7 +651,7 @@ class Simulator:
         sellable = min(qty, ledger.sellable(order.ticker, today))
         if sellable <= EPS:
             when = ledger.next_sellable_date(order.ticker)
-            self._log(order, today, "queued_until_sellable", f"shares sellable from {when}")
+            self._log(order, today, self._queued_kind(order), f"shares sellable from {when}")
             return
         if sell_blocked_by_floor(bar.open, bar.floor):
             self._log(order, today, "blocked_floor", f"open {bar.open} <= floor {bar.floor}")
@@ -544,7 +668,11 @@ class Simulator:
         if order.qty <= EPS:
             self._drop(order)
         else:
-            self._log(order, today, "queued_until_sellable", "remainder not yet sellable")
+            self._log(order, today, self._queued_kind(order), "remainder not yet sellable")
+
+    @staticmethod
+    def _queued_kind(order: Order) -> EventKind:
+        return "stop_pending_settlement" if order.stop else "queued_until_sellable"
 
     def _resolve_buy(self, order: Order, today: date, bar: _Bar) -> None:
         p = self.params
@@ -579,6 +707,8 @@ class Simulator:
         self.ledger.cash_available -= notional + fee
         sellable = after_sessions(self.calendar, today, self.params.rules.settle_offset)
         self.ledger.add_shares(order.ticker, piece.qty, sellable)
+        if self._risk is not None:
+            self._track_entry(order.ticker, piece.qty, price)
         self._trade(order, today, bar, piece.qty, price, fee, 0.0, piece.lot)
 
     def _fill_sell(self, order: Order, today: date, bar: _Bar, piece: Piece) -> None:
@@ -587,6 +717,8 @@ class Simulator:
         notional = piece.qty * price
         fee, tax = costs.fee(notional), costs.tax(notional, "sell")
         self.ledger.remove_shares(order.ticker, piece.qty, today)
+        if self.ledger.shares(order.ticker) <= EPS:
+            self._entries.pop(order.ticker, None)
         net = notional - fee - tax
         release = after_sessions(self.calendar, today, self.params.proceeds_offset)
         if release <= today:
@@ -594,6 +726,20 @@ class Simulator:
         else:
             self.ledger.credit_pending(release, net)
         self._trade(order, today, bar, piece.qty, price, fee, tax, piece.lot)
+
+    def _track_entry(self, ticker: str, qty: float, price: float) -> None:
+        """Entry price and ATR14 (as of the previous close) per position, share-weighted over
+        adds; the stop is ``entry - atr_stop_multiple x ATR`` (engine.md section 7)."""
+        q0, p0, a0 = self._entries.get(ticker, (0.0, 0.0, math.nan))
+        a = self._atr_now.get(ticker, math.nan)
+        total = q0 + qty
+        if math.isnan(a0):
+            atr_avg = a
+        elif math.isnan(a):
+            atr_avg = a0
+        else:
+            atr_avg = (q0 * a0 + qty * a) / total
+        self._entries[ticker] = (total, (q0 * p0 + qty * price) / total, atr_avg)
 
     def _trade(
         self, order: Order, today: date, bar: _Bar, qty: float, price: float, fee: float,
@@ -620,6 +766,11 @@ class Simulator:
             trades=pd.DataFrame(self._trades, columns=list(TRADE_COLUMNS)),
             order_events=self._events.frame(),
             equity=pd.DataFrame(self._equity, columns=list(EQUITY_COLUMNS)),
+            risk_events=(
+                pd.DataFrame(self._risk_events, columns=list(RISK_EVENT_COLUMNS))
+                if self._risk is not None
+                else None
+            ),
         )
 
 
@@ -629,15 +780,26 @@ def run_simulation(
     targets: Mapping[date, pd.Series],
     calendar: TradingCalendar,
     params: SimParams,
+    *,
+    risk: RiskLayer | None = None,
+    cooldown_sessions: int | None = None,
 ) -> SimResult:
     """Run every session in ``prices``; ``targets[d]`` is decided at the close of ``d``.
+
+    With ``risk`` the targets pass through the risk layer, ATR stops and the circuit breaker
+    run at each close, and changes below ``rebalance_threshold_pct`` are skipped. The stop
+    cooldown is ``cooldown_sessions`` or else ``risk.stop_cooldown_sessions`` (the caller
+    resolves "one decision period of the book's horizon"); one of them is required.
 
     Ideal mode uses a proceeds offset of 0 (engine.md section 8) and executable mode the
     configured ``cash_proceeds_offset``. Ideal and executable-with-lots-off returns are
     therefore only equal while cash does not bind (e.g. invested weight well below 1);
     with binding cash the executable run delays buys until proceeds are released.
     """
-    sim = Simulator(prices, corporate_actions, calendar, params)
+    sim = Simulator(
+        prices, corporate_actions, calendar, params,
+        risk=risk, cooldown_sessions=cooldown_sessions,
+    )  # fmt: skip
     unknown = sorted(set(targets) - set(sim.sessions))
     if unknown:
         raise ValueError(f"target dates are not sessions in prices: {unknown[:3]}")
