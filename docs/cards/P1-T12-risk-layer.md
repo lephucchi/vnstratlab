@@ -3,7 +3,7 @@ id: P1-T12
 title: Risk layer (sizing, limits, vol scaling, stops, circuit breaker, rebalance threshold)
 milestone: M1.3 Engine
 release: v0.1.0
-status: in progress
+status: done
 branch: feat/P1-T12-risk-layer
 due: 2026-11-24
 ---
