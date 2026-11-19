@@ -6,6 +6,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Risk follow-ups (P1-T12b):** `Simulator.add_actions` now updates the ex-date ATR factors and
+  recomputes the affected tickers' ATR series, so a late stock action gives the same ATR state
+  from its apply session on as one known up front (past reads are not rewritten). Lots shrink to
+  the ledger's remaining shares (no drift after floored bonuses or late credits); shares added
+  with no lot (a late bonus on a sold position) get a lot at the last close before the apply
+  session with the current ATR. No change without a risk layer.
+
 ### Added
 - **Corporate actions and execution prices (P1-T06):** `vnstratlab data rebuild` builds
   `prices_adjusted` (signals), `prices_exec` (`exec_reconstructed` rows the engine accepts) and
