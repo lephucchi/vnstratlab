@@ -74,3 +74,13 @@ def test_atr_ex_date_factor_removes_the_mechanical_gap() -> None:
     assert fixed.iloc[29] == pytest.approx(600 - (600 - (400 * 13 + 600) / 14) * (13 / 14) ** 9)
     with pytest.raises(ValueError, match="ex_factor"):
         atr(high, low, close, ex_factor=[1.0])
+
+
+def test_atr_with_ex_factor_stays_causal() -> None:
+    # Truncating after the ex-date row leaves every value up to it unchanged.
+    close = pd.Series([30_000.0] * 20 + [20_000.0] * 10)
+    high, low = close + 300, close - 300
+    factors = [1.0] * 20 + [1.5] + [1.0] * 9
+    full = atr(high, low, close, ex_factor=factors)
+    cut = atr(high.iloc[:22], low.iloc[:22], close.iloc[:22], ex_factor=factors[:22])
+    assert list(cut.iloc[19:]) == pytest.approx(list(full.iloc[19:22]))
