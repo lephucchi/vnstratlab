@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795097517489,
+  "lastUpdate": 1795098012678,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -620,6 +620,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00013481050564384252",
             "extra": "mean: 7.509138625001022 msec\nrounds: 16"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a523123015fa71049f25ed9acb4150dca5f235b0",
+          "message": "fix(data): Yahoo event-scale repair and split-adjusted dividends (P1-T06b) (#33)\n\nCloses #31. Owner override: merged with G2 request changes open, tracked in #34. Outlier rows / suspect step events / pre-HOSE history classification, split-adjusted Yahoo dividends, owner decisions 2026-11-19, next-session handoff (docs/reports/next-session.md), P1-T10 card.",
+          "timestamp": "2026-11-19T21:19:37+07:00",
+          "tree_id": "1fa87ceac71c0cbcf73b4d281d26b9df3a465364",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/a523123015fa71049f25ed9acb4150dca5f235b0"
+        },
+        "date": 1795098011897,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 115.16604454264464,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017145282877721268",
+            "extra": "mean: 8.683114923077103 msec\nrounds: 13"
           }
         ]
       }
