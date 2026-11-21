@@ -198,8 +198,16 @@ def test_reentry_needs_a_new_onset_after_z_returns_inside_the_band() -> None:
     assert open_side(z[:5], 2.0, 3) == 0  # still inside the band: no position
     # the side is fixed at the onset; a later onset while open does not restart the clock
     assert open_side(z_of(2.5, 1.0, 2.5, 2.5), 2.0, 3) == 0  # clock from index 0: stops at 3
-    # a NaN session counts as "no z": the next beyond-band session is an onset
-    assert open_side(z_of(2.5, 2.5, 2.5, 2.5, NAN, 2.5), 2.0, 3) == 1
+    # a missing session does not reset the band: the last OBSERVED z (2.8, beyond) is carried,
+    # so 2.9 after the gap is no onset; same answer as the gap-free sequence
+    gap = z_of(0.0, 2.5, 2.6, 2.7, 2.8, NAN, 2.9)
+    assert open_side(gap, 2.0, 3) == 0
+    assert open_side(z_of(0.0, 2.5, 2.6, 2.7, 2.8, 2.9), 2.0, 3) == 0
+    # z back inside the band (1.0) before the gap: the breakout after the gap is a new onset
+    assert open_side(z_of(0.0, 2.5, 2.6, 2.7, 1.0, NAN, 2.9), 2.0, 3) == 1
+    # the window start is the only "no z": a beyond-band first session is an onset
+    assert open_side(z_of(2.5, 2.5), 2.0, 3) == 1
+    assert open_side(z_of(NAN, 2.5), 2.0, 3) == 1
 
 
 def test_entry_on_the_asof_session_counts() -> None:

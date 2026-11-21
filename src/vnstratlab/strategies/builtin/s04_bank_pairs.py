@@ -24,14 +24,15 @@ Rule as implemented
   window. That is not lookahead (all inputs are <= ``asof``) but it differs from a rolling z that
   a live system would have seen on that earlier day; it is a stateless re-derivation.
 * Open at ``asof`` (stateless: the window is replayed from its start, onset-based clock). An
-  onset is a session with ``|z| > entry_z`` whose previous session had ``|z| <= entry_z`` or no
-  z (the window start counts as no z). A position opens at an onset; the onset session is
-  session 1, so sessions 1..``max_hold`` are held and it closes on the next one. It also closes
+  onset is a session with ``|z| > entry_z`` whose previous OBSERVED z (carried across sessions
+  without a spread value) was ``|z| <= entry_z``; only the window start counts as no z.
+  A position opens at an onset; the onset session is session 1, so sessions 1..``max_hold``
+  are held and it closes on the next one. It also closes
   when z changes sign or is exactly 0 (the zero cross). After a time stop with ``|z|`` still
   beyond ``entry_z`` there is NO re-entry until z has come back to ``|z| <= entry_z`` and
   breaks out again (a new onset). The side is fixed at the onset; later onsets while open are
-  ignored. A session without a spread value neither crosses nor opens, and ``asof`` itself must
-  have one.
+  ignored. A session without a spread value neither crosses nor opens (and does not reset the
+  band), and ``asof`` itself must have one.
 * Long the laggard of the entry: ``z > 0`` means A outperformed B, so B is bought; ``z < 0``
   buys A. Each open pair holds ``1 / k``; two open pairs on the same laggard add up. The total is
   at most 1; fewer open pairs than ``k`` leave the rest in cash.
@@ -137,9 +138,10 @@ def open_side(z: FloatArray, entry_z: float, max_hold: int) -> int:
     """+1 if the pair is open with A ahead (buy B), -1 if open with B ahead (buy A), else 0.
 
     Replays the window (the last element of ``z`` is ``asof``). Onset: a session with
-    ``|z| > entry_z`` whose previous session had ``|z| <= entry_z`` or no z (the window start
-    counts as no z). A position opens at an onset (side fixed by the sign of z there; the onset
-    session is session 1) and closes when z changes sign or hits exactly 0, or on the session
+    ``|z| > entry_z`` whose previous OBSERVED z (carried across NaN sessions) had
+    ``|z| <= entry_z``; only the window start counts as no z. A position opens at an
+    onset (side fixed by the sign of z there; the
+    onset session is session 1) and closes when z changes sign or hits exactly 0, or on the session
     after ``max_hold`` sessions (sessions 1..``max_hold`` are held). While open, later onsets
     are ignored. After a time stop there is no re-entry until z has come back inside the band
     and broken out again (a new onset). NaN sessions neither cross nor expire a sign; the last
@@ -149,16 +151,19 @@ def open_side(z: FloatArray, entry_z: float, max_hold: int) -> int:
         return 0
     side = 0
     onset = 0
+    last = math.nan  # last observed z; stays NaN only before the first observed session
     for t, value in enumerate(z):
         if side and math.isfinite(float(value)) and float(value) * side <= 0:
             side = 0  # zero cross
         elif side and t - onset >= max_hold:
             side = 0  # time stop
-        previous = float(z[t - 1]) if t > 0 else math.nan
-        is_onset = abs(value) > entry_z and not abs(previous) > entry_z  # NaN compares False
+        if not math.isfinite(float(value)):
+            continue  # a missing session does not reset the band
+        is_onset = abs(value) > entry_z and not abs(last) > entry_z  # NaN compares False
         if not side and is_onset:
             side = 1 if value > 0 else -1
             onset = t
+        last = float(value)
     return side
 
 

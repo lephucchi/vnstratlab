@@ -40,7 +40,7 @@ Cross-section (the tradable universe on a date)
   adjusted close is above its own 50-session average.
 
 * ``high_20d_break`` compares the close with the highest prior HIGH; ``close_20d_break`` (added in
-  features-v3 for S02) compares the adjusted close with the highest adjusted CLOSE of the 20
+  features-v2 for S02) compares the adjusted close with the highest adjusted CLOSE of the 20
   good sessions before ``t``. Both are 1.0 / 0.0, NaN until 20 prior sessions exist.
 
 * ``ret_1d`` (features-v3, group "returns", used by S04 and S05 which rebuild return windows from
