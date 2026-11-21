@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795239797220,
+  "lastUpdate": 1795240144099,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1065,6 +1065,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0001310362961745057",
             "extra": "mean: 8.480151200002222 msec\nrounds: 15"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "030de98e6deb705258b396cd55e5fab6afbd0703",
+          "message": "docs: close out cards P1-T06b..P1-T16, roadmap, progress log (#51)\n\nCards marked done, roadmap status, progress log for #49 and #50.",
+          "timestamp": "2026-11-21T12:48:17+07:00",
+          "tree_id": "e5a008551611ddb7de62e1e98e8cf7ebcbbd2026",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/030de98e6deb705258b396cd55e5fab6afbd0703"
+        },
+        "date": 1795240143558,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 2.278611623253335,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01693467585800115",
+            "extra": "mean: 438.863731666667 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 87.15404104368241,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002585724845993718",
+            "extra": "mean: 11.473937272728303 msec\nrounds: 11"
           }
         ]
       }
