@@ -117,10 +117,10 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
 - **History.** Needs `ret_1d` over `lookback_sessions = window` sessions; fewer gives all cash.
 - **Rule as implemented.** Group return per session = equal-weight mean of the available `ret_1d`
   of all tickers. Per ticker (≥ 80 % of the window observed and observed on asof): OLS of its
-  returns on the group return, `beta` from the fit with an intercept; the residual is
-  `y - beta * g` (alpha left out, as in Avellaneda & Lee: residuals that include alpha sum to
-  zero and would pin the last cumulative residual at 0). z = (last cumulative residual - mean of
-  the cumulative residual) / std (ddof 1). Buy the `n` most negative z below `-entry_z`, 1/`n`
+  returns on the group return with an intercept; residual = `y - alpha - beta * g` (it sums to
+  zero, so the last cumulative residual is 0 and z = -mean(X) / std(X), the Avellaneda & Lee
+  s-score without the drift term). z = (last cumulative residual - mean of the cumulative
+  residual) / std (ddof 1). Buy the `n` most negative z below `-entry_z`, 1/`n`
   each, the rest in cash; ties by ticker.
 - **Params (frozen).** `{window: 60, entry_z: 1.5, n: 2}`; short horizon.
 - **Basis.** Avellaneda & Lee (2010).

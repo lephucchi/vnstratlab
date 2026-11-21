@@ -28,15 +28,25 @@ from vnstratlab.strategies.registry import (
 
 NAN = math.nan
 
-# Group story (window 6): u = +-0.01 alternating (mean 0). Five tickers hold u + e with a
-# CONSTANT e per ticker and the e's sum to 0, so the group return is exactly u:
-#   e = A -0.02, B -0.04, C +0.01, D +0.02, E +0.03.
-# For every ticker cov(u, e) = 0, so beta = 1 and the residual (alpha left out) is e itself.
-# X_k = k * e (k = 1..6): last 6e, mean 3.5e, std |e| * 1.870829 (std of 1..6, ddof 1)
-# z = 2.5 e / (|e| * 1.870829) = sign(e) * 1.336306: A and B -1.3363 (tie), C, D, E +1.3363.
+# Group story (window 6): u = +-0.01 alternating (mean 0). Six tickers hold u + e, and the e's
+# sum to 0 in every session, so the group return is exactly u. Two shapes of e (scaled by 0.03):
+#   P1 = [1, 1, 1, 1, 0, 0]     P4 = [0, 1, 1, 0, 0, 0]
+#   A +P1, B -P1, C +P4, D -P4, E +P1, F -P1.
+# cov(u, e) = 0 for both shapes, so beta = 1, alpha = mean(e) and the residual is e - mean(e).
+#
+# +P1: e = 0.03 x4, 0, 0; mean 0.02; residual +0.01 x4, -0.02 x2 (sums to 0)
+#   X = 0.01 0.02 0.03 0.04 0.02 0.00; mean 0.02; deviations -0.01 0 0.01 0.02 0 -0.02
+#   sum of squares 1e-3; variance 2e-4; std 0.0141421
+#   z = (0 - 0.02) / 0.0141421 = -sqrt(2) = -1.41421  (A, E; the mirror -P1 gives +1.41421: B, F)
+# +P4: e = 0, 0.03, 0.03, 0, 0, 0; mean 0.01; residual -0.01 +0.02 +0.02 -0.01 -0.01 -0.01
+#   X = -0.01 0.01 0.03 0.02 0.01 0.00; mean 0.01; deviations -0.02 0 0.02 0.01 0 -0.01
+#   sum of squares 1e-3; std 0.0141421; z = (0 - 0.01) / 0.0141421 = -0.70711 (C; D is +0.70711)
 U = [0.01, -0.01] * 3
-E_CONST = {"A": -0.02, "B": -0.04, "C": 0.01, "D": 0.02, "E": 0.03}
-Z_CONST = 2.5 / math.sqrt(3.5)  # 1.336306 = 2.5 / 1.870829 (std of 1..6 with ddof 1 is sqrt(3.5))
+P1 = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]
+P4 = [0.0, 1.0, 1.0, 0.0, 0.0, 0.0]
+SHAPES = {"A": (P1, 1), "B": (P1, -1), "C": (P4, 1), "D": (P4, -1), "E": (P1, 1), "F": (P1, -1)}
+Z_P1 = math.sqrt(2.0)
+Z_P4 = 1.0 / math.sqrt(2.0)
 
 
 def make(window: int = 6, entry_z: float = 1.0, n: int = 2) -> S05ResidualReversion:
@@ -52,8 +62,13 @@ def feature_frame(returns: dict[str, list[float]]) -> pd.DataFrame:
     )
 
 
-def const_frame() -> pd.DataFrame:
-    return feature_frame({t: [u + e for u in U] for t, e in E_CONST.items()})
+def shaped_frame() -> pd.DataFrame:
+    return feature_frame(
+        {
+            t: [u + sign * 0.03 * p for u, p in zip(U, shape, strict=True)]
+            for t, (shape, sign) in SHAPES.items()
+        }
+    )
 
 
 def asof_of(frame: pd.DataFrame) -> pd.Timestamp:
@@ -61,24 +76,31 @@ def asof_of(frame: pd.DataFrame) -> pd.Timestamp:
 
 
 def test_residual_z_hand_numbers() -> None:
-    # g = u; y = u - 0.02 for 6 sessions -> beta 1, residual -0.02 each,
-    # X = -0.02, -0.04, ..., -0.12; mean -0.07; last - mean = -0.05; std = 0.02 * 1.870829
     g = np.array(U)
-    z = residual_z(g - 0.02, g, 6)
-    assert z == pytest.approx(-Z_CONST, abs=1e-9)
-    assert z == pytest.approx(-1.336306, abs=1e-6)
-    assert residual_z(g + 0.01, g, 6) == pytest.approx(Z_CONST, abs=1e-9)
+    e1 = 0.03 * np.array(P1)
+    assert residual_z(g + e1, g, 6) == pytest.approx(-Z_P1, abs=1e-9)
+    assert residual_z(g - e1, g, 6) == pytest.approx(Z_P1, abs=1e-9)
+    assert pytest.approx(1.414214, abs=1e-6) == Z_P1
+    e4 = 0.03 * np.array(P4)
+    assert residual_z(g + e4, g, 6) == pytest.approx(-Z_P4, abs=1e-9)
+    assert residual_z(g - e4, g, 6) == pytest.approx(Z_P4, abs=1e-9)
+    assert pytest.approx(0.707107, abs=1e-6) == Z_P4
 
 
-def test_residual_z_with_non_constant_residual() -> None:
-    # two tickers: e_A = -0.03 for 4 sessions then 0, e_B = +0.03 then 0 (cov with u is 0 again)
-    # X_A = -0.03 -0.06 -0.09 -0.12 -0.12 -0.12; mean -0.09
-    # deviations 0.06 0.03 0 -0.03 -0.03 -0.03; sum of squares 0.0072; variance 0.00144
-    # std 0.037947; z = (-0.12 + 0.09) / 0.037947
+def test_the_intercept_is_part_of_the_residual() -> None:
+    # a constant extra return is pure alpha: it leaves the residual (and z) unchanged
     g = np.array(U)
-    e = np.array([-0.03, -0.03, -0.03, -0.03, 0.0, 0.0])
-    assert residual_z(g + e, g, 6) == pytest.approx(-0.790569, abs=1e-6)
-    assert residual_z(g - e, g, 6) == pytest.approx(0.790569, abs=1e-6)
+    e1 = 0.03 * np.array(P1)
+    assert residual_z(g + e1 + 0.05, g, 6) == pytest.approx(residual_z(g + e1, g, 6), abs=1e-9)
+    # and with no variation beyond alpha there is no residual at all
+    assert math.isnan(residual_z(g + 0.02, g, 6))
+
+
+def test_beta_is_estimated_not_assumed_to_be_one() -> None:
+    # y = 2 g + e1: beta = 2 (cov(g, e1) = 0), residual is the same e1 - mean(e1)
+    g = np.array(U)
+    e1 = 0.03 * np.array(P1)
+    assert residual_z(2.0 * g + e1, g, 6) == pytest.approx(-Z_P1, abs=1e-9)
 
 
 def test_residual_z_matches_an_independent_regression() -> None:
@@ -86,16 +108,19 @@ def test_residual_z_matches_an_independent_regression() -> None:
     g = rng.normal(0.0, 0.01, 60)
     y = 1.7 * g + rng.normal(0.0, 0.005, 60) + 0.001
     design = np.column_stack([np.ones(60), g])
-    beta = float(np.linalg.lstsq(design, y, rcond=None)[0][1])  # [alpha, beta]
-    cumulative = np.cumsum(y - beta * g)  # alpha is not part of the residual
+    coef = np.linalg.lstsq(design, y, rcond=None)[0]  # [alpha, beta]
+    residual = y - design @ coef
+    cumulative = np.cumsum(residual)
     want = (cumulative[-1] - cumulative.mean()) / cumulative.std(ddof=1)
+    assert abs(cumulative[-1]) < 1e-12  # OLS residuals sum to zero
     assert residual_z(y, g, 60) == pytest.approx(want, rel=1e-9)
-    assert beta == pytest.approx(1.7, abs=0.4)  # the data really have a non-unit beta
+    assert coef[1] == pytest.approx(1.7, abs=0.4)  # the data really have a non-unit beta
 
 
 def test_residual_z_needs_observations_variation_and_the_last_session() -> None:
     g = np.array(U)
-    y = g - 0.02
+    y = g + 0.03 * np.array(P1)
+    assert math.isfinite(residual_z(y, g, 6))
     assert math.isnan(residual_z(np.append(y[:-1], NAN), g, 6))  # not observed on asof
     thin = y.copy()
     thin[:2] = NAN  # 4 of 6 observed = 67 % < 80 %
@@ -105,41 +130,52 @@ def test_residual_z_needs_observations_variation_and_the_last_session() -> None:
 
 
 def test_buys_the_n_most_negative_below_minus_entry_z() -> None:
-    frame = const_frame()
+    frame = shaped_frame()
     asof = asof_of(frame)
-    # A and B tie at -1.3363 < -1.0: both qualify; C, D, E are positive
-    assert make(6, 1.0, 2).target_weights(frame, asof).to_dict() == {"A": 0.5, "B": 0.5}
-    # n = 3: only two qualifiers -> 1/3 each, the remaining 1/3 stays in cash
+    # z: A -1.4142, E -1.4142 (tie), C -0.7071, D +0.7071, B +1.4142, F +1.4142
+    # entry_z 1.0: A and E qualify (-1.4142 < -1); C (-0.7071) does not
+    assert make(6, 1.0, 2).target_weights(frame, asof).to_dict() == {"A": 0.5, "E": 0.5}
+    # n = 3 with two qualifiers: 1/3 each, the remaining 1/3 stays in cash
     three = make(6, 1.0, 3).target_weights(frame, asof)
-    assert three.to_dict() == {"A": pytest.approx(1 / 3), "B": pytest.approx(1 / 3)}
+    assert three.to_dict() == {"A": pytest.approx(1 / 3), "E": pytest.approx(1 / 3)}
     assert three.sum() == pytest.approx(2 / 3)
-    # tie-break by ticker symbol: n = 1 takes A
+    # entry_z 0.5: A, E, C qualify; the 2 most negative are the tied A and E, not C
+    assert sorted(make(6, 0.5, 2).target_weights(frame, asof).index) == ["A", "E"]
+    # 3 names: C joins at 1/3
+    assert sorted(make(6, 0.5, 3).target_weights(frame, asof).index) == ["A", "C", "E"]
+    # tie-break by ticker symbol: n = 1 takes A (not E), whatever the row order
     assert make(6, 1.0, 1).target_weights(frame, asof).to_dict() == {"A": 1.0}
     reversed_rows = frame.iloc[::-1].reset_index(drop=True)
     assert make(6, 1.0, 1).target_weights(reversed_rows, asof).to_dict() == {"A": 1.0}
 
 
 def test_nothing_below_the_threshold_means_all_cash() -> None:
-    frame = const_frame()
-    # |z| = 1.3363 is not below -1.5
+    frame = shaped_frame()
+    # |z| = 1.4142 is not below -1.5; exactly at the threshold is not enough either (strict)
     assert make(6, 1.5, 2).target_weights(frame, asof_of(frame)).empty
-    # exactly at the threshold is not enough either (strict)
-    assert make(6, Z_CONST, 2).target_weights(frame, asof_of(frame)).empty
+    assert make(6, Z_P1, 2).target_weights(frame, asof_of(frame)).empty
 
 
 def test_a_thin_or_unobserved_ticker_is_not_eligible() -> None:
-    returns = {t: [u + e for u in U] for t, e in E_CONST.items()}
-    returns["A"] = [NAN, NAN, *returns["A"][2:]]  # 67 % observed: skipped, B wins
+    returns = {
+        t: [u + sign * 0.03 * p for u, p in zip(U, shape, strict=True)]
+        for t, (shape, sign) in SHAPES.items()
+    }
+    returns["A"] = [NAN, NAN, *returns["A"][2:]]  # 67 % observed: skipped
     frame = feature_frame(returns)
-    assert make(6, 1.0, 1).target_weights(frame, asof_of(frame)).to_dict() == {"B": 1.0}
-    gone = const_frame()
+    thin = make(6, 0.0001, 6).target_weights(frame, asof_of(frame))
+    assert "A" not in thin.index
+    assert not thin.empty
+    gone = shaped_frame()
     last = gone["date"] == gone["date"].max()
     gone = gone[~(last & (gone["ticker"] == "A"))]  # A has no row on asof
-    assert make(6, 1.0, 1).target_weights(gone, asof_of(gone)).to_dict() == {"B": 1.0}
+    no_row = make(6, 0.0001, 6).target_weights(gone, asof_of(gone))
+    assert "A" not in no_row.index
+    assert not no_row.empty
 
 
 def test_insufficient_history_is_all_cash() -> None:
-    frame = const_frame()
+    frame = shaped_frame()
     assert not make(6, 1.0, 2).target_weights(frame, asof_of(frame)).empty
     assert make(7, 1.0, 2).target_weights(frame, asof_of(frame)).empty  # 6 sessions < window 7
     assert make(6).target_weights(frame.iloc[0:0], pd.Timestamp("2026-03-10")).empty
@@ -173,6 +209,7 @@ def test_bad_params_are_rejected(params: dict[str, Any]) -> None:
 def test_lookback_sessions_is_the_window() -> None:
     assert make(60).lookback_sessions == 60
     assert make(6).lookback_sessions == 6
+    assert S05ResidualReversion.lookback_sessions == 60  # the class carries the frozen window
 
 
 def test_registered_identity_and_docstring() -> None:

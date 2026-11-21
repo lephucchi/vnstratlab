@@ -171,6 +171,7 @@ class S04BankPairs(BaseStrategy):
     """Long the laggard of the most correlated stretched pairs. See the module docstring."""
 
     id = "S04_bank_pairs"
+    lookback_sessions = 250  # the frozen param set; an instance carries its own form
 
     def __init__(self, params: Mapping[str, Any], horizons: Sequence[Horizon]) -> None:
         super().__init__(params, horizons)

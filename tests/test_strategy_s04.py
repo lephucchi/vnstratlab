@@ -185,6 +185,10 @@ def test_exit_after_max_hold_sessions() -> None:
     assert open_side(z, 2.0, 5) == 1
     assert open_side(z, 2.0, 4) == 0
     assert open_side(z, 2.0, 1) == 0
+    # pinned behaviour: every session with |z| > entry_z is an entry session, so a spread that
+    # STAYS beyond entry_z keeps the pair open for as long as it stays there (max_hold only
+    # binds once z has decayed below entry_z without crossing 0)
+    assert open_side(z_of(*[2.5] * 12), 2.0, 3) == 1
 
 
 def test_entry_on_the_asof_session_counts() -> None:
@@ -296,6 +300,7 @@ def test_lookback_sessions_is_form_and_defaults_to_one() -> None:
     assert make(250).lookback_sessions == 250
     assert make(40).lookback_sessions == 40
     assert BaseStrategy.lookback_sessions == 1
+    assert S04BankPairs.lookback_sessions == 250  # the class carries the frozen form
 
 
 def test_registered_identity_and_docstring() -> None:
