@@ -80,6 +80,8 @@ FEATURE_GROUPS: dict[str, tuple[str, ...]] = {
     "volatility": ("atr_14", "std_20d", "std_60d"),
     "volume_liquidity": ("vol_vs_avg20", "value_traded_20d"),
     "market_context": ("group_ew_vs_ma50", "group_breadth_ma50", "group_ret_12m"),
+    # features-v3 (S04, S05): the daily return series the history strategies rebuild windows from
+    "returns": ("ret_1d",),
 }
 FEATURE_COLUMNS: tuple[str, ...] = tuple(c for cols in FEATURE_GROUPS.values() for c in cols)
 
@@ -182,6 +184,8 @@ def price_features(
 
     out["atr_14"] = atr
     daily = c / c.shift(1) - 1.0
+    # adjusted close / previous good-session adjusted close - 1; NaN on the first good session
+    put("ret_1d", daily)
     put("std_20d", rolling_std(daily, STD_SHORT))
     put("std_60d", rolling_std(daily, STD_LONG))
 

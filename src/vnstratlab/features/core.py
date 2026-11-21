@@ -40,8 +40,12 @@ Cross-section (the tradable universe on a date)
   adjusted close is above its own 50-session average.
 
 * ``high_20d_break`` compares the close with the highest prior HIGH; ``close_20d_break`` (added in
-  features-v2 for S02) compares the adjusted close with the highest adjusted CLOSE of the 20
+  features-v3 for S02) compares the adjusted close with the highest adjusted CLOSE of the 20
   good sessions before ``t``. Both are 1.0 / 0.0, NaN until 20 prior sessions exist.
+
+* ``ret_1d`` (features-v3, group "returns", used by S04 and S05 which rebuild return windows from
+  it): adjusted close / previous GOOD-session adjusted close - 1, NaN on the first good session.
+  After a missing session it spans the gap (one return over the gap); nothing is filled.
 
 Warm-up: a feature is NaN until its window is full; never back-filled.
 
@@ -74,7 +78,7 @@ from vnstratlab.features.groups import (
 )
 from vnstratlab.risk.atr import ATR_WINDOW, atr
 
-FEATURES_CODE_VERSION = "features-v2"
+FEATURES_CODE_VERSION = "features-v3"
 OUTPUT_COLUMNS = ("ticker", "date", *FEATURE_COLUMNS, "feature_version")
 _STOCK_TYPES = ("stock", "bonus")
 
@@ -84,7 +88,7 @@ class FeatureError(ValueError):
 
 
 def feature_version(adjusted: pd.DataFrame, universe: Collection[str]) -> str:
-    """``features-v2:<hash>`` of the code version, windows and the input ``adj_version`` pairs."""
+    """``features-v3:<hash>`` of the code version, windows and the input ``adj_version`` pairs."""
     wanted = set(universe)
     frame = adjusted[adjusted["ticker"].isin(wanted)]
     pairs = sorted(

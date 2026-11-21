@@ -103,6 +103,14 @@ strategies:                    # filled by strategy cards P1-T14..P1-T19
     params:
       - {rsi_len: 2, rsi_max: 10, ma_len: 50, max_n: 3}
       - {rsi_len: 14, rsi_max: 30, ma_len: 50, max_n: 3}
+  S04_bank_pairs:              # P1-T16: Gatev, Goetzmann & Rouwenhorst (2006); long-only
+    horizons: [short]
+    params:
+      - {form: 250, k: 5, entry_z: 2.0, max_hold: 10}
+  S05_residual_reversion:      # P1-T16: Avellaneda & Lee (2010)
+    horizons: [short]
+    params:
+      - {window: 60, entry_z: 1.5, n: 2}
 
 news:
   collect_raw: true            # Phase 1: collect only

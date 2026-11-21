@@ -172,6 +172,8 @@ def test_packaged_config_lists_the_builtin_strategies(engine_cfg: AppConfig) -> 
         "S01_weekly_reversal",
         "S02_breakout_volume",
         "S03_oversold_uptrend",
+        "S04_bank_pairs",
+        "S05_residual_reversion",
         "S17_equal_weight",
     }
     assert {s.id for s in load_strategies(engine_cfg)} == set(engine_cfg.strategies)
@@ -278,7 +280,8 @@ def test_packaged_registry_has_no_test_strategy() -> None:
         "from vnstratlab.strategies.registry import registered_ids\n"
         "ids = registered_ids()\n"
         "assert ids == ['S00_composite', 'S01_weekly_reversal', 'S02_breakout_volume', "
-        "'S03_oversold_uptrend', 'S17_equal_weight'], ids\n"
+        "'S03_oversold_uptrend', 'S04_bank_pairs', 'S05_residual_reversion', "
+        "'S17_equal_weight'], ids\n"
     )
     result = subprocess.run(  # noqa: S603
         [sys.executable, "-c", code],

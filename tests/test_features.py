@@ -23,6 +23,7 @@ from vnstratlab.features import (
     feature_version,
 )
 from vnstratlab.features.build import asof_view, load_features
+from vnstratlab.features.core import FEATURES_CODE_VERSION
 from vnstratlab.features.groups import wilder_rsi
 from vnstratlab.risk.atr import atr
 
@@ -184,6 +185,32 @@ def test_close_20d_break_skips_missing_sessions() -> None:
     assert len(out) == 21  # the bad row has no output row
     # last row: 20 prior good sessions are rows 0..19 (500 is missing) -> 101 > 100 -> 1.0
     assert out["close_20d_break"].iloc[-1] == 1.0
+
+
+def test_hand_ret_1d_is_close_over_previous_good_close_minus_one() -> None:
+    # closes 100, 110, 99, 99, 121: ret_1d = NaN, 110/100-1 = 0.1, 99/110-1 = -0.1, 0.0,
+    # 121/99-1 = 0.2222...; the first good session has no previous close -> NaN
+    out = compute_features(*synthetic_frames("R", [100.0, 110.0, 99.0, 99.0, 121.0]), ["R"])
+    got = out["ret_1d"].tolist()
+    assert math.isnan(got[0])
+    assert got[1:] == pytest.approx([0.1, -0.1, 0.0, 121 / 99 - 1])
+    assert "ret_1d" in FEATURE_COLUMNS
+    assert "ret_1d" in FEATURE_GROUPS["returns"]
+
+
+def test_ret_1d_spans_a_missing_session_without_filling() -> None:
+    # session 2 is signal_ok = false: it has no row and the next return is 3 vs 1 sessions back:
+    # closes 100, 105, (999 missing), 126 -> ret_1d of the last row = 126 / 105 - 1 = 0.2
+    ok = [True, True, False, True]
+    out = compute_features(
+        *synthetic_frames("R", [100.0, 105.0, 999.0, 126.0], signal_ok=ok), ["R"]
+    )
+    assert len(out) == 3
+    assert out["ret_1d"].iloc[-1] == pytest.approx(0.2)
+
+
+def test_features_code_version_is_v3() -> None:
+    assert FEATURES_CODE_VERSION == "features-v3"
 
 
 def test_hand_rs_20d_rank_and_group_median(synthetic_hand: pd.DataFrame) -> None:
@@ -430,7 +457,7 @@ def test_feature_version_is_stable_and_follows_adj_version() -> None:
     # one value for the whole build, different for every row (cross-sectional features)
     assert second["feature_version"].nunique() == 1
     assert second["feature_version"].iloc[0] != first["feature_version"].iloc[0]
-    assert first["feature_version"].iloc[0].startswith("features-v2:")
+    assert first["feature_version"].iloc[0].startswith("features-v3:")
 
 
 def test_recomputing_a_past_date_gives_identical_values(synthetic_hand: pd.DataFrame) -> None:
