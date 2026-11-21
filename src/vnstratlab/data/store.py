@@ -86,6 +86,8 @@ _SCHEMA = (
         adj_open DOUBLE, adj_high DOUBLE, adj_low DOUBLE, adj_close DOUBLE, adj_factor DOUBLE,
         adj_version VARCHAR NOT NULL, dq_error BOOLEAN NOT NULL,
         PRIMARY KEY (ticker, date, source))""",
+    # migration for stores created before P1-T06c: signals treat signal_ok = false as missing
+    "ALTER TABLE prices_adjusted ADD COLUMN IF NOT EXISTS signal_ok BOOLEAN DEFAULT TRUE",
     """CREATE TABLE IF NOT EXISTS prices_exec (
         ticker VARCHAR NOT NULL, date DATE NOT NULL, source VARCHAR NOT NULL,
         open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT,
@@ -95,6 +97,8 @@ _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS exec_exclusions (
         source VARCHAR NOT NULL, ticker VARCHAR NOT NULL, kind VARCHAR NOT NULL,
         date DATE, detail VARCHAR NOT NULL)""",
+    # migration for stores created before P1-T06c: sessions covered by one exclusion row
+    'ALTER TABLE exec_exclusions ADD COLUMN IF NOT EXISTS "rows" INTEGER DEFAULT 1',
     # "check" is a reserved word in SQL; it is always quoted. ticker is '' for dataset-wide checks.
     """CREATE TABLE IF NOT EXISTS dq_results (
         run_id VARCHAR NOT NULL, "check" VARCHAR NOT NULL, ticker VARCHAR NOT NULL,

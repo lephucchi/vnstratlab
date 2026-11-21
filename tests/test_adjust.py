@@ -782,3 +782,156 @@ def test_rebuild_report_counts_each_kind_once_and_is_idempotent(tmp_path: Path) 
     assert (first.outlier_rows_omitted, first.step_rows_excluded, first.suspect_events) == (1, 4, 1)
     assert first.exec_rows == 7 + 4  # AAA 8 - 1, BBB 8 - 4
     assert [e.kind for e in first.exclusions] == ["scale_outlier_row", "scale_step_before"]
+
+
+# ------------------------------------------------------------------ P1-T06c: review fixes
+
+D10 = make_days(10)
+EVENT10 = events(("AAA", D10[3], "stock", 0.10))
+
+
+def test_probe_a_persistent_step_followed_by_a_normal_move_is_not_an_outlier(
+    tmp_path: Path,
+) -> None:
+    # closes 50,000 x3, 55,000 on the ex-date (10 % event), then 53,900 x6.
+    # expected open = 50,000; D3 55,000 is 10 % off (> 8 %). D4 53,900 is 7.8 % off the old level
+    # (inside 8 %) but nearer the stepped level 55,000 (1,100) than 50,000 (3,900) and continues
+    # D3 (-2 %): not back in scale -> persistent step, the event is suspect.
+    prices = bars("AAA", [50_000.0] * 3 + [55_000.0] + [53_900.0] * 6, "split_adjusted", days=D10)
+    result = build_series(prices, EVENT10, TICKS)
+    report = result.report
+    assert report.outlier_rows_omitted == 0
+    assert report.excluded_tickers == ()
+    assert report.suspect_events == 1
+    assert [(e.kind, e.date, e.rows) for e in report.exclusions] == [
+        ("scale_step_before", D10[3], 4)
+    ]
+    out = result.execution
+    assert out["date"].tolist() == D10[4:]
+    assert out["close"].tolist() == [53_900.0] * 6  # no clipped close
+    assert out["ref_price"].tolist()[0] == 55_000.0  # close of the ex-date session
+    # signals ignore the suspect event: no 1 / 1.1 scaling of the earlier rows
+    assert result.adjusted["adj_factor"].tolist() == [1.0] * 10
+    with _store(tmp_path) as store:
+        _fill(store, prices, EVENT10)
+        rebuild(store, "yahoo", TICKS)
+        loaded = load_execution_frame(store, ["AAA"], D10[0], D10[9])
+    assert loaded.actions.empty  # the suspect event is not applied to holdings
+
+
+def test_outlier_return_must_break_continuity_and_be_nearer_the_old_level() -> None:
+    # genuine one-row outlier with a 10 % event: 55,000 then back at 50,000 (-9.1 %: breaks
+    # continuity with the outlier close, nearer the old level) -> still an outlier row
+    prices = bars("AAA", [50_000.0] * 3 + [55_000.0] + [50_000.0] * 6, "split_adjusted", days=D10)
+    result = build_series(prices, EVENT10, TICKS)
+    assert [e.kind for e in result.report.exclusions] == ["scale_outlier_row"]
+    assert result.report.excluded_tickers == ()
+
+
+def _alternating(count: int) -> list[float]:
+    """50,000 / 54,750 alternating: +9.5 % and -8.68 % moves, both outside the 8 % tolerance."""
+    return [50_000.0 if i % 2 == 0 else 54_750.0 for i in range(count)]
+
+
+def test_probe_e_cut_is_the_last_out_of_band_session_followed_by_60_calm() -> None:
+    # 100 wild (row 0 has no previous close, rows 1..99 are out of band), 60 calm, 50 wild
+    # (row 160 jumps 54,750 -> 50,000; rows 160..209 are out of band), 80 calm. The last
+    # out-of-band row is 209, followed by 80 in-band sessions -> rows 0..209 = 210 excluded
+    # (the old rule cut at row 99: 100).
+    days = make_days(290)
+    closes = _alternating(100) + [54_750.0] * 60 + _alternating(50) + [54_750.0] * 80
+    assert len(closes) == 290
+    result = build_series(bars("AAA", closes, "split_adjusted", days=days), events(), TICKS)
+    report = result.report
+    assert report.non_hose_rows_excluded == 210
+    (item,) = report.exclusions
+    assert (item.kind, item.date, item.rows) == ("non_hose_history", days[209], 210)
+    assert result.execution["date"].tolist() == days[210:]
+    # signals mark exactly those rows unusable
+    assert result.adjusted["signal_ok"].tolist() == [False] * 210 + [True] * 80
+
+
+def test_probe_f_cash_ex_date_is_exempt_from_the_band_test() -> None:
+    days = make_days(120)
+    closes = [30_000.0] * 5 + [27_000.0] * 115  # -10 % at row 5, the 3,000 dividend ex-date
+    prices = bars("AAA", closes, "split_adjusted", days=days)
+    with_cash = build_series(prices, events(("AAA", days[5], "cash", 3_000.0)), TICKS)
+    assert with_cash.report.exclusions == ()
+    assert len(with_cash.execution) == 120
+    assert with_cash.adjusted["signal_ok"].all()
+    # without the dividend the same step is out of band: rows 0..5 are excluded
+    without = build_series(prices, events(), TICKS)
+    assert without.report.non_hose_rows_excluded == 6
+
+
+def test_cash_dividend_is_split_adjusted_end_to_end_through_the_loader(tmp_path: Path) -> None:
+    acts = events(("AAA", D[2], "cash", 500.0), ("AAA", D[3], "stock", 0.10))
+    prices = bars("AAA", [50_000.0] * 5, "split_adjusted")
+    with _store(tmp_path) as store:
+        _fill(store, prices, acts)
+        report = rebuild(store, "yahoo", TICKS)
+        loaded = load_execution_frame(store, ["AAA"], D[0], D[4])
+    assert report.suspect_events == 0
+    by_type = dict(zip(loaded.actions["type"], loaded.actions["ratio_or_amount"], strict=True))
+    assert by_type["cash"] == pytest.approx(550.0)  # 500 x F(D2) = 500 x 1.1
+    assert by_type["stock"] == pytest.approx(0.10)
+
+
+def test_exclusion_rows_and_signal_ok_are_stored_and_old_stores_migrate(tmp_path: Path) -> None:
+    prices = bars("AAA", [50_000.0] * 3 + [57_500.0] * 5, "split_adjusted", days=D8)
+    with _store(tmp_path) as store:
+        _fill(store, prices, EVENT15)
+        rebuild(store, "yahoo", TICKS)
+        exclusions = store.read_exclusions("yahoo")
+        adjusted = store.read_adjusted("yahoo")
+    assert exclusions[["kind", "rows"]].values.tolist() == [["scale_step_before", 4]]
+    assert adjusted["signal_ok"].tolist() == [False] * 4 + [True] * 4
+    # a store created before P1-T06c has neither column; opening it adds them, rebuild fills them
+    path = tmp_path / "old.duckdb"
+    con = duckdb.connect(str(path))
+    con.execute("CREATE TABLE store_meta (key VARCHAR PRIMARY KEY, value VARCHAR)")
+    con.execute("INSERT INTO store_meta VALUES ('kind', 'real')")
+    con.execute(
+        "CREATE TABLE prices_adjusted (ticker VARCHAR NOT NULL, date DATE NOT NULL, "
+        "source VARCHAR NOT NULL, price_basis VARCHAR NOT NULL, adj_open DOUBLE, adj_high DOUBLE, "
+        "adj_low DOUBLE, adj_close DOUBLE, adj_factor DOUBLE, adj_version VARCHAR NOT NULL, "
+        "dq_error BOOLEAN NOT NULL, PRIMARY KEY (ticker, date, source))"
+    )
+    con.execute(
+        "CREATE TABLE exec_exclusions (source VARCHAR NOT NULL, ticker VARCHAR NOT NULL, "
+        "kind VARCHAR NOT NULL, date DATE, detail VARCHAR NOT NULL)"
+    )
+    con.close()
+    with MarketStore(path, "real") as store:
+        for table, column in (("prices_adjusted", "signal_ok"), ("exec_exclusions", "rows")):
+            cols = {r[0] for r in store.connection.execute(f"DESCRIBE {table}").fetchall()}
+            assert column in cols
+        _fill(store, prices, EVENT15)
+        rebuild(store, "yahoo", TICKS)
+        assert store.read_adjusted("yahoo")["signal_ok"].tolist() == [False] * 4 + [True] * 4
+        assert store.read_exclusions("yahoo")["rows"].tolist() == [4]
+
+
+def test_signal_ok_is_false_for_outlier_dq_and_step_rows_and_true_otherwise() -> None:
+    outlier = bars("AAA", [50_000.0] * 3 + [57_500.0] + [50_000.0] * 4, "split_adjusted", days=D8)
+    result = build_series(outlier, EVENT15, TICKS, bad_rows={("AAA", D8[6])})
+    expected = [True] * 3 + [False] + [True] * 2 + [False, True]
+    assert result.adjusted["signal_ok"].tolist() == expected
+    assert result.adjusted["dq_error"].tolist() == [False] * 6 + [True, False]
+    fine = build_series(bars("AAA", [50_000.0] * 8, "raw", days=D8), events(), TICKS)
+    assert fine.adjusted["signal_ok"].all()
+    assert fine.adjusted["signal_ok"].dtype == bool
+
+
+def test_flagged_bad_row_does_not_cut_hose_history() -> None:
+    days = make_days(300)
+    closes = [50_000.0] * 300
+    closes[200] = 60_000.0
+    r = build_series(
+        bars("AAA", closes, "split_adjusted", days=days),
+        events(),
+        TICKS,
+        bad_rows={("AAA", days[200])},
+    )
+    assert [e.kind for e in r.report.exclusions] == ["dq_error"]
+    assert len(r.execution) == 299

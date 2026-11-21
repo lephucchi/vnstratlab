@@ -66,9 +66,9 @@ Plan §5.5 tables, with columns added by ADR-007:
 | `corporate_actions` | (ticker, ex_date, type, source) | `source`, `run_id` |
 | `ingest_runs` | run_id | source, started_at, finished_at, tickers, rows_in, rows_written, rows_changed, rows_dropped, status (`ok`, `ok_with_warnings`, `partial`, `failed_dq`, `dq_crashed`, `error`), raw_path |
 | `dq_results` | (run_id, check, ticker, date) | severity (`error` / `warning`), detail (P1-T38) |
-| `prices_adjusted` | (ticker, date, source) | `adj_open` … `adj_close`, `adj_factor`, `adj_version`, `dq_error` (P1-T06) |
+| `prices_adjusted` | (ticker, date, source) | `adj_open` … `adj_close`, `adj_factor`, `adj_version`, `dq_error` (P1-T06), `signal_ok` (P1-T06c) |
 | `prices_exec` | (ticker, date, source) | execution series: `price_basis` `exec_reconstructed` (from `split_adjusted` rows) or the stored basis, `stock_factor` (P1-T06) |
-| `exec_exclusions` | (source, ticker, kind, date) | what was left out of `prices_exec`: `scale_discontinuity`, `precondition_unverifiable`, `dq_error`, `no_reference` (P1-T06), `scale_outlier_row`, `scale_step_before`, `non_hose_history` (P1-T06b) |
+| `exec_exclusions` | (source, ticker, kind, date) | what was left out of `prices_exec`: `scale_discontinuity`, `precondition_unverifiable`, `dq_error`, `no_reference` (P1-T06), `scale_outlier_row`, `scale_step_before`, `non_hose_history` (P1-T06b); column `rows` = sessions covered by the row (P1-T06c) |
 
 Rules: raw values are never overwritten silently; an upsert that changes a stored value
 increments `revision` and is counted in `ingest_runs`. Synthetic rows are labelled
@@ -118,7 +118,10 @@ computation is `vnstratlab.data.adjust.build_series`, the engine input is
   rows by `1 / (1 + ratio)`; `split_adjusted` rows are never scaled by a split again; a cash
   dividend `D` scales every earlier row by `1 - D / P` (`P` = close of the session before the
   ex-date, in its raw share basis). `adj_version` hashes the method and the ticker's events.
-  `dq_error` marks rows with an error-level finding (kept, flagged).
+  `dq_error` marks rows with an error-level finding (kept, flagged). `signal_ok` is false for rows
+  counted under `dq_error`, `scale_outlier_row`, `scale_step_before` or `non_hose_history`; features
+  (P1-T10) treat a false row as missing. Existing stores get both new columns on the next open /
+  rebuild.
 - **Execution**: engine.md section 2 formulas. `raw` / `synthetic` rows are copied unchanged.
 - **Left out, counted once, never repaired**: sessions with an error-level per-row finding
   (`dq_error`; the engine reads a missing row as a suspension), rows without a reference price
@@ -135,8 +138,9 @@ computation is `vnstratlab.data.adjust.build_series`, the engine input is
   excluded (`scale_step_before`, one row per event with the count, dated the ex-date), later rows
   stay, and `load_execution_frame` does not return the event as an action. Otherwise the whole
   ticker is excluded as before. *Pre-HOSE history* (`non_hose_history`, GAP-04): on a
-  `split_adjusted` ticker the rows before the last session outside the HOSE band that precedes the
-  first run of `MIN_HOSE_RUN = 60` in-band sessions are excluded (one row with the count). Each row
+  `split_adjusted` ticker rows up to and including the last session outside the HOSE band that is
+  followed by `MIN_HOSE_RUN = 60` in-band sessions are excluded (one row with the count; a cash
+  ex-date session is exempt from the band test). Each row
   is counted under the first of `dq_error`, `non_hose_history`, `scale_outlier_row`,
   `scale_step_before`; the command prints one count per kind.
 - **Bad rows are recomputed, not read from a run**: rebuild runs the error-level per-row checks
