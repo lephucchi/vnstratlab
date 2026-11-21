@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 SURVIVORSHIP_WARNING = (
     "survivorship_warning: the universe is today's membership plus known exits, not the "
-    "membership history (GAP-05, P1-T05)"
+    "membership history (GAP-13, P1-T05)"
 )
 
 
