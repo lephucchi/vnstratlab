@@ -59,7 +59,7 @@ Interim price source: **yahoo**. Each gap is a known shortfall that is worked ar
 - Status: open · severity: medium · since 2026-11-18
 - Missing: No HNX/UPCoM symbols. ACB, LPB, VIB and SSB start in 2020-2021 (their HOSE listing), so a 2015 backfill gives a ragged panel.
 - Affects: prices_daily, universe, P1-T10, P1-T20, lab statistics
-- Workaround now: A ticker is tradable only from its first stored session; lab reports state the effective start per ticker and the number of tickers per period. Rows before the last session outside the HOSE band that precedes 60 in-band sessions are another exchange's history under the same symbol and are excluded from execution (non_hose_history, P1-T06b).
+- Workaround now: A ticker is tradable only from its first stored session; lab reports state the effective start per ticker and the number of tickers per period. Rows up to and including the last session outside the HOSE band that is followed by 60 in-band sessions are another exchange's history under the same symbol and are excluded from execution (non_hose_history, P1-T06b).
 - Closed by: CafeF files (cover HNX/UPCoM history) or another source — new card.
 
 ## GAP-05

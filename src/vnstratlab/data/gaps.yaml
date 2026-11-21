@@ -71,9 +71,9 @@ gaps:
     affects: [prices_daily, universe, P1-T10, P1-T20, lab statistics]
     workaround: >-
       A ticker is tradable only from its first stored session; lab reports state the effective
-      start per ticker and the number of tickers per period. Rows before the last session outside
-      the HOSE band that precedes 60 in-band sessions are another exchange's history under the
-      same symbol and are excluded from execution (non_hose_history, P1-T06b).
+      start per ticker and the number of tickers per period. Rows up to and including the last session
+      outside the HOSE band that is followed by 60 in-band sessions are another exchange's history
+      under the same symbol and are excluded from execution (non_hose_history, P1-T06b).
     close_by: CafeF files (cover HNX/UPCoM history) or another source — new card.
     since: 2026-11-18
 
