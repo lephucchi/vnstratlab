@@ -178,17 +178,28 @@ def test_exit_on_zero_cross() -> None:
 
 
 def test_exit_after_max_hold_sessions() -> None:
-    # z = 2.5, 1.5, 1.0, 0.8, 0.6 (index 4 is asof): the entry (index 0) is 4 sessions old.
-    # max_hold 5: the window covers indices 0..4 (4 < 5 sessions elapsed) -> still open
-    # max_hold 4: window indices 1..4 holds no |z| > 2 -> closed
+    # onset at index 0 is session 1: sessions 1..max_hold are held, the next one is closed
+    # z = 2.5, 1.5, 1.0, 0.8, 0.6 (index 4 is asof = session 5)
     z = z_of(2.5, 1.5, 1.0, 0.8, 0.6)
-    assert open_side(z, 2.0, 5) == 1
-    assert open_side(z, 2.0, 4) == 0
+    assert open_side(z, 2.0, 5) == 1  # session 5 of 5 -> held
+    assert open_side(z, 2.0, 4) == 0  # session 5 > 4 -> closed
     assert open_side(z, 2.0, 1) == 0
-    # pinned behaviour: every session with |z| > entry_z is an entry session, so a spread that
-    # STAYS beyond entry_z keeps the pair open for as long as it stays there (max_hold only
-    # binds once z has decayed below entry_z without crossing 0)
-    assert open_side(z_of(*[2.5] * 12), 2.0, 3) == 1
+    assert open_side(z_of(2.5, 2.4, 2.3), 2.0, 3) == 1  # session 3 of 3
+    assert open_side(z_of(2.5, 2.4, 2.3, 2.2), 2.0, 3) == 0  # session 4: time stop
+    # 12 sessions of z = 2.5, max_hold 3: closed after 3 and NOT reopened (no new onset)
+    assert open_side(z_of(*[2.5] * 12), 2.0, 3) == 0
+    assert open_side(z_of(*[2.5] * 3), 2.0, 3) == 1
+
+
+def test_reentry_needs_a_new_onset_after_z_returns_inside_the_band() -> None:
+    # time stop at index 3 (max_hold 3), z back to 1.0 (inside |z| <= 2) at 4, onset again at 5
+    z = z_of(2.5, 2.5, 2.5, 2.5, 1.0, 2.5)
+    assert open_side(z, 2.0, 3) == 1
+    assert open_side(z[:5], 2.0, 3) == 0  # still inside the band: no position
+    # the side is fixed at the onset; a later onset while open does not restart the clock
+    assert open_side(z_of(2.5, 1.0, 2.5, 2.5), 2.0, 3) == 0  # clock from index 0: stops at 3
+    # a NaN session counts as "no z": the next beyond-band session is an onset
+    assert open_side(z_of(2.5, 2.5, 2.5, 2.5, NAN, 2.5), 2.0, 3) == 1
 
 
 def test_entry_on_the_asof_session_counts() -> None:

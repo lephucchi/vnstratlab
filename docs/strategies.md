@@ -105,8 +105,12 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
   observed only (no fill), z-scored with the window mean and sample std (ddof 1). The window is
   fixed at asof for every session in it (stateless; not lookahead, but an earlier session's z uses
   statistics that include later sessions of the window).
-- **Open at asof.** Some session among the last `max_hold` sessions (asof included) has
-  |z| > `entry_z`, and since then z has not changed sign or hit exactly 0. Buy the laggard
+- **Open at asof (onset-based clock).** The window is replayed from its start. An onset is a
+  session with |z| > `entry_z` whose previous session had |z| ≤ `entry_z` or no z (window start
+  counts as no z). A position opens at the onset (session 1; sessions 1..`max_hold` are held)
+  and closes when z crosses 0 (sign change or exactly 0) or after `max_hold` sessions. After a
+  time stop there is no re-entry until z returns to |z| ≤ `entry_z` and breaks out again. The
+  side is fixed at the onset. Buy the laggard
   (z > 0: A ahead, buy B; z < 0: buy A), 1/`k` per open pair; two open pairs on one laggard add
   up; total ≤ 1, the rest in cash.
 - **Params (frozen).** `{form: 250, k: 5, entry_z: 2.0, max_hold: 10}`; short horizon.

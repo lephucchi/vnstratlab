@@ -23,12 +23,15 @@ Rule as implemented
   session in it: the z of an earlier session uses statistics that include later sessions of the
   window. That is not lookahead (all inputs are <= ``asof``) but it differs from a rolling z that
   a live system would have seen on that earlier day; it is a stateless re-derivation.
-* Open at ``asof`` (stateless, derived from the window): some session ``e`` among the last
-  ``max_hold`` sessions (``asof`` included, so fewer than ``max_hold`` sessions have elapsed since
-  ``e``) has ``|z_e| > entry_z``, and no later session up to ``asof`` has z of the opposite sign
-  or exactly 0 (the zero cross). A session without a spread value neither enters nor crosses, and
-  ``asof`` itself must have one. A position that started before the window and has expired is
-  closed; a new entry inside the window opens it again.
+* Open at ``asof`` (stateless: the window is replayed from its start, onset-based clock). An
+  onset is a session with ``|z| > entry_z`` whose previous session had ``|z| <= entry_z`` or no
+  z (the window start counts as no z). A position opens at an onset; the onset session is
+  session 1, so sessions 1..``max_hold`` are held and it closes on the next one. It also closes
+  when z changes sign or is exactly 0 (the zero cross). After a time stop with ``|z|`` still
+  beyond ``entry_z`` there is NO re-entry until z has come back to ``|z| <= entry_z`` and
+  breaks out again (a new onset). The side is fixed at the onset; later onsets while open are
+  ignored. A session without a spread value neither crosses nor opens, and ``asof`` itself must
+  have one.
 * Long the laggard of the entry: ``z > 0`` means A outperformed B, so B is bought; ``z < 0``
   buys A. Each open pair holds ``1 / k``; two open pairs on the same laggard add up. The total is
   at most 1; fewer open pairs than ``k`` leave the rest in cash.
@@ -133,22 +136,30 @@ def spread_z(ret_a: FloatArray, ret_b: FloatArray) -> FloatArray:
 def open_side(z: FloatArray, entry_z: float, max_hold: int) -> int:
     """+1 if the pair is open with A ahead (buy B), -1 if open with B ahead (buy A), else 0.
 
-    Open: among the last ``max_hold`` sessions (the last element of ``z`` is ``asof``) some
-    session has ``|z| > entry_z`` and z has not changed sign nor hit exactly 0 since. NaN sessions
-    are skipped; the last session must have a value.
+    Replays the window (the last element of ``z`` is ``asof``). Onset: a session with
+    ``|z| > entry_z`` whose previous session had ``|z| <= entry_z`` or no z (the window start
+    counts as no z). A position opens at an onset (side fixed by the sign of z there; the onset
+    session is session 1) and closes when z changes sign or hits exactly 0, or on the session
+    after ``max_hold`` sessions (sessions 1..``max_hold`` are held). While open, later onsets
+    are ignored. After a time stop there is no re-entry until z has come back inside the band
+    and broken out again (a new onset). NaN sessions neither cross nor expire a sign; the last
+    session must have a value.
     """
     if not math.isfinite(float(z[-1])):
         return 0
-    start = max(0, len(z) - max_hold)
-    for entry in range(start, len(z)):
-        if not abs(z[entry]) > entry_z:  # NaN compares False
-            continue
-        sign = 1.0 if z[entry] > 0 else -1.0
-        after = z[entry + 1 :]
-        after = after[np.isfinite(after)]
-        if bool(np.all(after * sign > 0)):
-            return int(sign)
-    return 0
+    side = 0
+    onset = 0
+    for t, value in enumerate(z):
+        if side and math.isfinite(float(value)) and float(value) * side <= 0:
+            side = 0  # zero cross
+        elif side and t - onset >= max_hold:
+            side = 0  # time stop
+        previous = float(z[t - 1]) if t > 0 else math.nan
+        is_onset = abs(value) > entry_z and not abs(previous) > entry_z  # NaN compares False
+        if not side and is_onset:
+            side = 1 if value > 0 else -1
+            onset = t
+    return side
 
 
 def positive_float(name: str, value: Any) -> None:
