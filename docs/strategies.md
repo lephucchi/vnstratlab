@@ -1,6 +1,7 @@
 # Strategy catalogue
 
-> **Status: design.** No strategy is implemented yet (cards P1-T14 … P1-T19). Parameter sets
+> **Status: design.** Implemented so far: S00 and S17 (card P1-T14); the rest follow in cards
+> P1-T15 … P1-T19. Parameter sets
 > below are **proposals**; the owner freezes them in `defaults.yaml` when each card starts.
 > After that, a changed parameter set is a new trial (plan §6.4.3). Each strategy has at most
 > 3 parameter sets.
@@ -21,7 +22,7 @@ How strategies are run, combined and selected: [engine.md](engine.md). How to wr
 
 | ID | Name | Horizons | Data needed | Card | Status |
 |---|---|---|---|---|---|
-| S00 | Composite score | short | prices, volume, fundamentals | P1-T14 | Planned |
+| S00 | Composite score | short | prices, volume (4 blocks; valuation omitted, GAP-11) | P1-T14 | **Implemented** (v1, 4 blocks) |
 | S01 | Weekly reversal within group | short | prices | P1-T15 | Planned |
 | S02 | 20-day breakout with volume | short | prices, volume | P1-T15 | Planned |
 | S03 | Oversold in uptrend | short | prices | P1-T15 | Planned |
@@ -38,7 +39,7 @@ How strategies are run, combined and selected: [engine.md](engine.md). How to wr
 | S14 | Low volatility | medium | prices | P1-T19 | Planned |
 | S15 | Sector trend filter | medium | prices | P1-T19 | Planned |
 | S16 | LightGBM ranking (60-day) | medium | features | P1-T31 | **Stretch** |
-| S17 | Equal weight | all | membership | P1-T14 | Planned; **benchmark and selectable strategy** |
+| S17 | Equal weight | all | membership | P1-T14 | **Implemented**; **benchmark and selectable strategy** |
 | S18 | Hierarchical Risk Parity | long | returns | P1-T19 | Planned |
 
 Candidates per horizon, excluding stretch S07/S16: **short 8** (S00–S06, S17; 7 while S06 is
@@ -49,12 +50,23 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
 ## Short horizon (1 week, weekly decisions)
 
 ### S00 — Composite score (design doc "Layer 1")
-- **Rule.** Cross-sectional rank of five blocks: trend (close vs. MA20/MA50, 60-day return),
-  relative strength vs. group median, mean reversion (−RSI14 z-score), volume (vs. 20-day
-  average), valuation (P/B gap). Weighted sum → score. Buy the top `top_n` that also show a
-  trigger: breakout (close > 20-day high) **or** oversold-in-uptrend (RSI14 < 35 and close > MA50).
-- **Proposed params.** `{weights: equal, top_n: 3}`, `{weights: trend_heavy, top_n: 3}`.
-- **Basis.** Design doc. Risk: many moving parts → treat as one trial per weight set, no tuning.
+- **Status.** Implemented (P1-T14), `src/vnstratlab/strategies/builtin/s00_composite.py`, v1 with
+  **4 blocks**. The fifth block of the design, valuation (P/B gap), is omitted because
+  fundamentals are unavailable (GAP-11, P1-T07). A future 5-block version is a code change and
+  therefore a new trial (new `trial_id`), not an edit of v1. Owner decision 2026-11-21.
+- **Rule.** Each block is the mean of the cross-sectional percentile ranks of its components
+  (1.0 = best): trend (`close_vs_ma20`, `close_vs_ma50`, `ret_60d`), relative strength
+  (`rs_20d_vs_group_median`), mean reversion (negated cross-sectional z-score of `rsi_14`,
+  then ranked), volume (`vol_vs_avg20`). Weighted sum of the four block ranks → score. A NaN
+  component is skipped within its block; a ticker whose whole block is NaN is not eligible. Buy
+  the top `top_n` eligible tickers that also show a trigger: breakout (`high_20d_break`) **or**
+  oversold-in-uptrend (RSI14 < 35 and close > MA50; 35 is a frozen code constant). Weight
+  1/`top_n` each; fewer qualifiers leave the rest in cash. Ties are broken by ticker symbol.
+- **Params (frozen).** `{weights: equal, top_n: 3}` (0.25 per block) and
+  `{weights: trend_heavy, top_n: 3}` (trend 0.4; relative strength, mean reversion and volume
+  0.2 each). The weight numbers are constants in the module, so changing them changes the code
+  hash and creates new trials.
+- **Basis.** Design doc. Risk: many moving parts → one trial per weight set, no tuning.
 
 ### S01 — Weekly reversal within group
 - **Rule.** Last week's return minus the group median; buy the `n` biggest losers, equal weight.
@@ -163,7 +175,10 @@ economically grounded strategies and the lab is used mainly to **drop** broken o
 ## All horizons
 
 ### S17 — Equal weight
-- **Rule.** 1/N across current universe members. Executable version uses odd lots.
+- **Status.** Implemented (P1-T14), `s17_equal_weight.py`; no params, horizons short, medium, long
+  (3 trials).
+- **Rule.** 1/N across the tickers in the features on `asof` (universe by date: P1-T05).
+  Executable version uses odd lots.
 - **Role.** The benchmark every strategy must beat (gate 2) **and** a selectable strategy. When
   nothing passes the gates, the recommendation is `hold_benchmark`, i.e. S17.
 

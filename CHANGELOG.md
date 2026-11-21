@@ -6,6 +6,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Strategies S00 and S17 (P1-T14):** S00 composite score v1 with 4 blocks (trend, relative
+  strength, mean reversion, volume; the valuation block is omitted until fundamentals exist,
+  GAP-11) and two frozen weight sets (`equal`, `trend_heavy`, `top_n` 3), and S17 equal weight
+  (1/N, no params, short/medium/long). Both are in the packaged `strategies:` config, so
+  `vnstratlab lab register` now lists 5 trials. A user `config.yaml` merges with these entries;
+  set `enabled: false` to drop one.
+
 ### Fixed
 - **Risk follow-ups (P1-T12b):** `Simulator.add_actions` now updates the ex-date ATR factors and
   recomputes the affected tickers' ATR series, so a late stock action gives the same ATR state

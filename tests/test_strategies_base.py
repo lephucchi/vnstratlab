@@ -163,8 +163,12 @@ def test_strategy_instances_satisfy_the_protocol() -> None:
 
 
 def test_empty_config_loads_nothing(engine_cfg: AppConfig) -> None:
-    assert dict(engine_cfg.strategies) == {}  # the packaged default stays empty
-    assert load_strategies(engine_cfg) == []
+    assert load_strategies(cfg_with(engine_cfg, {})) == []
+
+
+def test_packaged_config_lists_the_builtin_strategies(engine_cfg: AppConfig) -> None:
+    assert set(engine_cfg.strategies) == {"S00_composite", "S17_equal_weight"}
+    assert {s.id for s in load_strategies(engine_cfg)} == set(engine_cfg.strategies)
 
 
 def test_load_strategies_one_instance_per_param_set(
@@ -266,7 +270,8 @@ def test_register_strategy_rules(local_strategies: None) -> None:
 def test_packaged_registry_has_no_test_strategy() -> None:
     code = (
         "from vnstratlab.strategies.registry import registered_ids\n"
-        "assert registered_ids() == [], registered_ids()\n"
+        "ids = registered_ids()\n"
+        "assert ids == ['S00_composite', 'S17_equal_weight'], ids\n"
     )
     result = subprocess.run(  # noqa: S603
         [sys.executable, "-c", code],

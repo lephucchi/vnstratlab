@@ -79,7 +79,16 @@ data:                          # market data pipeline (docs/data-pipeline.md)
     corporate_actions_per_ticker_per_year: 1.0
     suspension_probability: 0.002
 
-strategies: {}                 # filled by strategy cards P1-T14..P1-T19
+strategies:                    # filled by strategy cards P1-T14..P1-T19
+  S00_composite:               # P1-T14: 4 blocks (valuation omitted, GAP-11)
+    horizons: [short]
+    params:
+      - {weights: equal, top_n: 3}
+      - {weights: trend_heavy, top_n: 3}
+  S17_equal_weight:            # P1-T14: benchmark and selectable strategy
+    horizons: [short, medium, long]
+    params:
+      - {}
 
 news:
   collect_raw: true            # Phase 1: collect only
