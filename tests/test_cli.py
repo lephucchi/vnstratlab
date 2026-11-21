@@ -330,10 +330,16 @@ def local_strategies() -> Iterator[None]:
 DISABLE_PACKAGED = """strategies:
   S00_composite: {enabled: false, reason: "test isolates the local strategies"}
   S17_equal_weight: {enabled: false, reason: "test isolates the local strategies"}
+  S01_weekly_reversal: {enabled: false, reason: "test isolates the local strategies"}
+  S02_breakout_volume: {enabled: false, reason: "test isolates the local strategies"}
+  S03_oversold_uptrend: {enabled: false, reason: "test isolates the local strategies"}
 """
 STRATEGIES_YAML = """strategies:
   S00_composite: {enabled: false, reason: "test isolates the local strategies"}
   S17_equal_weight: {enabled: false, reason: "test isolates the local strategies"}
+  S01_weekly_reversal: {enabled: false, reason: "test isolates the local strategies"}
+  S02_breakout_volume: {enabled: false, reason: "test isolates the local strategies"}
+  S03_oversold_uptrend: {enabled: false, reason: "test isolates the local strategies"}
   T_equal: {horizons: [short, medium], params: [{top: 1}, {top: 2}]}
   T_other: {horizons: [long], params: [{top: 1}]}
   S06_foreign_flow: {enabled: false, reason: "pending P1-T04"}
@@ -488,12 +494,15 @@ def test_lab_commands_report_an_unusable_lab_db_cleanly(
 def test_lab_register_dry_run_lists_the_packaged_strategies(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # P1-T14: S00 = 2 param sets x 1 horizon, S17 = 1 param set x 3 horizons -> 5 trials
+    # P1-T14/T15: S00 2 + S17 3 (1 param set x 3 horizons) + S01 2 + S02 1 + S03 2 = 10 trials
     home = lab_home(monkeypatch, tmp_path, "lab: {}\n")
     dry = runner.invoke(app, ["lab", "register", "--source", "synthetic", "--dry-run"])
     assert dry.exit_code == 0, plain(dry)
     text = plain(dry)
-    assert "would register 5 new trial(s) of 5" in text
+    assert "would register 10 new trial(s) of 10" in text
     assert text.count("S00_composite") == 2
     assert text.count("S17_equal_weight") == 3
+    assert text.count("S01_weekly_reversal") == 2
+    assert text.count("S02_breakout_volume") == 1
+    assert text.count("S03_oversold_uptrend") == 2
     assert not lab_db(home).exists()

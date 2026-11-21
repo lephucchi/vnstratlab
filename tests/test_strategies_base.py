@@ -167,7 +167,13 @@ def test_empty_config_loads_nothing(engine_cfg: AppConfig) -> None:
 
 
 def test_packaged_config_lists_the_builtin_strategies(engine_cfg: AppConfig) -> None:
-    assert set(engine_cfg.strategies) == {"S00_composite", "S17_equal_weight"}
+    assert set(engine_cfg.strategies) == {
+        "S00_composite",
+        "S01_weekly_reversal",
+        "S02_breakout_volume",
+        "S03_oversold_uptrend",
+        "S17_equal_weight",
+    }
     assert {s.id for s in load_strategies(engine_cfg)} == set(engine_cfg.strategies)
 
 
@@ -271,7 +277,8 @@ def test_packaged_registry_has_no_test_strategy() -> None:
     code = (
         "from vnstratlab.strategies.registry import registered_ids\n"
         "ids = registered_ids()\n"
-        "assert ids == ['S00_composite', 'S17_equal_weight'], ids\n"
+        "assert ids == ['S00_composite', 'S01_weekly_reversal', 'S02_breakout_volume', "
+        "'S03_oversold_uptrend', 'S17_equal_weight'], ids\n"
     )
     result = subprocess.run(  # noqa: S603
         [sys.executable, "-c", code],

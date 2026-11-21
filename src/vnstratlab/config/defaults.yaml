@@ -89,6 +89,20 @@ strategies:                    # filled by strategy cards P1-T14..P1-T19
     horizons: [short, medium, long]
     params:
       - {}
+  S01_weekly_reversal:         # P1-T15: Jegadeesh (1990)
+    horizons: [short]
+    params:
+      - {n: 2}
+      - {n: 3}
+  S02_breakout_volume:         # P1-T15: Brock, Lakonishok & LeBaron (1992); lookback = feature window
+    horizons: [short]
+    params:
+      - {lookback: 20, vol_mult: 1.5, max_n: 3}
+  S03_oversold_uptrend:        # P1-T15: Jegadeesh (1990); Moskowitz et al. (2012)
+    horizons: [short]
+    params:
+      - {rsi_len: 2, rsi_max: 10, ma_len: 50, max_n: 3}
+      - {rsi_len: 14, rsi_max: 30, ma_len: 50, max_n: 3}
 
 news:
   collect_raw: true            # Phase 1: collect only

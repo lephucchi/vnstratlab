@@ -7,6 +7,13 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Strategies S01, S02, S03 (P1-T15):** S01 weekly reversal (`ret_5d_vs_group_median`, buy the
+  `n` most negative, `n` 2 and 3), S02 close-based 20-day breakout with volume (`lookback` 20,
+  `vol_mult` 1.5, `max_n` 3) and S03 oversold in an uptrend (RSI 2 < 10 and RSI 14 < 30, close
+  above MA50, `max_n` 3), all short horizon with frozen param sets in the packaged `strategies:`
+  config (`lab register` now lists 10 trials). New feature column `close_20d_break` (adjusted
+  close above the highest adjusted close of the previous 20 good sessions); the feature code
+  version is now `features-v2`, so every `feature_version` changes: rebuild `features_daily`.
 - **Strategies S00 and S17 (P1-T14):** S00 composite score v1 with 4 blocks (trend, relative
   strength, mean reversion, volume; the valuation block is omitted until fundamentals exist,
   GAP-11) and two frozen weight sets (`equal`, `trend_heavy`, `top_n` 3), and S17 equal weight

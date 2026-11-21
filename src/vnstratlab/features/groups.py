@@ -26,6 +26,7 @@ MOM_LOOKBACK = 250  # ret_12m_skip1m: close[t - 21] / close[t - 250] - 1
 MOM_SKIP = 21
 YEAR_WINDOW = 250  # 52-week high / low
 BREAK_WINDOW = 20  # high_20d_break: close above the highest high of the 20 sessions before t
+# close_20d_break (features-v2, S02) uses the same window over the previous CLOSES
 RSI_LONG = 14
 RSI_SHORT = 2
 Z_WINDOW = 20
@@ -72,6 +73,7 @@ FEATURE_GROUPS: dict[str, tuple[str, ...]] = {
         "dist_52w_high",
         "dist_52w_low",
         "high_20d_break",
+        "close_20d_break",
     ),
     "relative_strength": ("rs_20d_vs_group_median", "rs_20d_rank"),
     "mean_reversion": ("rsi_14", "rsi_2", "z_ma20", "ret_5d_vs_group_median"),
@@ -168,6 +170,10 @@ def price_features(
     prior_high = _series(adj_high).shift(1).rolling(BREAK_WINDOW, min_periods=BREAK_WINDOW).max()
     brk = (c > prior_high).astype(float)
     put("high_20d_break", brk.where(prior_high.notna()))
+    # close-based breakout (S02, Brock et al. 1992): adjusted close above the highest adjusted
+    # close of the previous BREAK_WINDOW good sessions; NaN until those sessions exist
+    prior_close = c.shift(1).rolling(BREAK_WINDOW, min_periods=BREAK_WINDOW).max()
+    put("close_20d_break", (c > prior_close).astype(float).where(prior_close.notna()))
 
     put("rsi_14", _series(wilder_rsi(adj_close, RSI_LONG)))
     put("rsi_2", _series(wilder_rsi(adj_close, RSI_SHORT)))

@@ -285,12 +285,15 @@ runtime, writing nothing.
   distances, value traded, volume ratio and ATR-14 read `prices_exec`. Distances and the volume
   ratio are restated into the share basis of day `t` with the stock ex-date factors (`actions`), so
   a stock dividend leaves no step. ATR uses `risk.atr.atr` with the engine's ex-date factors.
+- **Breakout columns**: `high_20d_break` compares the close with the highest prior *high*;
+  `close_20d_break` (features-v2, used by S02) compares the adjusted close with the highest
+  adjusted *close* of the 20 good sessions before `t`. Both are 1.0 / 0.0 and NaN during warm-up.
 - **Missing sessions**: a `prices_adjusted` row with `signal_ok = false` is missing for every
   feature (dropped before any window, no output row, no interpolation). Windows count stored good
   sessions, so window lengths are in AVAILABLE sessions, not calendar days. Real history misses
   about one session in five (GAP-07), so a 250-session window spans more than 250 trading days in that stretch; the
   dry run prints the median calendar span of 20- and 250-session windows (`sessions_in_window`).
-- **Version**: `feature_version = features-v1:<hash>` of the code version, the windows and the
+- **Version**: `feature_version = features-v2:<hash>` of the code version, the windows and the
   sorted `(ticker, adj_version)` pairs of the input: one value for the whole build. Reading rows
   with more than one version raises (`load_features`). `load_features(store, start, end, columns,
   asof)` clamps the window to `asof` so a strategy can never receive a later row.
