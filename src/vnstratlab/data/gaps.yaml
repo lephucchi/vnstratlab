@@ -120,8 +120,11 @@ gaps:
     title: Stale and duplicated sessions
     title_vi: Phiên trùng lặp hoặc giá đứng yên bất thường
     status: open
-    severity: low
-    missing: Occasional consecutive sessions with identical close/volume.
+    severity: medium
+    missing: >-
+      Consecutive sessions with identical OHLCV. On the owner's store (2026-11-21) this is
+      systematic: from 2025-05 the Tuesday session repeats Monday's bar on every ticker (31 weeks,
+      442 rows over 14 tickers), so about one session in five of recent history is missing.
     affects: [prices_daily, P1-T08, P1-T38]
     workaround: >-
       Quality checks flag them (warning). A session whose open, high, low, close and volume

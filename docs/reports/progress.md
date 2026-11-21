@@ -22,4 +22,7 @@ date       | card   | PR / commit      | summary                                
 2026-11-19 | P1-T06b | PR #33 squash    | Yahoo outlier/step/pre-HOSE handling, split-adjusted dividends, owner decisions docs | 583 passed, 97.30% | owner override with G2 request changes open → issue #34
 2026-11-21 | docs   | PR #35 squash    | tiered G2 review (light/full), delta rounds max 2, trust green CI | docs | light tier (owner decision)
 2026-11-21 | P1-T06c | PR #36 squash   | step vs outlier (AC1 a+b), pre-HOSE cut at last out-of-band run, cash ex-date exempt, signal_ok, exec_exclusions.rows | 591 passed, 97.29% | G2 approve (round 2 delta); regression on real data (non-HOSE cut 25,094 rows) → P1-T06d; minor → #37
+2026-11-21 | docs   | PR #38 squash    | real-data dry run before merging data-cleaning PRs | docs | light tier
+2026-11-21 | P1-T06d | PR #39 squash   | non-HOSE cut only at clustered out-of-band sessions (250/10, owner-approved); real data prices_exec 6,223 -> 24,483 | 593 passed | G2 approve (round 1); minor -> #37
+2026-11-21 | P1-T06e | PR #40 squash   | spike = one event, reset on clustered only, near-tolerance steps (LPB/SHB/VIB kept), duplicate_session, adjusted_is_rebuilt (ratio-v2); real data prices_exec 27,541, no excluded tickers | 604 passed | G2 approve (round 1); minor -> #41
 ```

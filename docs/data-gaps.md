@@ -13,7 +13,7 @@ Interim price source: **yahoo**. Each gap is a known shortfall that is worked ar
 | [GAP-04](#gap-04) | HOSE only; history starts at HOSE listing | medium | open | prices_daily, universe, P1-T10, P1-T20, lab statistics |
 | [GAP-05](#gap-05) | Historical holiday lists missing before 2026 | medium | open | calendar, P1-T37, P1-T11, decision days before 2026 |
 | [GAP-06](#gap-06) | Incomplete corporate actions | medium | open | corporate_actions, P1-T06, P1-T11 cash-dividend accounting |
-| [GAP-07](#gap-07) | Stale and duplicated sessions | low | open | prices_daily, P1-T08, P1-T38 |
+| [GAP-07](#gap-07) | Stale and duplicated sessions | medium | open | prices_daily, P1-T08, P1-T38 |
 | [GAP-08](#gap-08) | History is revised after each split | medium | mitigated | prices_daily, data/raw, reproducibility of past runs |
 | [GAP-09](#gap-09) | Unofficial access, user-side terms risk | medium | open | P1-T37, nightly loop reliability |
 | [GAP-10](#gap-10) | No foreign / proprietary flow data | low | open | S06, P1-T04 |
@@ -86,8 +86,8 @@ Interim price source: **yahoo**. Each gap is a known shortfall that is worked ar
 
 **Stale and duplicated sessions** · *Phiên trùng lặp hoặc giá đứng yên bất thường*
 
-- Status: open · severity: low · since 2026-11-18
-- Missing: Occasional consecutive sessions with identical close/volume.
+- Status: open · severity: medium · since 2026-11-18
+- Missing: Consecutive sessions with identical OHLCV. On the owner's store (2026-11-21) this is systematic: from 2025-05 the Tuesday session repeats Monday's bar on every ticker (31 weeks, 442 rows over 14 tickers), so about one session in five of recent history is missing.
 - Affects: prices_daily, P1-T08, P1-T38
 - Workaround now: Quality checks flag them (warning). A session whose open, high, low, close and volume (> 0) repeat the previous session is omitted from prices_exec (duplicate_session, counted) and has signal_ok = false in prices_adjusted (P1-T06e); stored rows are kept.
 - Closed by: Cross-check with a second source.
