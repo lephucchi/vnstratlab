@@ -22,7 +22,8 @@ Missing sessions
   median number of weekdays a window of ``n`` sessions covers; ``features build --dry-run``
   prints it. No resampling to the calendar.
 * A good session without an execution row (ticker excluded, row omitted) has NaN level and
-  liquidity features, and so does every window that contains it.
+  liquidity features, and so does every rolling-window feature whose window contains it.
+  ``atr_14`` is a recursive average: only the gap row is NaN, it continues across the gap.
 
 Cross-section (the tradable universe on a date)
 * ``universe`` is the ticker list from config (membership plus known exits; plan section 0

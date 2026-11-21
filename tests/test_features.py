@@ -432,15 +432,14 @@ def test_missing_columns_raise() -> None:
 
 # ------------------------------------------------------------------ AC2 no lookahead
 def synthetic_world(
-    seed: int, known_until: int | None
+    seed: int, known_until: int | None, n: int = 300
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Random 3-ticker world of 300 sessions with gaps, flagged rows and stock events.
+    """Random 3-ticker world of ``n`` sessions with gaps, flagged rows and stock events.
 
     ``known_until`` truncates it to rows ``<= known_until`` AS KNOWN THEN: events after the cut are
     unknown, so earlier adjusted prices are not divided by their future factors (backward
     adjustment), while the full world divides them."""
     rng = np.random.default_rng(seed)
-    n = 300
     days = make_days(n)
     cut = n - 1 if known_until is None else known_until
     adj_parts, exec_parts, action_rows = [], [], []
@@ -494,28 +493,37 @@ def synthetic_world(
     return adjusted, executed, actions
 
 
-@pytest.mark.parametrize("seed", range(24))
-def test_no_lookahead_truncated_features_equal_full_history_features(seed: int) -> None:
-    cut = int(np.random.default_rng(1000 + seed).integers(60, 299))
+LOOKAHEAD_SESSIONS = 700
+
+
+def test_no_lookahead_truncated_features_equal_full_history_features() -> None:
     universe = ["A", "B", "C"]
-    f_adj, f_exec, f_act = synthetic_world(seed, None)
-    t_adj, t_exec, t_act = synthetic_world(seed, cut)
-    full = compute_features(f_adj, f_exec, universe, actions=f_act)
-    truncated = compute_features(t_adj, t_exec, universe, actions=t_act)
-    day = make_days(300)[cut]
-    got = truncated[truncated["date"] == day].reset_index(drop=True)
-    want = full[full["date"] == day].reset_index(drop=True)
-    assert len(got) == len(want)
-    assert list(got["ticker"]) == list(want["ticker"])
-    for column in FEATURE_COLUMNS:
-        np.testing.assert_allclose(
-            got[column].to_numpy(dtype=float),
-            want[column].to_numpy(dtype=float),
-            rtol=1e-9,
-            atol=1e-12,
-            equal_nan=True,
-            err_msg=f"{column} (seed {seed}, cut {cut})",
-        )
+    n = LOOKAHEAD_SESSIONS
+    days = make_days(n)
+    seen: set[str] = set()  # columns that held a value at the cut in at least one seed
+    for seed in range(24):
+        cut = int(np.random.default_rng(1000 + seed).integers(400, n - 1))
+        f_adj, f_exec, f_act = synthetic_world(seed, None, n)
+        t_adj, t_exec, t_act = synthetic_world(seed, cut, n)
+        full = compute_features(f_adj, f_exec, universe, actions=f_act)
+        truncated = compute_features(t_adj, t_exec, universe, actions=t_act)
+        got = truncated[truncated["date"] == days[cut]].reset_index(drop=True)
+        want = full[full["date"] == days[cut]].reset_index(drop=True)
+        assert len(got) == len(want)
+        assert list(got["ticker"]) == list(want["ticker"])
+        for column in FEATURE_COLUMNS:
+            np.testing.assert_allclose(
+                got[column].to_numpy(dtype=float),
+                want[column].to_numpy(dtype=float),
+                rtol=1e-9,
+                atol=1e-12,
+                equal_nan=True,
+                err_msg=f"{column} (seed {seed}, cut {cut})",
+            )
+            if got[column].notna().any():
+                seen.add(column)
+    # the comparison is not vacuous: every column (250-session windows included) was filled
+    assert seen == set(FEATURE_COLUMNS)
 
 
 def test_the_property_world_exercises_long_windows_and_events() -> None:
