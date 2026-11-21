@@ -20,4 +20,6 @@ date       | card   | PR / commit      | summary                                
 2026-11-19 | P1-T12 | PR #28 squash    | risk layer (ATR sizing, max weight/positions, vol scaling, circuit breaker), lot-based ATR stops, cooldown from stop exit, ex-date ATR factor, rebalance threshold | 556 passed, 97.19% | G2 approve (round 2); open: late add_actions not in ATR series (follow-up), owner to confirm risk.stop_cooldown_sessions=null
 2026-11-19 | P1-T12b | PR #32 squash    | ATR recomputed on late add_actions, exact lot/ledger sync, lots for bonus without entry, ex-date-open lot ATR basis | 571 passed | G2 approve (round 1); round-2 fixes merged without re-review (owner)
 2026-11-19 | P1-T06b | PR #33 squash    | Yahoo outlier/step/pre-HOSE handling, split-adjusted dividends, owner decisions docs | 583 passed, 97.30% | owner override with G2 request changes open → issue #34
+2026-11-21 | docs   | PR #35 squash    | tiered G2 review (light/full), delta rounds max 2, trust green CI | docs | light tier (owner decision)
+2026-11-21 | P1-T06c | PR #36 squash   | step vs outlier (AC1 a+b), pre-HOSE cut at last out-of-band run, cash ex-date exempt, signal_ok, exec_exclusions.rows | 591 passed, 97.29% | G2 approve (round 2 delta); regression on real data (non-HOSE cut 25,094 rows) → P1-T06d; minor → #37
 ```
