@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -13,6 +16,13 @@ from vnstratlab.data.pipeline import load_execution_frame
 from vnstratlab.data.store import MarketStore
 
 runner = CliRunner()
+ANSI = re.compile(r"\[[0-9;?]*[A-Za-z]")
+
+
+def plain(result: Any) -> str:
+    """Output without ANSI styling (Rich colours it when GITHUB_ACTIONS or FORCE_COLOR is set)."""
+    return ANSI.sub("", result.output)
+
 
 EXPECTED_COMMANDS = [
     "doctor",
@@ -300,3 +310,168 @@ def test_features_build_dry_run_writes_nothing_and_build_is_idempotent(
     assert a["feature_version"].nunique() == 1
     # the dry run reports the same row count that the build wrote
     assert f"{len(a)} rows" in dry.output
+
+
+# ------------------------------------------------------------------ lab trials / register (P1-T13)
+
+
+@pytest.fixture
+def local_strategies() -> Iterator[None]:
+    from test_strategies_base import SyntheticEqualWeight, SyntheticOther
+    from vnstratlab.strategies.registry import register_strategy, unregister_strategy
+
+    for cls in (SyntheticEqualWeight, SyntheticOther):
+        register_strategy(cls)
+    yield
+    for cls in (SyntheticEqualWeight, SyntheticOther):
+        unregister_strategy(cls.id)
+
+
+STRATEGIES_YAML = """strategies:
+  T_equal: {horizons: [short, medium], params: [{top: 1}, {top: 2}]}
+  T_other: {horizons: [long], params: [{top: 1}]}
+  S06_foreign_flow: {enabled: false, reason: "pending P1-T04"}
+"""
+
+
+def lab_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, yaml_text: str) -> Path:
+    """Synthetic store with features built, plus a user config with the given text."""
+    home = synthetic_home(monkeypatch, tmp_path)
+    assert runner.invoke(app, ["data", "rebuild", "--source", "synthetic"]).exit_code == 0
+    assert runner.invoke(app, ["features", "build", "--source", "synthetic"]).exit_code == 0
+    (home / "config.yaml").write_text(yaml_text, encoding="utf-8")
+    return home
+
+
+def lab_db(home: Path) -> Path:
+    return home / "data" / "lab.duckdb"
+
+
+def test_lab_selection_command_still_works_with_subcommands(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
+    stub = runner.invoke(app, ["lab", "--horizon", "short", "--dry-run"])
+    assert stub.exit_code == 1
+    assert "P1-T22" in plain(stub)
+    missing = runner.invoke(app, ["lab"])
+    assert missing.exit_code == 2
+    assert "--horizon" in plain(missing)
+    helped = runner.invoke(app, ["lab", "--help"])
+    assert "trials" in plain(helped)
+    assert "register" in plain(helped)
+
+
+def test_lab_trials_without_a_registry_is_read_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("APP_HOME", str(home))
+    result = runner.invoke(app, ["lab", "trials"])
+    assert result.exit_code == 0
+    assert "trials: 0" in plain(result)
+    assert not lab_db(home).exists()  # reading never creates the file
+
+
+def test_lab_register_with_no_strategies_says_so_and_needs_no_store(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("APP_HOME", str(home))
+    result = runner.invoke(app, ["lab", "register"])
+    assert result.exit_code == 0
+    assert "nothing to register" in plain(result)
+    assert not lab_db(home).exists()
+
+
+def test_lab_register_dry_run_writes_nothing_then_register_and_trials(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_strategies: None
+) -> None:
+    home = lab_home(monkeypatch, tmp_path, STRATEGIES_YAML)
+    dry = runner.invoke(app, ["lab", "register", "--source", "synthetic", "--dry-run"])
+    assert dry.exit_code == 0, plain(dry)
+    assert "would register 5 new trial(s) of 5" in plain(dry)  # (2 params x 2 horizons) + 1
+    assert "nothing was written" in plain(dry)
+    assert not lab_db(home).exists()  # not created
+
+    real = runner.invoke(app, ["lab", "register", "--source", "synthetic"])
+    assert real.exit_code == 0, plain(real)
+    assert "registered 5 new trial(s) of 5" in plain(real)
+    assert "trials now: 5" in plain(real)
+    before = lab_db(home).read_bytes()
+
+    again = runner.invoke(app, ["lab", "register", "--source", "synthetic"])
+    assert again.exit_code == 0
+    assert "registered 0 new trial(s) of 5" in plain(again)
+    assert "already registered" in plain(again)
+    dry_again = runner.invoke(app, ["lab", "register", "--source", "synthetic", "--dry-run"])
+    assert "would register 0 new trial(s) of 5" in plain(dry_again)
+    assert lab_db(home).read_bytes() == before  # a dry run and an idempotent run leave it alone
+
+    listing = runner.invoke(app, ["lab", "trials"])
+    assert listing.exit_code == 0
+    assert "trials: 5" in plain(listing)
+    assert "[config]" in plain(listing)
+    assert "UTC" in plain(listing)
+    assert '{"top":2}' in plain(listing)
+    long_only = runner.invoke(app, ["lab", "trials", "--horizon", "long"])
+    assert "trials: 1 (horizon long)" in plain(long_only)
+    assert "T_equal" not in plain(long_only)
+    assert lab_db(home).read_bytes() == before  # lab trials is read-only
+
+
+def test_lab_register_new_param_set_adds_one_trial(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_strategies: None
+) -> None:
+    home = lab_home(monkeypatch, tmp_path, STRATEGIES_YAML)
+    assert runner.invoke(app, ["lab", "register", "--source", "synthetic"]).exit_code == 0
+    extended = STRATEGIES_YAML.replace("{top: 1}, {top: 2}", "{top: 1}, {top: 2}, {top: 3}")
+    (home / "config.yaml").write_text(extended, encoding="utf-8")
+    result = runner.invoke(app, ["lab", "register", "--source", "synthetic"])
+    assert "registered 2 new trial(s) of 7" in plain(result)  # {top: 3} on two horizons
+    assert "trials now: 7" in plain(result)
+
+
+def test_lab_register_rejects_a_bad_strategies_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_strategies: None
+) -> None:
+    home = lab_home(
+        monkeypatch, tmp_path, "strategies:\n  S99_nope: {horizons: [short], params: [{}]}\n"
+    )
+    result = runner.invoke(app, ["lab", "register", "--source", "synthetic"])
+    assert result.exit_code == 1
+    assert "strategies config: INVALID" in plain(result)
+    assert "S99_nope" in plain(result)
+    assert not lab_db(home).exists()
+
+
+def test_lab_register_needs_a_store_with_features(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_strategies: None
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("APP_HOME", str(home))
+    home.mkdir()
+    (home / "config.yaml").write_text(STRATEGIES_YAML, encoding="utf-8")
+    no_store = runner.invoke(app, ["lab", "register", "--source", "synthetic"])
+    assert no_store.exit_code == 1
+    assert "ingest" in plain(no_store)
+
+    args = ["ingest", "--source", "synthetic", "--from", "2026-01-05", "--to", "2026-02-27"]
+    assert runner.invoke(app, args).exit_code == 0
+    no_features = runner.invoke(app, ["lab", "register", "--source", "synthetic"])
+    assert no_features.exit_code == 1
+    assert "features build" in plain(no_features)
+    assert not lab_db(home).exists()
+
+
+def test_lab_commands_report_an_unusable_lab_db_cleanly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_strategies: None
+) -> None:
+    home = lab_home(monkeypatch, tmp_path, STRATEGIES_YAML)
+    lab_db(home).parent.mkdir(parents=True, exist_ok=True)
+    lab_db(home).write_text("this is not a duckdb file", encoding="utf-8")
+    for args in (["lab", "trials"], ["lab", "register", "--source", "synthetic"]):
+        result = runner.invoke(app, args)
+        assert result.exit_code == 1
+        assert "cannot use" in plain(result)
+        assert "Traceback" not in plain(result)
