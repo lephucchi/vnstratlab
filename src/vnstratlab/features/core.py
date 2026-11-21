@@ -47,6 +47,9 @@ Cross-section (the tradable universe on a date)
   it): adjusted close / previous GOOD-session adjusted close - 1, NaN on the first good session.
   After a missing session it spans the gap (one return over the gap); nothing is filled.
 
+* ``ret_6m_skip1m`` (features-v4, used by S08 and S09): ``adj close[t - 21] / adj close[t - 126]
+  - 1`` in good sessions, the same construction and skip as ``ret_12m_skip1m``, 6-month window.
+
 Warm-up: a feature is NaN until its window is full; never back-filled.
 
 Deferred (GAP-11, P1-T07): valuation (P/B, E/P, ROE-justified P/B gap) and asset quality (NPL,
@@ -78,7 +81,7 @@ from vnstratlab.features.groups import (
 )
 from vnstratlab.risk.atr import ATR_WINDOW, atr
 
-FEATURES_CODE_VERSION = "features-v3"
+FEATURES_CODE_VERSION = "features-v4"
 OUTPUT_COLUMNS = ("ticker", "date", *FEATURE_COLUMNS, "feature_version")
 _STOCK_TYPES = ("stock", "bonus")
 

@@ -291,6 +291,9 @@ runtime, writing nothing.
 - **Daily return**: `ret_1d` (features-v3, group `returns`, used by S04 and S05) is the adjusted
   close over the previous good-session adjusted close minus 1; NaN on the first good session and
   never filled (after a missing session it spans the gap).
+- **6-month momentum**: `ret_6m_skip1m` (features-v4, group `trend_momentum`, used by S08 and
+  S09) is the adjusted close 21 good sessions back over the adjusted close 126 good sessions back
+  minus 1, the same construction and one-month skip as `ret_12m_skip1m`; NaN during warm-up.
 - **Missing sessions**: a `prices_adjusted` row with `signal_ok = false` is missing for every
   feature (dropped before any window, no output row, no interpolation). Windows count stored good
   sessions, so window lengths are in AVAILABLE sessions, not calendar days. Real history misses

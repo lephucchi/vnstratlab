@@ -23,6 +23,7 @@ MA_SHORT = 20
 MA_LONG = 50
 RET_WINDOWS = (5, 20, 60, 120, 250)
 MOM_LOOKBACK = 250  # ret_12m_skip1m: close[t - 21] / close[t - 250] - 1
+MOM_LOOKBACK_6M = 126  # ret_6m_skip1m (features-v4): close[t - 21] / close[t - 126] - 1
 MOM_SKIP = 21
 YEAR_WINDOW = 250  # 52-week high / low
 BREAK_WINDOW = 20  # high_20d_break: close above the highest high of the 20 sessions before t
@@ -42,6 +43,7 @@ WINDOWS: dict[str, int] = {
     "ma_short": MA_SHORT,
     "ma_long": MA_LONG,
     "mom_lookback": MOM_LOOKBACK,
+    "mom_lookback_6m": MOM_LOOKBACK_6M,
     "mom_skip": MOM_SKIP,
     "year": YEAR_WINDOW,
     "break": BREAK_WINDOW,
@@ -70,6 +72,7 @@ FEATURE_GROUPS: dict[str, tuple[str, ...]] = {
         "ret_120d",
         "ret_250d",
         "ret_12m_skip1m",
+        "ret_6m_skip1m",
         "dist_52w_high",
         "dist_52w_low",
         "high_20d_break",
@@ -160,6 +163,7 @@ def price_features(
     for n in RET_WINDOWS:
         put(f"ret_{n}d", c / c.shift(n) - 1.0)
     put("ret_12m_skip1m", c.shift(MOM_SKIP) / c.shift(MOM_LOOKBACK) - 1.0)
+    put("ret_6m_skip1m", c.shift(MOM_SKIP) / c.shift(MOM_LOOKBACK_6M) - 1.0)
 
     # 52-week distances on the execution series, restated into today's share basis
     b = _series(basis)
