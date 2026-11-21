@@ -42,6 +42,11 @@ class StrategyConfigError(ValueError):
 
 def register_strategy(cls: C) -> C:
     """Class decorator: make ``cls`` discoverable under ``cls.id``."""
+    if not (isinstance(cls, type) and issubclass(cls, BaseStrategy)):
+        raise TypeError(
+            f"{cls!r} must subclass BaseStrategy so its weights go through asof_guard "
+            "and validate_weights"
+        )
     strategy_id = getattr(cls, "id", None)
     if not isinstance(strategy_id, str) or not strategy_id:
         raise TypeError(f"{cls.__name__} must define a non-empty string class attribute 'id'")

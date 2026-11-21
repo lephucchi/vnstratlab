@@ -59,10 +59,12 @@ def test_ensure_trial_is_tied_to_every_identity_part(registry: TrialRegistry) ->
     for kwargs in (
         {"feature_version": "fv2"},
         {"feature_version": "fv1", "engine_version": "engine-next"},
-        {"feature_version": "fv1", "code_hash": "edited"},
     ):
         with pytest.raises(UnregisteredTrialError):
             ensure_trial(registry, strategy, "short", **kwargs)  # type: ignore[arg-type]
+    edited = spec_of(top=2, code_hash="edited")  # a code edit is a different, unregistered trial
+    with pytest.raises(UnregisteredTrialError):
+        registry.require_registered(edited.trial_id)
     with pytest.raises(UnregisteredTrialError):
         ensure_trial(registry, SyntheticEqualWeight({"top": 3}, ("short",)), "short", "fv1")
 

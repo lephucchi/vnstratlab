@@ -14,7 +14,7 @@ import sys
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn
 
 import typer
 
@@ -641,6 +641,13 @@ def _load_cfg_or_exit() -> AppConfig:
         raise typer.Exit(code=1) from None
 
 
+def _lab_db_error(path: Path, exc: Exception) -> NoReturn:
+    typer.echo(
+        f"error: cannot use {path} (locked by another process or unreadable): {exc}", err=True
+    )
+    raise typer.Exit(code=1)
+
+
 def _echo_trial_line(
     trial_id: str, strategy_id: str, horizon: str, params_json: str, note: str
 ) -> None:
@@ -652,6 +659,8 @@ def lab_trials(
     horizon: Annotated[Horizon | None, typer.Option("--horizon", help="Only this horizon.")] = None,
 ) -> None:
     """List the registered trials and their count (read-only)."""
+    import duckdb
+
     from vnstratlab.lab.trials import TrialRegistry
 
     _tolerant_output()
@@ -661,9 +670,12 @@ def lab_trials(
         typer.echo("no trial registry yet: run `vnstratlab lab register`")
         typer.echo("trials: 0")
         return
-    with TrialRegistry(db_path, read_only=True) as registry:
-        records = registry.list(selected)
-        total = registry.count(selected)
+    try:
+        with TrialRegistry(db_path, read_only=True) as registry:
+            records = registry.list(selected)
+            total = registry.count(selected)
+    except duckdb.Error as exc:
+        _lab_db_error(db_path, exc)
     for r in records:
         stamp = r.registered_at.strftime("%Y-%m-%d %H:%M:%S UTC")
         _echo_trial_line(
@@ -680,6 +692,8 @@ def lab_register(
     dry_run: DryRun = False,
 ) -> None:
     """Register every enabled (strategy, param set, horizon) from config as a trial."""
+    import duckdb
+
     from vnstratlab.data.protocol import SourceError
     from vnstratlab.data.store import MarketStore, kind_of_source
     from vnstratlab.engine import ENGINE_VERSION
@@ -721,7 +735,12 @@ def lab_register(
     ]
     # a dry run never creates lab.duckdb: it only reads one that already exists
     exists = paths.lab_db.is_file()
-    registry = TrialRegistry(paths.lab_db, read_only=dry_run) if exists or not dry_run else None
+    registry = None
+    if exists or not dry_run:
+        try:
+            registry = TrialRegistry(paths.lab_db, read_only=dry_run)
+        except duckdb.Error as exc:
+            _lab_db_error(paths.lab_db, exc)
     created = 0
     try:
         for spec in specs:
@@ -739,6 +758,8 @@ def lab_register(
                 ("would register" if dry_run else "registered") if is_new else "already registered",
             )
         total = registry.count() if registry is not None else 0
+    except duckdb.Error as exc:
+        _lab_db_error(paths.lab_db, exc)
     finally:
         if registry is not None:
             registry.close()

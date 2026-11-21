@@ -227,11 +227,10 @@ def ensure_trial(
     horizon: Horizon,
     feature_version: str,
     engine_version: str = ENGINE_VERSION,
-    code_hash: str | None = None,
 ) -> TrialSpec:
     """Guard for the walk-forward runner: return the trial's spec if it is registered, else raise
     ``UnregisteredTrialError``. Never registers anything itself."""
-    spec = make_trial_spec(strategy, horizon, feature_version, engine_version, code_hash)
+    spec = make_trial_spec(strategy, horizon, feature_version, engine_version)
     registry.require_registered(spec.trial_id)
     return spec
 

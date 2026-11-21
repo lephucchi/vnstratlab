@@ -59,6 +59,12 @@ def asof_guard(features: pd.DataFrame, asof: date | datetime | pd.Timestamp) -> 
         raise LookaheadError("features have no 'date' column: cannot verify point-in-time")
     cutoff = _as_timestamp(asof)
     dates = pd.to_datetime(features["date"])
+    if (dates.dt.tz is None) != (cutoff.tzinfo is None):
+        raise LookaheadError(
+            "timezone mismatch: feature dates are "
+            f"{'naive' if dates.dt.tz is None else 'tz-aware'} but asof is "
+            f"{'naive' if cutoff.tzinfo is None else 'tz-aware'}; cannot verify point-in-time"
+        )
     late = dates > cutoff
     if bool(late.any()):
         raise LookaheadError(

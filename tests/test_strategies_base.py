@@ -397,3 +397,28 @@ def test_make_trial_spec_uses_code_hash_and_checks_horizon() -> None:
     assert other.trial_id != spec.trial_id  # a code change is a new trial
     with pytest.raises(ValueError, match="does not run on horizon"):
         make_trial_spec(s, "long", "fv", ENGINE_VERSION)
+
+
+def test_register_strategy_refuses_a_class_outside_base_strategy() -> None:
+    class Rogue:
+        id = "T_rogue"
+
+        def __init__(self, params: Any, horizons: Any) -> None:
+            self.params, self.horizons = params, horizons
+
+        def target_weights(self, features: pd.DataFrame, asof: pd.Timestamp) -> pd.Series:
+            return pd.Series({"ZZZ": 5.0})
+
+    with pytest.raises(TypeError, match="BaseStrategy"):
+        register_strategy(Rogue)  # type: ignore[type-var]
+    assert "T_rogue" not in registry.registered_ids()
+
+
+def test_asof_guard_names_a_timezone_mismatch() -> None:
+    naive = synthetic_features()
+    with pytest.raises(LookaheadError, match="timezone mismatch"):
+        asof_guard(naive, pd.Timestamp("2026-03-10", tz="Asia/Ho_Chi_Minh"))
+    aware = naive.assign(date=pd.to_datetime(naive["date"]).dt.tz_localize("UTC"))
+    with pytest.raises(LookaheadError, match="timezone mismatch"):
+        asof_guard(aware, ASOF)
+    assert asof_guard(aware, pd.Timestamp("2026-03-10", tz="UTC")) is aware
