@@ -304,6 +304,8 @@ and the owner accepts it, behind a CI property test proving it equals the event 
 A code change with unchanged params is a **new trial** (ADR-003 §3); otherwise edits would
 silently reuse an old trial and escape the DSR count.
 
+Implementation (P1-T13): `vnstratlab.strategies.registry.compute_trial_id` and `vnstratlab.lab.trials.TrialRegistry`. `strategy_code_hash` is the SHA-256 of the strategy's source module (line endings normalised); `params` is canonical JSON (sorted keys, no whitespace); `engine_version` is `vnstratlab.engine.ENGINE_VERSION` (bump on any change that alters fills, costs or ledger results). The **horizon is part of the identity** (a horizon is a different rebalance period and return series, so a strategy on two horizons is two trials for the DSR count). The id is the first 16 hex characters of the SHA-256 over these parts. `TrialRegistry` is append-only and `ensure_trial` raises `UnregisteredTrialError` for a trial that was not registered first (`vnstratlab lab register`, `vnstratlab lab trials`).
+
 ### In-sample by design
 
 Parameters registered in 2026 were chosen with 2015–2026 history in view, so that history is

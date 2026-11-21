@@ -15,6 +15,7 @@ All notable changes are documented here. The format follows
   session with the current ATR. No change without a risk layer.
 
 ### Added
+- **Strategy base, registry and trial log (P1-T13):** `Strategy` protocol and `BaseStrategy` with `validate_weights` and an `asof_guard` that refuses feature rows dated after `asof`; a registry that loads strategies and parameter sets from `strategies:` in the config (disabled entries skipped with their reason, unknown ids and bad params raise `StrategyConfigError`); deterministic `trial_id` over strategy id, canonical params, horizon, code hash, feature version and `ENGINE_VERSION`; append-only `trial_registry` in `lab.duckdb` with `ensure_trial` (`UnregisteredTrialError`) and a trial count for the DSR; `vnstratlab lab trials` and `lab register [--dry-run]` (the `lab --horizon` cycle command is unchanged). The packaged `strategies:` stays empty.
 - **Feature store v1 (P1-T10):** pure `vnstratlab.features` (trend/momentum, relative strength,
   mean reversion, volatility, volume/liquidity and equal-weight-universe market context; windows in
   stored good sessions, `signal_ok = false` rows are missing, no lookahead by test), table

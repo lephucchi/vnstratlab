@@ -604,14 +604,152 @@ def backtest(
     _not_implemented("P1-T20")
 
 
-@app.command()
+lab_app = typer.Typer(
+    help="The strategy lab: selection cycle and the trial registry.",
+    invoke_without_command=True,
+)
+app.add_typer(lab_app, name="lab")
+
+
+@lab_app.callback()
 def lab(
-    horizon: Annotated[Horizon, typer.Option("--horizon")],
+    ctx: typer.Context,
+    horizon: Annotated[
+        Horizon | None, typer.Option("--horizon", help="Horizon of the selection cycle.")
+    ] = None,
     asof: Annotated[str | None, typer.Option("--asof", help="YYYY-MM-DD")] = None,
     dry_run: DryRun = False,
 ) -> None:
-    """Run one strategy-selection cycle (gates, MCS, weights) for a horizon."""
+    """Run one strategy-selection cycle (gates, MCS, weights) for a horizon.
+
+    Sub-commands `trials` and `register` manage the trial registry.
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+    if horizon is None:
+        raise typer.BadParameter("Missing option '--horizon'.", param_hint="--horizon")
     _not_implemented("P1-T22")
+
+
+def _load_cfg_or_exit() -> AppConfig:
+    try:
+        return load_config(get_paths().home)
+    except ConfigError as exc:
+        typer.echo("config: INVALID", err=True)
+        for problem in exc.problems:
+            typer.echo(f"  {problem}", err=True)
+        raise typer.Exit(code=1) from None
+
+
+def _echo_trial_line(
+    trial_id: str, strategy_id: str, horizon: str, params_json: str, note: str
+) -> None:
+    typer.echo(f"  {trial_id}  {strategy_id:<22} {horizon:<6} {params_json}  {note}".rstrip())
+
+
+@lab_app.command("trials")
+def lab_trials(
+    horizon: Annotated[Horizon | None, typer.Option("--horizon", help="Only this horizon.")] = None,
+) -> None:
+    """List the registered trials and their count (read-only)."""
+    from vnstratlab.lab.trials import TrialRegistry
+
+    _tolerant_output()
+    db_path = get_paths().lab_db
+    selected = None if horizon is None else horizon.value
+    if not db_path.is_file():
+        typer.echo("no trial registry yet: run `vnstratlab lab register`")
+        typer.echo("trials: 0")
+        return
+    with TrialRegistry(db_path, read_only=True) as registry:
+        records = registry.list(selected)
+        total = registry.count(selected)
+    for r in records:
+        stamp = r.registered_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+        _echo_trial_line(
+            r.trial_id, r.strategy_id, r.horizon, r.params_json, f"{stamp}  [{r.rationale}]"
+        )
+    typer.echo(f"trials: {total}" + (f" (horizon {selected})" if selected else ""))
+
+
+@lab_app.command("register")
+def lab_register(
+    source: Annotated[
+        str | None, typer.Option("--source", help="Data source; default data.source in config.")
+    ] = None,
+    dry_run: DryRun = False,
+) -> None:
+    """Register every enabled (strategy, param set, horizon) from config as a trial."""
+    from vnstratlab.data.protocol import SourceError
+    from vnstratlab.data.store import MarketStore, kind_of_source
+    from vnstratlab.engine import ENGINE_VERSION
+    from vnstratlab.lab.trials import TrialError, TrialRegistry, store_feature_version
+    from vnstratlab.strategies.registry import (
+        StrategyConfigError,
+        load_strategies,
+        make_trial_spec,
+    )
+
+    _tolerant_output()
+    paths = get_paths()
+    cfg = _load_cfg_or_exit()
+    try:
+        strategies = load_strategies(cfg)
+    except StrategyConfigError as exc:
+        typer.echo("strategies config: INVALID", err=True)
+        for problem in exc.problems:
+            typer.echo(f"  {problem}", err=True)
+        raise typer.Exit(code=1) from None
+    if not strategies:
+        typer.echo("no enabled strategies in config: nothing to register")
+        return
+    name = source or cfg.data.source
+    market_db = paths.market_db_for(kind_of_source(name))
+    if not market_db.is_file():
+        typer.echo(f"error: no store at {market_db}: run `vnstratlab ingest` first", err=True)
+        raise typer.Exit(code=1)
+    try:
+        with MarketStore(market_db, kind_of_source(name), read_only=True) as store:
+            feature_version = store_feature_version(store)
+    except (SourceError, TrialError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    specs = [
+        make_trial_spec(s, h, feature_version, ENGINE_VERSION)
+        for s in strategies
+        for h in s.horizons
+    ]
+    # a dry run never creates lab.duckdb: it only reads one that already exists
+    exists = paths.lab_db.is_file()
+    registry = TrialRegistry(paths.lab_db, read_only=dry_run) if exists or not dry_run else None
+    created = 0
+    try:
+        for spec in specs:
+            if registry is None:
+                is_new = True
+            else:
+                result = registry.register(spec, "config", dry_run=dry_run)
+                is_new = result.created
+            created += is_new
+            _echo_trial_line(
+                spec.trial_id,
+                spec.strategy_id,
+                spec.horizon,
+                spec.params_json,
+                ("would register" if dry_run else "registered") if is_new else "already registered",
+            )
+        total = registry.count() if registry is not None else 0
+    finally:
+        if registry is not None:
+            registry.close()
+    typer.echo(
+        f"{'would register' if dry_run else 'registered'} {created} new trial(s) of {len(specs)} "
+        f"(feature version {feature_version}, engine {ENGINE_VERSION})"
+    )
+    if dry_run:
+        typer.echo(f"trials now: {total}; dry run: nothing was written")
+    else:
+        typer.echo(f"trials now: {total}")
 
 
 @app.command("meta-backtest")

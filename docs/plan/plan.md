@@ -214,7 +214,7 @@ class Executor(Protocol):
 | market.duckdb | `fundamentals_q` | ticker, fiscal_period, metric, value, **published_at**, ingested_at |
 | market.duckdb | `features_daily` | ticker, date, feature columns…, feature_version |
 | market.duckdb | `news_raw` | news_id, ticker, published_at, title, body_or_url, source, collected_at |
-| lab.duckdb | `trial_registry` | trial_id, strategy_id, params_json, horizon, registered_at, rationale |
+| lab.duckdb | `trial_registry` | trial_id, strategy_id, params_json, horizon, strategy_code_hash, feature_version, engine_version, registered_at (UTC), rationale; append-only; `trial_id` hashes strategy id, canonical params, horizon and the three version columns (P1-T13) |
 | lab.duckdb | `oos_returns` | trial_id, period_end, ret_ideal, ret_exec, turnover |
 | lab.duckdb | `selection_runs` | run_id, horizon, asof, gate1_passed, spa_pvalue, mcs_members, weights_json, status |
 | journal.sqlite | `recommendations` | rec_id, horizon, asof, created_at, status (propose/hold_benchmark), targets_json, evidence_json |

@@ -204,3 +204,13 @@ def test_features_core_stays_pure() -> None:
     init_imports = _imports(SRC / "features" / "__init__.py")
     # importing the package never pulls the store side in
     assert not [n for n in init_imports if n.startswith("vnstratlab.features.build")]
+
+
+def test_strategy_base_and_registry_stay_pure() -> None:
+    """Strategy base and registry (P1-T13) hold no DuckDB or I/O; the trial log is `lab.trials`."""
+    files = [SRC / "strategies" / "base.py", SRC / "strategies" / "registry.py"]
+    assert all(p.is_file() for p in files)
+    offenders = [f"{p.name}: {v}" for p in files for v in _engine_violations(p)]
+    assert offenders == []
+    for path in files:
+        assert not [n for n in _imports(path) if n.startswith("vnstratlab.lab")]
