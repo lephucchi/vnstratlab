@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795230646241,
+  "lastUpdate": 1795233050815,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -875,6 +875,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0001616187235462767",
             "extra": "mean: 7.92268099999254 msec\nrounds: 14"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1ab258b2a2ecfc66d55adf406d110a2db12baf2c",
+          "message": "feat(strategies): strategy base, registry and trial log (P1-T13) (#45)\n\nStrategy protocol and BaseStrategy (asof guard, weight validation; registry requires BaseStrategy), config-driven registry, append-only trial_registry in lab.duckdb with trial_id = hash(strategy, params, horizon, code hash, feature_version, ENGINE_VERSION), monotonic trial count, lab trials / lab register [--dry-run].",
+          "timestamp": "2026-11-21T10:50:13+07:00",
+          "tree_id": "0c23b9a501c6db56d17a0fe656ec8e0565c63fc4",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/1ab258b2a2ecfc66d55adf406d110a2db12baf2c"
+        },
+        "date": 1795233050406,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 2.3825444273932908,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014488820582857121",
+            "extra": "mean: 419.7193506666679 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 87.12634993565261,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002300468215216067",
+            "extra": "mean: 11.477584000001752 msec\nrounds: 11"
           }
         ]
       }
