@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795233050815,
+  "lastUpdate": 1795236566619,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -913,6 +913,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002300468215216067",
             "extra": "mean: 11.477584000001752 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "da77987bf717be514f9d5c1571ebbff54c4df14f",
+          "message": "feat(strategies): S00 composite score and S17 equal weight (P1-T14) (#47)\n\nS00 v1 (4 blocks, valuation omitted per owner 2026-11-21; weight sets equal / trend_heavy, top_n 3, trigger breakout or oversold-in-uptrend) and S17 equal weight (all horizons); both in the packaged config (5 trials).",
+          "timestamp": "2026-11-21T11:48:48+07:00",
+          "tree_id": "3ff7189be721b733bfb04fec04acee22eefc0ea4",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/da77987bf717be514f9d5c1571ebbff54c4df14f"
+        },
+        "date": 1795236566333,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 1.9782118389684047,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01187851480179798",
+            "extra": "mean: 505.50703433332933 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 66.83068054268556,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00021384041809738877",
+            "extra": "mean: 14.963187444444593 msec\nrounds: 9"
           }
         ]
       }
