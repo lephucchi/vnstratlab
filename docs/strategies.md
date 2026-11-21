@@ -106,8 +106,8 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
   fixed at asof for every session in it (stateless; not lookahead, but an earlier session's z uses
   statistics that include later sessions of the window).
 - **Open at asof (onset-based clock).** The window is replayed from its start. An onset is a
-  session with |z| > `entry_z` whose previous session had |z| ≤ `entry_z` or no z (window start
-  counts as no z). A position opens at the onset (session 1; sessions 1..`max_hold` are held)
+  session with |z| > `entry_z` whose previous observed z (carried across sessions without a
+  spread value) had |z| ≤ `entry_z`; only the window start counts as no z. A position opens at the onset (session 1; sessions 1..`max_hold` are held)
   and closes when z crosses 0 (sign change or exactly 0) or after `max_hold` sessions. After a
   time stop there is no re-entry until z returns to |z| ≤ `entry_z` and breaks out again. The
   side is fixed at the onset. Buy the laggard
