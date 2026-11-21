@@ -51,6 +51,16 @@ When unsure, use **full**. A light-tier PR that turns out to change behaviour is
   they do not hold the merge. If a major finding is still open after round 2, the owner decides
   (fix in a follow-up card or hold the PR).
 
+### Real-data dry run (data-cleaning PRs)
+
+Before merging a full-tier PR that changes how stored prices are cleaned, adjusted or excluded
+(`data/adjust.py`, quality checks, pipeline rebuild), the manager runs
+`vnstratlab data rebuild --dry-run` with the branch code (worktree + `PYTHONPATH`) on the
+owner's local store and compares the counts (`prices_exec` rows, exclusions by kind and ticker)
+with `develop`. A large unexplained change holds the merge. Nothing from the real store is
+committed or posted; only counts go into the PR. (Added 2026-11-21 after #36 cut 75 % of
+`prices_exec` on real data while every synthetic test passed.)
+
 ### Tests during review
 
 CI (G1) already runs the full suite on 3 OS × 3 Python. When G1 is green on the head SHA under
