@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795227257398,
+  "lastUpdate": 1795227507366,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -744,6 +744,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00021143946974489005",
             "extra": "mean: 13.714938599999726 msec\nrounds: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7803c9a4134687d01fc65c735d42ed24d455bb6b",
+          "message": "fix(data): P1-T06d density guard for the non-HOSE cut (#39)\n\nNon-HOSE cut only at clustered out-of-band sessions (>= 10 in the trailing 250 good sessions; owner-approved). Real-data dry run: prices_exec 6,223 -> 24,483; non-HOSE cut on SHB only. Minor follow-ups in #37.",
+          "timestamp": "2026-11-21T09:17:58+07:00",
+          "tree_id": "00017018b009ff742da728faae18f401e4400f35",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/7803c9a4134687d01fc65c735d42ed24d455bb6b"
+        },
+        "date": 1795227506884,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 166.56115884757077,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002845678861419515",
+            "extra": "mean: 6.003800687500949 msec\nrounds: 16"
           }
         ]
       }
