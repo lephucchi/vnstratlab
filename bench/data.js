@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795227507366,
+  "lastUpdate": 1795228468684,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -775,6 +775,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002845678861419515",
             "extra": "mean: 6.003800687500949 msec\nrounds: 16"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4780535636c8823741e369252239e30122bd37c0",
+          "message": "fix(data): P1-T06e adjust follow-ups (#40)\n\nCloses #37. Spike counted once and run reset only on clustered sessions in the non-HOSE cut; near-tolerance stock events handled at row/step level (LPB, SHB, VIB kept); duplicate_session exclusion (GAP-07); adjusted_is_rebuilt + ADJ_METHOD ratio-v2; owner-approved wording. Real-data dry run: prices_exec 24,483 -> 27,541, no excluded tickers.",
+          "timestamp": "2026-11-21T09:33:43+07:00",
+          "tree_id": "b75ba0a726eb64aa52bd0e94a8eb05dbc7dada56",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/4780535636c8823741e369252239e30122bd37c0"
+        },
+        "date": 1795228468354,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 76.54145301395344,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003763958531205202",
+            "extra": "mean: 13.06481600000069 msec\nrounds: 10"
           }
         ]
       }
