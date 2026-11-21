@@ -327,7 +327,13 @@ def local_strategies() -> Iterator[None]:
         unregister_strategy(cls.id)
 
 
+DISABLE_PACKAGED = """strategies:
+  S00_composite: {enabled: false, reason: "test isolates the local strategies"}
+  S17_equal_weight: {enabled: false, reason: "test isolates the local strategies"}
+"""
 STRATEGIES_YAML = """strategies:
+  S00_composite: {enabled: false, reason: "test isolates the local strategies"}
+  S17_equal_weight: {enabled: false, reason: "test isolates the local strategies"}
   T_equal: {horizons: [short, medium], params: [{top: 1}, {top: 2}]}
   T_other: {horizons: [long], params: [{top: 1}]}
   S06_foreign_flow: {enabled: false, reason: "pending P1-T04"}
@@ -378,6 +384,8 @@ def test_lab_register_with_no_strategies_says_so_and_needs_no_store(
 ) -> None:
     home = tmp_path / "home"
     monkeypatch.setenv("APP_HOME", str(home))
+    home.mkdir()
+    (home / "config.yaml").write_text(DISABLE_PACKAGED, encoding="utf-8")
     result = runner.invoke(app, ["lab", "register"])
     assert result.exit_code == 0
     assert "nothing to register" in plain(result)
@@ -475,3 +483,17 @@ def test_lab_commands_report_an_unusable_lab_db_cleanly(
         assert result.exit_code == 1
         assert "cannot use" in plain(result)
         assert "Traceback" not in plain(result)
+
+
+def test_lab_register_dry_run_lists_the_packaged_strategies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # P1-T14: S00 = 2 param sets x 1 horizon, S17 = 1 param set x 3 horizons -> 5 trials
+    home = lab_home(monkeypatch, tmp_path, "lab: {}\n")
+    dry = runner.invoke(app, ["lab", "register", "--source", "synthetic", "--dry-run"])
+    assert dry.exit_code == 0, plain(dry)
+    text = plain(dry)
+    assert "would register 5 new trial(s) of 5" in text
+    assert text.count("S00_composite") == 2
+    assert text.count("S17_equal_weight") == 3
+    assert not lab_db(home).exists()
