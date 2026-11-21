@@ -25,8 +25,39 @@ Defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) and
 
 ## G2 — Code review (QA Reviewer, every PR)
 
-The reviewer works in a fresh context, reads the task card and the diff, runs the tests, then
-posts a review with one verdict: **approve**, **request changes** or **block**.
+The reviewer works in a fresh context, reads the task card and the diff, then posts a review
+with one verdict: **approve**, **request changes** or **block**.
+
+### Review tiers (owner decision, 2026-11-21)
+
+The manager picks the tier when it delegates the review and states it in the review request.
+
+| Tier | Applies to | Who | Scope |
+|---|---|---|---|
+| **light** | Docs only, ADR text, PO/site/tools, CI config, tests-only changes, dependency bumps | Manager (no reviewer agent) | G1 green; the **Safety and scope** items below; no behaviour change outside the card |
+| **full** | Anything under `src/` that touches prices, corporate actions, execution, costs, risk, features, strategies, lab statistics, or point-in-time logic | QA Reviewer (Opus, fresh context) | The whole checklist |
+
+When unsure, use **full**. A light-tier PR that turns out to change behaviour is re-tiered.
+
+### Review rounds
+
+- **Round 1** reads the card and the whole diff.
+- **Round 2 and later are delta reviews.** The reviewer gets the previous findings and the
+  last reviewed SHA, reads only `git diff <last-reviewed-sha>..HEAD`, and checks that each
+  finding is fixed and that the fix does not break anything nearby. It does not re-review the
+  whole PR.
+- **At most 2 rounds.** Only **blocker** and **major** findings cause another round. **minor**
+  findings and nits are listed in the review and moved to a follow-up issue by the manager;
+  they do not hold the merge. If a major finding is still open after round 2, the owner decides
+  (fix in a follow-up card or hold the PR).
+
+### Tests during review
+
+CI (G1) already runs the full suite on 3 OS × 3 Python. When G1 is green on the head SHA under
+review, the reviewer does **not** re-run the full suite. It runs only the tests for the changed
+modules plus its own probes (`pytest tests/test_<module>.py -q --no-cov`). It runs the full
+suite only when CI has not finished or is red. Reviewer probes that expose a bug go into the
+findings with exact numbers, so the worker can add them as tests.
 
 ### Checklist
 
@@ -62,8 +93,8 @@ posts a review with one verdict: **approve**, **request changes** or **block**.
 
 | Verdict | Meaning | Next |
 |---|---|---|
-| approve | All boxes ticked or N/A | Manager merges |
-| request changes | Fixable issues | Worker fixes on the same branch; G1 + G2 again |
+| approve | No blocker or major finding open (minor items go to a follow-up issue) | Manager merges |
+| request changes | Open blocker or major findings | Worker fixes on the same branch; G1 + G2 delta round (max 2 rounds) |
 | block | Violates a ground rule (order placement, lookahead by design, secret leak, frozen-param edit) | PR closed or rescoped by the manager; owner informed |
 
 ---

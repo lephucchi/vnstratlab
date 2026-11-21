@@ -9,7 +9,7 @@ gate checklists are in [qa-gates.md](qa-gates.md).
 | Role | Who | Does | Must not |
 |---|---|---|---|
 | **Owner** | Maintainer (human) | Approves releases (G4), ADRs, any change to frozen parameters, config defaults or scope | — |
-| **Manager** | AI agent (Opus), main session | Splits milestones into task cards, assigns them, runs integration tests, merges into `develop`, keeps `docs/reports/progress.md` | Review code it assigned to itself; skip a gate; merge without re-running tests |
+| **Manager** | AI agent (Opus), main session | Splits milestones into task cards, assigns them, runs integration tests, merges into `develop`, keeps `docs/reports/progress.md` | Review code it assigned to itself; skip a gate; merge without green CI on the head SHA |
 | **Worker** | AI agent (Sonnet) or contributor | Implements exactly one task card on its own branch, tests first, opens a PR with a handoff report | Change files outside the card; edit frozen parameters; add network calls to unit tests |
 | **QA Reviewer** | AI agent (Opus), fresh context | Independent code review of each PR (gate G2). Reads the diff and the card, **not** the worker's conclusions first | Edit code; approve with failing CI |
 | **Reality Analyst** | AI agent (Opus) | Release readiness (gate G3): benchmarks, cross-engine comparison, stress tests, product comparison | Tune parameters to improve results; change code under test |
@@ -35,10 +35,10 @@ in a fresh context with only the card, the diff and the repository.
  G1  CI green ──────────────── lint, types, tests (3 OS × 3 Python), guardrails,
      │                         secret scan, benchmark comparison
      ▼
- G2  QA code review ────────── QA Reviewer: approve / request changes / block
-     │                         (request changes → back to worker)
+ G2  Code review ───────────── light tier: manager · full tier: QA Reviewer
+     │                         (request changes → worker; delta re-review, max 2 rounds)
      ▼
-     Manager re-runs tests, squash-merges into develop, logs progress
+     Manager checks CI is green on the head SHA, squash-merges into develop, logs progress
      │
      ▼  (milestone complete)
      release/vX.Y.0 from develop  — feature freeze, fixes only
@@ -61,7 +61,7 @@ Nothing reaches `main` (production) without G1–G4.
 |---|---|---|---|---|
 | G0 | Before work starts | Manager | Yes | Task card issue with acceptance criteria |
 | G1 | Every push to a PR | CI | Yes (required checks) | Green checks |
-| G2 | Every PR into `develop`, `release/*`, `main` | QA Reviewer | Yes | Review with verdict + checklist |
+| G2 | Every PR into `develop`, `release/*`, `main` | Manager (light tier) or QA Reviewer (full tier), see [qa-gates.md](qa-gates.md#review-tiers-owner-decision-2026-11-21) | Yes | Verdict + findings |
 | G3 | Every `release/*` branch | Reality Analyst | Yes for minor/major; reduced for patch | `docs/reports/release-vX.Y.Z-readiness.md` |
 | G4 | Release PR into `main` | Owner | Yes | Approval on the PR |
 
