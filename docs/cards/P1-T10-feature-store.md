@@ -90,3 +90,21 @@ due: 2026-11-27
 #### Out of scope
 Fundamentals (P1-T07), strategies and registry (P1-T13+), Telegram/DQ alerts (P1-T08), VN30 index
 source (GAP-03), membership history (P1-T05).
+
+## Amendments 2026-11-21
+
+Added by the manager after P1-T06c/d/e were merged.
+
+- **A1 (signal_ok).** `prices_adjusted` rows with `signal_ok = false` (`dq_error`,
+  `scale_outlier_row`, `scale_step_before` window, `non_hose_history`, `duplicate_session`) are
+  MISSING for every feature: not a value, not interpolated. Hand test: a 30-row fixture with one
+  `signal_ok = false` row inside the window; rolling features skip it as a missing session (same
+  rule as "Missing sessions").
+- **A2 (rebuilt store).** Before building, call `adjusted_is_rebuilt(...)` from
+  `vnstratlab.data.adjust`. If it is `False`, `features build` stops with a clear error telling the
+  user to run `vnstratlab data rebuild`; `--dry-run` reports it too. Test it.
+- **A3 (version).** `feature_version` includes the input `adj_version` (now `ratio-v2:<hash>`).
+- **A4 (sparse history).** Recent real history misses roughly one session in five (GAP-07: Yahoo
+  Tuesday duplicates omitted). Windows count stored good sessions only; the module docstring says
+  window lengths are in available sessions and carries a `sessions_in_window` sanity note. No
+  resampling to the calendar.
