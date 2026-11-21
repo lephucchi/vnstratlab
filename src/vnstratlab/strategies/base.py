@@ -114,6 +114,10 @@ class BaseStrategy(ABC):
     """
 
     id: str
+    # Sessions of history (rows <= asof) the strategy reads. 1 = only the asof cross-section; a
+    # history strategy (S04, S05) sets it so the walk-forward runner loads at least that many
+    # sessions. With fewer usable sessions it must return all cash.
+    lookback_sessions: int = 1
 
     def __init__(self, params: Mapping[str, Any], horizons: Sequence[Horizon]) -> None:
         self.params: dict[str, Any] = dict(params)

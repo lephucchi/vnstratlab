@@ -7,6 +7,14 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Strategies S04 and S05 (P1-T16):** S04 long-only bank pairs (formation 250 sessions, top 5
+  correlated pairs, buy the laggard when |z| > 2, hold at most 10 sessions or until z crosses 0)
+  and S05 residual mean reversion (60-session regression on the group return, buy the 2 most
+  negative cumulative-residual z below -1.5), both short horizon with frozen params in the
+  packaged config (`lab register` now lists 12 trials). New feature column `ret_1d` (group
+  `returns`); the feature code version is now `features-v3`, so every `feature_version` changes:
+  rebuild `features_daily`. New `BaseStrategy.lookback_sessions` (default 1) declares how many
+  sessions of history a strategy reads; S04 and S05 return all cash with less history.
 - **Strategies S01, S02, S03 (P1-T15):** S01 weekly reversal (`ret_5d_vs_group_median`, buy the
   `n` most negative, `n` 2 and 3), S02 close-based 20-day breakout with volume (`lookback` 20,
   `vol_mult` 1.5, `max_n` 3) and S03 oversold in an uptrend (RSI 2 < 10 and RSI 14 < 30, close

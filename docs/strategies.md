@@ -1,7 +1,7 @@
 # Strategy catalogue
 
-> **Status: design.** Implemented so far: S00 and S17 (card P1-T14) and S01–S03 (card P1-T15); the rest follow
-> in cards P1-T16 … P1-T19. Parameter sets
+> **Status: design.** Implemented so far: S00 and S17 (card P1-T14), S01–S03 (card P1-T15) and S04–S05 (card P1-T16); the
+> rest follow in cards P1-T17 … P1-T19. Parameter sets
 > below are **proposals**; the owner freezes them in `defaults.yaml` when each card starts.
 > After that, a changed parameter set is a new trial (plan §6.4.3). Each strategy has at most
 > 3 parameter sets.
@@ -26,8 +26,8 @@ How strategies are run, combined and selected: [engine.md](engine.md). How to wr
 | S01 | Weekly reversal within group | short | prices | P1-T15 | **Implemented** |
 | S02 | 20-day breakout with volume | short | prices, volume | P1-T15 | **Implemented** |
 | S03 | Oversold in uptrend | short | prices | P1-T15 | **Implemented** |
-| S04 | Long-only bank pairs | short | prices | P1-T16 | Planned |
-| S05 | Residual mean reversion | short | prices | P1-T16 | Planned |
+| S04 | Long-only bank pairs | short | prices (return history) | P1-T16 | **Implemented** |
+| S05 | Residual mean reversion | short | prices (return history) | P1-T16 | **Implemented** |
 | S06 | Foreign flow | short | foreign net buy/sell | P1-T19 | **Blocked** on P1-T04 (free data source) |
 | S07 | LightGBM meta-label filter | short | features | P1-T31 | **Stretch** |
 | S08 | Cross-sectional momentum 6–12m | medium | prices | P1-T17 | Planned |
@@ -96,17 +96,33 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
 - **Basis.** Jegadeesh (1990); Moskowitz, Ooi & Pedersen (2012) for the trend filter.
 
 ### S04 — Long-only bank pairs
-- **Rule.** Formation window `form` sessions: pick pairs with the highest return correlation
-  (top `k` pairs). Spread = log price ratio, z-scored over the window. When |z| > `entry_z`,
-  buy the laggard (long-only; no short leg). Exit when z crosses 0 or after `max_hold` sessions.
-- **Proposed params.** `{form: 250, k: 5, entry_z: 2.0, max_hold: 10}`.
+- **History.** Needs `ret_1d` over `lookback_sessions = form` sessions (the feature frame holds all
+  rows ≤ asof). Fewer than `form` sessions, or `asof` not being the last session, gives all cash.
+- **Rule as implemented.** Formation window = the last `form` sessions ending at asof. Pairs are
+  ranked by the Pearson correlation of daily returns over the days both are observed (a pair needs
+  ≥ 80 % of the window for both; top `k`, ties by pair symbols). Spread = cumulative log return
+  of A minus that of B (the log price ratio up to a constant), on the days where both returns are
+  observed only (no fill), z-scored with the window mean and sample std (ddof 1). The window is
+  fixed at asof for every session in it (stateless; not lookahead, but an earlier session's z uses
+  statistics that include later sessions of the window).
+- **Open at asof.** Some session among the last `max_hold` sessions (asof included) has
+  |z| > `entry_z`, and since then z has not changed sign or hit exactly 0. Buy the laggard
+  (z > 0: A ahead, buy B; z < 0: buy A), 1/`k` per open pair; two open pairs on one laggard add
+  up; total ≤ 1, the rest in cash.
+- **Params (frozen).** `{form: 250, k: 5, entry_z: 2.0, max_hold: 10}`; short horizon.
 - **Basis.** Gatev, Goetzmann & Rouwenhorst (2006). Long-only halves the hedge; results are
   closer to a reversal strategy and must be read that way.
 
 ### S05 — Residual mean reversion
-- **Rule.** Regress each stock's daily returns on the bank-group return over `window`
-  sessions; cumulative residual z-score; buy the `n` most negative below `-entry_z`.
-- **Proposed params.** `{window: 60, entry_z: 1.5, n: 2}`.
+- **History.** Needs `ret_1d` over `lookback_sessions = window` sessions; fewer gives all cash.
+- **Rule as implemented.** Group return per session = equal-weight mean of the available `ret_1d`
+  of all tickers. Per ticker (≥ 80 % of the window observed and observed on asof): OLS of its
+  returns on the group return, `beta` from the fit with an intercept; the residual is
+  `y - beta * g` (alpha left out, as in Avellaneda & Lee: residuals that include alpha sum to
+  zero and would pin the last cumulative residual at 0). z = (last cumulative residual - mean of
+  the cumulative residual) / std (ddof 1). Buy the `n` most negative z below `-entry_z`, 1/`n`
+  each, the rest in cash; ties by ticker.
+- **Params (frozen).** `{window: 60, entry_z: 1.5, n: 2}`; short horizon.
 - **Basis.** Avellaneda & Lee (2010).
 
 ### S06 — Foreign flow *(blocked)*

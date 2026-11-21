@@ -19,6 +19,16 @@ class MyStrategy:
 
 Full example: [`examples/my_strategy.py`](../examples/my_strategy.py).
 
+### History contract (`lookback_sessions`)
+
+`features` holds every row dated ≤ `asof` (as `load_features(..., asof=)` returns). A strategy that
+reads only the asof cross-section keeps the default `lookback_sessions = 1` (S00–S03, S17). A
+strategy that needs a history (S04 pairs, S05 residuals) sets the class attribute
+`lookback_sessions: int` to the number of sessions it reads (S04: `form`, S05: `window`); the
+walk-forward runner loads at least that many sessions before each decision day. Build series from
+the feature columns by date (for returns use `ret_1d`), keep missing values NaN, and return all
+cash (an empty Series) when the frame has fewer usable sessions than needed.
+
 ## Rules the lab enforces
 
 | Rule | How |

@@ -87,6 +87,8 @@ def test_packaged_config_loads_every_builtin_strategy(engine_cfg: AppConfig) -> 
             {"rsi_len": 14, "rsi_max": 30, "ma_len": 50, "max_n": 3},
             ("short",),
         ),
+        ("S04_bank_pairs", {"form": 250, "k": 5, "entry_z": 2.0, "max_hold": 10}, ("short",)),
+        ("S05_residual_reversion", {"window": 60, "entry_z": 1.5, "n": 2}, ("short",)),
     ]
 
 
