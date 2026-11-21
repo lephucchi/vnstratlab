@@ -431,8 +431,13 @@ def _non_hose_cut(
     close: FloatArray,
     events: _Events,
     tolerance: float,
+    is_bad: npt.NDArray[np.bool_],
 ) -> int | None:
-    """Index of the last session of the pre-HOSE history, or ``None`` (see module docstring)."""
+    """Index of the last session of the pre-HOSE history, or ``None`` (see module docstring).
+
+    Bad source rows are neutral and never serve as the previous close: each move is measured
+    against the previous good close (as in :func:`_scale_check`).
+    """
     n = len(ordinals)
     if n < MIN_HOSE_RUN:
         return None
@@ -444,10 +449,13 @@ def _non_hose_cut(
         start = int(np.searchsorted(ordinals, ex_date.toordinal(), side="left"))
         neutral[start : start + 1] = True
     outside = np.zeros(n, dtype=bool)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        move_open = np.abs(open_[1:] / close[:-1] - 1.0)
-        move_close = np.abs(close[1:] / close[:-1] - 1.0)
-    outside[1:] = ((move_open > tolerance) | (move_close > tolerance)) & ~neutral[1:]
+    good = np.flatnonzero(~is_bad)
+    if len(good) > 1:
+        cur, prev = good[1:], good[:-1]  # each good session and the good session before it
+        with np.errstate(divide="ignore", invalid="ignore"):
+            move_open = np.abs(open_[cur] / close[prev] - 1.0)
+            move_close = np.abs(close[cur] / close[prev] - 1.0)
+        outside[cur] = ((move_open > tolerance) | (move_close > tolerance)) & ~neutral[cur]
     calm = 0  # in-band sessions after the current index, up to the next out-of-band one
     for i in range(n - 1, -1, -1):
         if not outside[i]:
@@ -600,7 +608,7 @@ def _execution(
     omitted_outlier = np.zeros(len(group), dtype=bool)
     if is_split.any():
         skip = is_bad.copy()
-        cut = _non_hose_cut(ordinals, open_, close, events, tolerance)
+        cut = _non_hose_cut(ordinals, open_, close, events, tolerance, is_bad)
         cut_date: date | None = None
         if cut is not None:
             cut_date = dates[cut]

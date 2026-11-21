@@ -921,3 +921,17 @@ def test_signal_ok_is_false_for_outlier_dq_and_step_rows_and_true_otherwise() ->
     fine = build_series(bars("AAA", [50_000.0] * 8, "raw", days=D8), events(), TICKS)
     assert fine.adjusted["signal_ok"].all()
     assert fine.adjusted["signal_ok"].dtype == bool
+
+
+def test_flagged_bad_row_does_not_cut_hose_history() -> None:
+    days = make_days(300)
+    closes = [50_000.0] * 300
+    closes[200] = 60_000.0
+    r = build_series(
+        bars("AAA", closes, "split_adjusted", days=days),
+        events(),
+        TICKS,
+        bad_rows={("AAA", days[200])},
+    )
+    assert [e.kind for e in r.report.exclusions] == ["dq_error"]
+    assert len(r.execution) == 299
