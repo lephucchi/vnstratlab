@@ -139,8 +139,11 @@ computation is `vnstratlab.data.adjust.build_series`, the engine input is
   stay, and `load_execution_frame` does not return the event as an action. Otherwise the whole
   ticker is excluded as before. *Pre-HOSE history* (`non_hose_history`, GAP-04): on a
   `split_adjusted` ticker rows up to and including the last session outside the HOSE band that is
-  followed by `MIN_HOSE_RUN = 60` in-band sessions are excluded (one row with the count; a cash
-  ex-date session is exempt from the band test). Each row
+  followed by `MIN_HOSE_RUN = 60` in-band sessions are excluded, but only if that session belongs
+  to a cluster: the trailing window of `NON_HOSE_WINDOW = 250` good sessions ending at it holds at
+  least `NON_HOSE_MIN_OUT_OF_BAND = 10` out-of-band sessions (P1-T06d; both constants pending owner
+  approval); an isolated out-of-band session is never a cut point and no cluster means no cut (one
+  row with the count; a cash ex-date session is exempt from the band test). Each row
   is counted under the first of `dq_error`, `non_hose_history`, `scale_outlier_row`,
   `scale_step_before`; the command prints one count per kind.
 - **Bad rows are recomputed, not read from a run**: rebuild runs the error-level per-row checks

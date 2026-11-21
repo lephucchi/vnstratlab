@@ -58,8 +58,12 @@ docs/reports/data-source-yahoo.md):
 Pre-HOSE history (``non_hose_history``, GAP-04): on a ``split_adjusted`` ticker a session whose
 open or close is more than the tolerance away from the previous stored close is outside the HOSE
 band. The execution series starts after the LAST such session that is followed by at least
-``MIN_HOSE_RUN = 60`` consecutive in-band sessions; rows up to and including it are excluded (one
-exclusion row with the count, dated the last excluded session). Sessions within
+``MIN_HOSE_RUN = 60`` in-band sessions; rows up to and including it are excluded (one
+exclusion row with the count, dated the last excluded session). Only an out-of-band session that
+belongs to a cluster may be that cut point (P1-T06d): the trailing window of ``NON_HOSE_WINDOW``
+good sessions ending at it must hold at least ``NON_HOSE_MIN_OUT_OF_BAND`` out-of-band sessions.
+An isolated out-of-band session (a data glitch) is neither a cut point nor does it interrupt the
+run of in-band sessions. Sessions within
 ``MAX_OUTLIER_SESSIONS`` of a stock ex-date and the first session on or after a cash ex-date (the
 reference price drops by the dividend) are not tested; a history with no such session is left as
 is. Every row is counted once, under the first of: ``dq_error``, ``non_hose_history``,
@@ -425,6 +429,12 @@ class _Run:
     unusable: npt.NDArray[np.bool_] | None = None  # rows signals must treat as missing
 
 
+# Cluster rule of the non-HOSE cut (P1-T06d). PENDING OWNER APPROVAL: keep as module constants.
+# Real pre-HOSE history shows ~16-23 out-of-band sessions per year; other tickers at most 5.
+NON_HOSE_WINDOW = 250  # trailing good sessions inspected for a candidate cut session
+NON_HOSE_MIN_OUT_OF_BAND = 10  # out-of-band sessions the window must hold for the cut to qualify
+
+
 def _non_hose_cut(
     ordinals: npt.NDArray[np.int64],
     open_: FloatArray,
@@ -435,8 +445,9 @@ def _non_hose_cut(
 ) -> int | None:
     """Index of the last session of the pre-HOSE history, or ``None`` (see module docstring).
 
-    Bad source rows are neutral and never serve as the previous close: each move is measured
-    against the previous good close (as in :func:`_scale_check`).
+    A candidate must belong to a cluster (``NON_HOSE_WINDOW`` / ``NON_HOSE_MIN_OUT_OF_BAND``,
+    pending owner approval). Bad source rows are neutral and never serve as the previous close:
+    each move is measured against the previous good close (as in :func:`_scale_check`).
     """
     n = len(ordinals)
     if n < MIN_HOSE_RUN:
@@ -456,14 +467,18 @@ def _non_hose_cut(
             move_open = np.abs(open_[cur] / close[prev] - 1.0)
             move_close = np.abs(close[cur] / close[prev] - 1.0)
         outside[cur] = ((move_open > tolerance) | (move_close > tolerance)) & ~neutral[cur]
-    calm = 0  # in-band sessions after the current index, up to the next out-of-band one
+    # out-of-band sessions in the window of NON_HOSE_WINDOW good sessions ending at each good one
+    cum = np.concatenate(([0], np.cumsum(outside[good])))
+    rank = np.arange(len(good))
+    window = cum[rank + 1] - cum[np.maximum(rank + 1 - NON_HOSE_WINDOW, 0)]
+    clustered = np.zeros(n, dtype=bool)
+    clustered[good] = window >= NON_HOSE_MIN_OUT_OF_BAND
+    calm = 0  # in-band sessions after the current index; isolated out-of-band ones are noise
     for i in range(n - 1, -1, -1):
         if not outside[i]:
             calm += 1
-        elif calm >= MIN_HOSE_RUN:
+        elif clustered[i] and calm >= MIN_HOSE_RUN:
             return i
-        else:
-            calm = 0
     return None
 
 

@@ -73,7 +73,9 @@ gaps:
       A ticker is tradable only from its first stored session; lab reports state the effective
       start per ticker and the number of tickers per period. Rows up to and including the last session
       outside the HOSE band that is followed by 60 in-band sessions are another exchange's history
-      under the same symbol and are excluded from execution (non_hose_history, P1-T06b).
+      under the same symbol and are excluded from execution (non_hose_history, P1-T06b). That session
+      must belong to a cluster (at least 10 out-of-band sessions in the trailing 250); isolated
+      out-of-band sessions never cut history (P1-T06d, thresholds pending owner approval).
     close_by: CafeF files (cover HNX/UPCoM history) or another source — new card.
     since: 2026-11-18
 

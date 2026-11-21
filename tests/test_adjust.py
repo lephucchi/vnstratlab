@@ -851,6 +851,25 @@ def test_probe_e_cut_is_the_last_out_of_band_session_followed_by_60_calm() -> No
     assert result.adjusted["signal_ok"].tolist() == [False] * 210 + [True] * 80
 
 
+def test_unflagged_isolated_glitch_does_not_cut_history() -> None:
+    closes = [50_000.0] * 300
+    closes[200] = 60_000.0  # +20 % then -16.7 %: out of band, but isolated
+    prices = bars("AAA", closes, "split_adjusted", days=make_days(300))
+    result = build_series(prices, events(), TICKS)
+    assert result.report.non_hose_rows_excluded == 0
+    assert len(result.execution) == 300
+
+
+def test_sparse_out_of_band_sessions_do_not_cut_history() -> None:
+    closes = [50_000.0] * 330
+    for row in (20, 70, 120, 170):  # 4 spikes = 8 out-of-band sessions (up and back) < 10
+        closes[row] = 60_000.0
+    prices = bars("AAA", closes, "split_adjusted", days=make_days(330))
+    result = build_series(prices, events(), TICKS)
+    assert result.report.non_hose_rows_excluded == 0
+    assert len(result.execution) == 330
+
+
 def test_probe_f_cash_ex_date_is_exempt_from_the_band_test() -> None:
     days = make_days(120)
     closes = [30_000.0] * 5 + [27_000.0] * 115  # -10 % at row 5, the 3,000 dividend ex-date
@@ -859,9 +878,13 @@ def test_probe_f_cash_ex_date_is_exempt_from_the_band_test() -> None:
     assert with_cash.report.exclusions == ()
     assert len(with_cash.execution) == 120
     assert with_cash.adjusted["signal_ok"].all()
-    # without the dividend the same step is out of band: rows 0..5 are excluded
+    # without the dividend the same step is out of band, but a single session is no cluster
+    # (P1-T06d): nothing is cut. With 10+ out-of-band sessions in the window it is cut again.
     without = build_series(prices, events(), TICKS)
-    assert without.report.non_hose_rows_excluded == 6
+    assert without.report.non_hose_rows_excluded == 0
+    wild = _alternating(12) + [54_750.0] * 100
+    wild_prices = bars("AAA", wild, "split_adjusted", days=make_days(112))
+    assert build_series(wild_prices, events(), TICKS).report.non_hose_rows_excluded == 12
 
 
 def test_cash_dividend_is_split_adjusted_end_to_end_through_the_loader(tmp_path: Path) -> None:
