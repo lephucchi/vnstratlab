@@ -3,7 +3,7 @@ id: P1-T16b
 title: S04 no re-entry across missing sessions
 milestone: M1.4 Strategies
 release: v0.1.0
-status: in progress
+status: done
 branch: fix/P1-T16b-s04-reentry
 due: 2026-11-22
 ---
