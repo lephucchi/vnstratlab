@@ -141,11 +141,26 @@ computation is `vnstratlab.data.adjust.build_series`, the engine input is
   `split_adjusted` ticker rows up to and including the last session outside the HOSE band that is
   followed by `MIN_HOSE_RUN = 60` in-band sessions are excluded, but only if that session belongs
   to a cluster: the trailing window of `NON_HOSE_WINDOW = 250` good sessions ending at it holds at
-  least `NON_HOSE_MIN_OUT_OF_BAND = 10` out-of-band sessions (P1-T06d; both constants pending owner
-  approval); an isolated out-of-band session is never a cut point and no cluster means no cut (one
-  row with the count; a cash ex-date session is exempt from the band test). Each row
-  is counted under the first of `dq_error`, `non_hose_history`, `scale_outlier_row`,
-  `scale_step_before`; the command prints one count per kind.
+  least `NON_HOSE_MIN_OUT_OF_BAND = 10` out-of-band sessions (P1-T06d; both constants owner-approved
+  2026-11-21); an up-and-back spike (the next session is out of band too and lands back within
+  tolerance of the close before it) counts as ONE event; an isolated out-of-band session is never
+  a cut point and no cluster means no cut; a clustered out-of-band session that is not a cut point
+  resets the run of in-band sessions (one row with the count; a cash ex-date session is exempt
+  from the band test). The persistent-step test also accepts an ex-date open between the old
+  level and the stepped level (old level times the stored ratio), up to the tolerance past the
+  stepped level (P1-T06e, e.g. a 9 % open for a 0.19 ratio); an open away from or far past it
+  still excludes the ticker. *Duplicated sessions* (`duplicate_session`, GAP-07): a row whose
+  open, high, low, close and volume (> 0) equal the previous stored session's is omitted from
+  `prices_exec` and gets `signal_ok = false`; it is neutral for the band and scale checks. Each
+  row is counted under the first of `dq_error`, `duplicate_session`, `non_hose_history`,
+  `scale_outlier_row`, `scale_step_before`; the command prints one count per kind (the
+  `duplicate_session` count is in `RebuildReport.duplicate_rows_omitted` and the exclusion list).
+- **Consumers must read a rebuilt store (P1-T10)**: opening a store created before P1-T06c adds
+  `prices_adjusted.signal_ok` with `DEFAULT TRUE`, so a migrated store that was not rebuilt looks
+  clean while no row is flagged. Call `vnstratlab.data.adjust.adjusted_is_rebuilt(
+  store.read_adjusted(source))` before computing features: it is `True` only when every row
+  carries the current method label in `adj_version` (`ratio-v2` since P1-T06e); otherwise run
+  `vnstratlab data rebuild` first. An empty table is not rebuilt.
 - **Bad rows are recomputed, not read from a run**: rebuild runs the error-level per-row checks
   (`quality.check_row_rules`) over the whole stored history of the source. A later clean run,
   another source's run or a crashed run never re-admits an old bad row; a corrected row (new

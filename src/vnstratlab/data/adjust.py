@@ -44,10 +44,12 @@ docs/reports/data-source-yahoo.md):
   are omitted, the ticker stays.
   The first session after them takes the last non-omitted close as its reference (the last traded
   price, as after a suspension); no price is invented or interpolated.
-* persistent step (``scale_step_before``): the open steps by the stored event ratio (within
-  tolerance) and none of the next ``MAX_OUTLIER_SESSIONS + 1`` good sessions returns to the old
-  level (nearer the old level than the stepped one, within tolerance), while the first of them
-  continues from the new level. The event is *suspect*: it does not
+* persistent step (``scale_step_before``): the open moves from the old level toward the stepped
+  level (the old level times the stored ratio) without overshooting it by more than the tolerance
+  (P1-T06e: a near-tolerance open between the two levels is a step too) and none of the next
+  ``MAX_OUTLIER_SESSIONS + 1`` good sessions returns to the old level (nearer the old level than
+  the stepped one, within tolerance, and breaking continuity with the session before it), while
+  the first of them continues from the new level. The event is *suspect*: it does not
   match a real price adjustment at that date, so it is never applied to holdings
   (``load_execution_frame`` drops it). Every row of the ticker through the first good session on or
   after the ex-date is excluded (one exclusion row with the count, dated the ex-date); later rows
@@ -62,15 +64,22 @@ band. The execution series starts after the LAST such session that is followed b
 exclusion row with the count, dated the last excluded session). Only an out-of-band session that
 belongs to a cluster may be that cut point (P1-T06d): the trailing window of ``NON_HOSE_WINDOW``
 good sessions ending at it must hold at least ``NON_HOSE_MIN_OUT_OF_BAND`` out-of-band sessions.
-An isolated out-of-band session (a data glitch) is neither a cut point nor does it interrupt the
-run of in-band sessions. Sessions within
+An up-and-back spike (the next session is out of band too and lands back within tolerance of the
+close before the spike) counts as ONE event. An isolated out-of-band session (a data glitch) is
+neither a cut point nor does it interrupt the run of in-band sessions; a clustered one that is not
+a cut point resets the run. Sessions within
 ``MAX_OUTLIER_SESSIONS`` of a stock ex-date and the first session on or after a cash ex-date (the
 reference price drops by the dividend) are not tested; a history with no such session is left as
-is. Every row is counted once, under the first of: ``dq_error``, ``non_hose_history``,
-``scale_outlier_row``, ``scale_step_before``.
+is. Every row is counted once, under the first of: ``dq_error``, ``duplicate_session``,
+``non_hose_history``, ``scale_outlier_row``, ``scale_step_before``.
+
+Duplicated sessions (``duplicate_session``, GAP-07): a row whose open, high, low, close and volume
+(> 0) equal the previous stored session's is left out of the execution series. It is neutral for
+the band and scale checks.
 
 ``prices_adjusted.signal_ok`` is false for exactly the rows counted under ``dq_error``,
-``non_hose_history``, ``scale_outlier_row`` and ``scale_step_before``; features treat a false row
+``duplicate_session``, ``non_hose_history``, ``scale_outlier_row`` and ``scale_step_before``;
+features treat a false row
 as missing (P1-T10). A whole-ticker exclusion does not clear it.
 """
 
@@ -90,7 +99,8 @@ if TYPE_CHECKING:
 
     from vnstratlab.data.protocol import TickTable
 
-ADJ_METHOD = "ratio-v1"
+# v2 (P1-T06e): signal_ok / duplicate_session semantics; a store rebuilt before carries ratio-v1
+ADJ_METHOD = "ratio-v2"
 EXEC_BASIS = "exec_reconstructed"
 SPLIT_ADJUSTED = "split_adjusted"
 # Yahoo's cash dividend amounts are split-adjusted (evidence: docs/reports/data-source-yahoo.md
@@ -164,7 +174,8 @@ class Exclusion:
     ``dq_error`` (one session with an error-level data-quality finding), ``no_reference`` (one
     session without a usable reference price), ``scale_outlier_row`` (one out-of-scale session),
     ``scale_step_before`` (``rows`` sessions through a suspect event's first session; ``date`` is
-    the ex-date) and ``non_hose_history`` (``rows`` sessions up to ``date``).
+    the ex-date), ``non_hose_history`` (``rows`` sessions up to ``date``) and
+    ``duplicate_session`` (one session repeating the previous one's OHLCV, GAP-07).
     """
 
     ticker: str
@@ -190,6 +201,7 @@ class RebuildReport:
     step_rows_excluded: int = 0
     suspect_events: int = 0
     non_hose_rows_excluded: int = 0
+    duplicate_rows_omitted: int = 0
     exclusions: tuple[Exclusion, ...] = ()
     warnings: tuple[str, ...] = ()
 
@@ -312,6 +324,7 @@ def build_series(
         step_rows_excluded=rows_of("scale_step_before"),
         suspect_events=sum(1 for e in exclusions if e.kind == "scale_step_before"),
         non_hose_rows_excluded=rows_of("non_hose_history"),
+        duplicate_rows_omitted=rows_of("duplicate_session"),
         exclusions=tuple(exclusions),
         warnings=tuple(warnings),
     )
@@ -429,7 +442,7 @@ class _Run:
     unusable: npt.NDArray[np.bool_] | None = None  # rows signals must treat as missing
 
 
-# Cluster rule of the non-HOSE cut (P1-T06d). PENDING OWNER APPROVAL: keep as module constants.
+# Cluster rule of the non-HOSE cut (P1-T06d). Owner-approved 2026-11-21: keep as module constants.
 # Real pre-HOSE history shows ~16-23 out-of-band sessions per year; other tickers at most 5.
 NON_HOSE_WINDOW = 250  # trailing good sessions inspected for a candidate cut session
 NON_HOSE_MIN_OUT_OF_BAND = 10  # out-of-band sessions the window must hold for the cut to qualify
@@ -446,7 +459,9 @@ def _non_hose_cut(
     """Index of the last session of the pre-HOSE history, or ``None`` (see module docstring).
 
     A candidate must belong to a cluster (``NON_HOSE_WINDOW`` / ``NON_HOSE_MIN_OUT_OF_BAND``,
-    pending owner approval). Bad source rows are neutral and never serve as the previous close:
+    owner-approved 2026-11-21); an up-and-back spike counts once, and only a clustered
+    out-of-band session interrupts the run of in-band sessions. Bad source rows are neutral and
+    never serve as the previous close:
     each move is measured against the previous good close (as in :func:`_scale_check`).
     """
     n = len(ordinals)
@@ -467,8 +482,21 @@ def _non_hose_cut(
             move_open = np.abs(open_[cur] / close[prev] - 1.0)
             move_close = np.abs(close[cur] / close[prev] - 1.0)
         outside[cur] = ((move_open > tolerance) | (move_close > tolerance)) & ~neutral[cur]
-    # out-of-band sessions in the window of NON_HOSE_WINDOW good sessions ending at each good one
-    cum = np.concatenate(([0], np.cumsum(outside[good])))
+    # An up-and-back spike is ONE event: when the next good session is itself out of band and
+    # lands back within tolerance of the close before the spike, only the spike is counted.
+    counted = outside.copy()
+    k = 1
+    while k < len(good) - 1:
+        i, nxt = good[k], good[k + 1]
+        if outside[i] and outside[nxt]:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                back = abs(close[nxt] / close[good[k - 1]] - 1.0)
+            if back <= tolerance:
+                counted[nxt] = False
+                k += 1
+        k += 1
+    # counted events in the window of NON_HOSE_WINDOW good sessions ending at each good session
+    cum = np.concatenate(([0], np.cumsum(counted[good])))
     rank = np.arange(len(good))
     window = cum[rank + 1] - cum[np.maximum(rank + 1 - NON_HOSE_WINDOW, 0)]
     clustered = np.zeros(n, dtype=bool)
@@ -477,8 +505,10 @@ def _non_hose_cut(
     for i in range(n - 1, -1, -1):
         if not outside[i]:
             calm += 1
-        elif clustered[i] and calm >= MIN_HOSE_RUN:
-            return i
+        elif clustered[i]:
+            if calm >= MIN_HOSE_RUN:
+                return i
+            calm = 0  # a clustered out-of-band session interrupts the in-band run
     return None
 
 
@@ -561,18 +591,20 @@ def _scale_check(
                 skip[i] = True
             continue
         following = [int(i) for i in after[1 : MAX_OUTLIER_SESSIONS + 2]]
-        stepped = abs(open_[j] / (close[p] * total) - 1.0) <= tolerance
+        # the open moved from the old level toward the stepped level (the stored ratio) and does
+        # not overshoot it beyond tolerance; a move away from it, or far past it, is no step
+        stepped = close[p] < open_[j] <= close[p] * total * (1.0 + tolerance)
         stays = (
             len(following) > 0
-            and not any(at_old_level(i) for i in following)
+            and not any(back_in_scale(m) for m in range(1, len(following) + 1))
             and abs(open_[following[0]] / close[j] - 1.0) <= tolerance
         )
         ratio_text = ", ".join(f"{r:.4f}" for r in ratios)
         if stepped and stays:
             detail = (
                 f"open {open_[j]:.2f} on {dates[j]} vs previous close {close[p]:.2f} on "
-                f"{dates[p]}: the level steps by the stored ratio(s) {ratio_text} and stays; the "
-                "event does not match a price adjustment and is not applied"
+                f"{dates[p]}: the level steps toward the stored ratio(s) {ratio_text} and stays; "
+                "the event does not match a price adjustment and is not applied"
             )
             step = _Step([ex_date], j, p, detail)
             seen[j] = step
@@ -611,19 +643,43 @@ def _execution(
         for d, b in zip(dates, is_bad, strict=True)
         if b
     ]
-    claimed = is_bad.copy()  # every row is counted under exactly one kind
     open_ = group["open"].to_numpy(dtype=np.float64)
     high = group["high"].to_numpy(dtype=np.float64)
     low = group["low"].to_numpy(dtype=np.float64)
     close = group["close"].to_numpy(dtype=np.float64)
+    # GAP-07: a session whose OHLC and volume repeat the previous stored session (volume > 0) is a
+    # duplicated source row; it carries no information and is left out, never repaired
+    volume_raw = group["volume"].to_numpy(dtype=np.float64)
+    dup = np.zeros(len(group), dtype=bool)
+    dup[1:] = (
+        (open_[1:] == open_[:-1])
+        & (high[1:] == high[:-1])
+        & (low[1:] == low[:-1])
+        & (close[1:] == close[:-1])
+        & (volume_raw[1:] == volume_raw[:-1])
+        & (volume_raw[1:] > 0)
+    )
+    dup &= ~is_bad
+    found += [
+        Exclusion(
+            ticker,
+            "duplicate_session",
+            d,
+            "open, high, low, close and volume repeat the previous session (GAP-07)",
+        )
+        for d, x in zip(dates, dup, strict=True)
+        if x
+    ]
+    claimed = is_bad | dup  # every row is counted under exactly one kind
+    unreliable = is_bad | dup  # neutral for the band and scale checks (no new information)
     stored_ref = group["ref_price"].to_numpy(dtype=np.float64)
     stock_f = _factor(ordinals, events.stock)
 
     run = _Run()
     omitted_outlier = np.zeros(len(group), dtype=bool)
     if is_split.any():
-        skip = is_bad.copy()
-        cut = _non_hose_cut(ordinals, open_, close, events, tolerance, is_bad)
+        skip = unreliable.copy()
+        cut = _non_hose_cut(ordinals, open_, close, events, tolerance, unreliable)
         cut_date: date | None = None
         if cut is not None:
             cut_date = dates[cut]
@@ -709,7 +765,7 @@ def _execution(
     def rebuilt(values: FloatArray) -> FloatArray:
         return np.clip(ticks.nearest(values * stock_f), floor_, ceiling_)
 
-    volume = np.floor(np.round(group["volume"].to_numpy(dtype=np.float64) / stock_f, 6))
+    volume = np.floor(np.round(volume_raw / stock_f, 6))
     stored_ceiling = group["ceiling"].to_numpy(dtype=np.float64)
     stored_floor = group["floor"].to_numpy(dtype=np.float64)
     out = pd.DataFrame(
@@ -721,7 +777,7 @@ def _execution(
             "high": np.where(is_split, rebuilt(high), high),
             "low": np.where(is_split, rebuilt(low), low),
             "close": np.where(is_split, rebuilt(close), close),
-            "volume": np.where(is_split, volume, group["volume"].to_numpy(dtype=np.float64)),
+            "volume": np.where(is_split, volume, volume_raw),
             "ref_price": np.where(is_split, ref, stored_ref),
             "ceiling": np.where(is_split, ceiling_, stored_ceiling),
             "floor": np.where(is_split, floor_, stored_floor),
@@ -754,3 +810,16 @@ def execution_actions(
             for a, d in zip(out.loc[mask, "ratio_or_amount"], out.loc[mask, "ex_date"], strict=True)
         ]
     return out
+
+
+def adjusted_is_rebuilt(adjusted: pd.DataFrame) -> bool:
+    """``True`` when every row of ``adjusted`` (``MarketStore.read_adjusted``) carries the current
+    ``ADJ_METHOD`` in ``adj_version``, i.e. the store was rebuilt by this code.
+
+    A migrated store that was not rebuilt keeps ``signal_ok = TRUE`` on every row and an older
+    method label; features must not be computed from it. An empty frame is not rebuilt.
+    """
+    if adjusted.empty or "adj_version" not in adjusted.columns:
+        return False
+    prefix = f"{ADJ_METHOD}:"
+    return bool(adjusted["adj_version"].astype(str).str.startswith(prefix).all())

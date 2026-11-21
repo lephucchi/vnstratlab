@@ -59,7 +59,7 @@ Interim price source: **yahoo**. Each gap is a known shortfall that is worked ar
 - Status: open · severity: medium · since 2026-11-18
 - Missing: No HNX/UPCoM symbols. ACB, LPB, VIB and SSB start in 2020-2021 (their HOSE listing), so a 2015 backfill gives a ragged panel.
 - Affects: prices_daily, universe, P1-T10, P1-T20, lab statistics
-- Workaround now: A ticker is tradable only from its first stored session; lab reports state the effective start per ticker and the number of tickers per period. Rows up to and including the last session outside the HOSE band that is followed by 60 in-band sessions are another exchange's history under the same symbol and are excluded from execution (non_hose_history, P1-T06b). That session must belong to a cluster (at least 10 out-of-band sessions in the trailing 250); isolated out-of-band sessions never cut history (P1-T06d, thresholds pending owner approval).
+- Workaround now: A ticker is tradable only from its first stored session; lab reports state the effective start per ticker and the number of tickers per period. Rows up to and including the last session outside the HOSE band that is followed by 60 in-band sessions are another exchange's history under the same symbol and are excluded from execution (non_hose_history, P1-T06b). That session must belong to a cluster (at least 10 out-of-band sessions in the trailing 250); isolated out-of-band sessions never cut history (P1-T06d, thresholds owner-approved 2026-11-21).
 - Closed by: CafeF files (cover HNX/UPCoM history) or another source — new card.
 
 ## GAP-05
@@ -89,7 +89,7 @@ Interim price source: **yahoo**. Each gap is a known shortfall that is worked ar
 - Status: open · severity: low · since 2026-11-18
 - Missing: Occasional consecutive sessions with identical close/volume.
 - Affects: prices_daily, P1-T08, P1-T38
-- Workaround now: Quality checks flag them (warning); they are kept but marked.
+- Workaround now: Quality checks flag them (warning). A session whose open, high, low, close and volume (> 0) repeat the previous session is omitted from prices_exec (duplicate_session, counted) and has signal_ok = false in prices_adjusted (P1-T06e); stored rows are kept.
 - Closed by: Cross-check with a second source.
 
 ## GAP-08
