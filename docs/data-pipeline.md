@@ -212,6 +212,38 @@ no data-quality error). Before the terms prompt
 the command checks that the adapter's library is importable and, if not, exits `1` with the
 install hint without asking for or storing acceptance.
 
+## 5b. Features (P1-T10)
+
+`vnstratlab features build [--source S] [--dry-run]` computes `features_daily` (offline) from the
+rebuilt `prices_adjusted` and `prices_exec` of one source and replaces the table in one
+transaction (idempotent). It stops with an error naming `vnstratlab data rebuild` when
+`prices_adjusted` is empty or any row lacks the current `ADJ_METHOD` in `adj_version`
+(`adjust.adjusted_is_rebuilt`); `--dry-run` reports the same error and otherwise prints the row
+count, rows per ticker, the NaN share per feature group, the `sessions_in_window` note and the
+runtime, writing nothing.
+
+- **Pure core** `vnstratlab.features.compute_features(adjusted, exec_, universe, asof_dates=None,
+  actions=None)`: every feature at `t` uses rows `<= t` only (trailing windows; tested by
+  truncating the history, with stock events after the cut, over 24 seeds). Column groups and
+  window constants live in `features/groups.py`; the module docstring of `features/core.py` has the
+  exact definitions.
+- **Series**: returns, ratios and normalised indicators read `prices_adjusted`; the 52-week
+  distances, value traded, volume ratio and ATR-14 read `prices_exec`. Distances and the volume
+  ratio are restated into the share basis of day `t` with the stock ex-date factors (`actions`), so
+  a stock dividend leaves no step. ATR uses `risk.atr.atr` with the engine's ex-date factors.
+- **Missing sessions**: a `prices_adjusted` row with `signal_ok = false` is missing for every
+  feature (dropped before any window, no output row, no interpolation). Windows count stored good
+  sessions, so window lengths are in AVAILABLE sessions, not calendar days. Real history misses
+  about one session in five (GAP-07), so a 250-session window spans roughly 300 trading days; the
+  dry run prints the median calendar span of 20- and 250-session windows (`sessions_in_window`).
+- **Version**: `feature_version = features-v1:<hash>` of the code version, the windows and the
+  sorted `(ticker, adj_version)` pairs of the input: one value for the whole build. Reading rows
+  with more than one version raises (`load_features`). `load_features(store, start, end, columns,
+  asof)` clamps the window to `asof` so a strategy can never receive a later row.
+- **Deferred (GAP-11)**: valuation and asset-quality groups wait for P1-T07; no empty columns.
+- **Universe**: today's config universe (membership plus known exits); each build logs the
+  `survivorship_warning` (plan section 0) until P1-T05.
+
 ## 5a. Data-quality checks (P1-T38)
 
 After the write transaction commits, every non-dry ingest runs the checks on the run's source

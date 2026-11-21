@@ -20,6 +20,7 @@ EXPECTED_COMMANDS = [
     "init",
     "ingest",
     "data",
+    "features",
     "backtest",
     "lab",
     "meta-backtest",
@@ -218,3 +219,84 @@ def test_data_rebuild_prints_counts_per_exclusion_kind(
     assert "scale outlier rows omitted 1" in result.output
     assert "rows before a scale step excluded 4 (suspect events 1)" in result.output
     assert "non-HOSE history rows excluded 0" in result.output
+
+
+# ------------------------------------------------------------------ features build (P1-T10)
+
+
+def synthetic_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    home = tmp_path / "home"
+    monkeypatch.setenv("APP_HOME", str(home))
+    args = ["ingest", "--source", "synthetic", "--from", "2026-01-05", "--to", "2026-04-30"]
+    assert runner.invoke(app, args).exit_code == 0
+    return home
+
+
+def synthetic_db(home: Path) -> Path:
+    return home / "data" / "market-synthetic.duckdb"
+
+
+def test_features_build_before_a_rebuild_stops_and_names_the_fix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    synthetic_home(monkeypatch, tmp_path)
+    for extra in ([], ["--dry-run"]):
+        result = runner.invoke(app, ["features", "build", "--source", "synthetic", *extra])
+        assert result.exit_code == 1
+        assert "vnstratlab data rebuild" in result.output
+
+
+def test_features_build_refuses_a_store_rebuilt_by_an_older_method(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import duckdb
+
+    home = synthetic_home(monkeypatch, tmp_path)
+    assert runner.invoke(app, ["data", "rebuild", "--source", "synthetic"]).exit_code == 0
+    con = duckdb.connect(str(synthetic_db(home)))
+    con.execute("UPDATE prices_adjusted SET adj_version = 'ratio-v1:old'")
+    con.close()
+    for extra in ([], ["--dry-run"]):
+        result = runner.invoke(app, ["features", "build", "--source", "synthetic", *extra])
+        assert result.exit_code == 1
+        assert "vnstratlab data rebuild" in result.output
+
+
+def test_features_build_without_a_store_exits_1(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
+    result = runner.invoke(app, ["features", "build", "--source", "synthetic"])
+    assert result.exit_code == 1
+    assert "ingest" in result.output
+
+
+def test_features_build_dry_run_writes_nothing_and_build_is_idempotent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = synthetic_home(monkeypatch, tmp_path)
+    assert runner.invoke(app, ["data", "rebuild", "--source", "synthetic"]).exit_code == 0
+    dry = runner.invoke(app, ["features", "build", "--source", "synthetic", "--dry-run"])
+    assert dry.exit_code == 0, dry.output
+    assert "would build features for synthetic" in dry.output
+    assert "rows per ticker:" in dry.output
+    assert "NaN share per feature group:" in dry.output
+    assert "sessions_in_window" in dry.output
+    assert "dry run: nothing was written" in dry.output
+    with MarketStore(synthetic_db(home), "synthetic", read_only=True) as store:
+        assert not store.has_table("features_daily")  # nothing written
+
+    first = runner.invoke(app, ["features", "build", "--source", "synthetic"])
+    assert first.exit_code == 0, first.output
+    assert "built features for synthetic" in first.output
+    with MarketStore(synthetic_db(home), "synthetic", read_only=True) as store:
+        a = store.read_features(date(2026, 1, 1), date(2026, 12, 31))
+    second = runner.invoke(app, ["features", "build", "--source", "synthetic"])
+    assert second.exit_code == 0
+    with MarketStore(synthetic_db(home), "synthetic", read_only=True) as store:
+        b = store.read_features(date(2026, 1, 1), date(2026, 12, 31))
+    assert len(a) > 0
+    pd.testing.assert_frame_equal(a, b)  # idempotent
+    assert a["feature_version"].nunique() == 1
+    # the dry run reports the same row count that the build wrote
+    assert f"{len(a)} rows" in dry.output
