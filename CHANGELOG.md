@@ -15,6 +15,13 @@ All notable changes are documented here. The format follows
   session with the current ATR. No change without a risk layer.
 
 ### Added
+- **Feature store v1 (P1-T10):** pure `vnstratlab.features` (trend/momentum, relative strength,
+  mean reversion, volatility, volume/liquidity and equal-weight-universe market context; windows in
+  stored good sessions, `signal_ok = false` rows are missing, no lookahead by test), table
+  `features_daily` with a single `feature_version` per build (includes every `adj_version`),
+  `vnstratlab features build [--dry-run]` (refuses a store that `data rebuild` has not rebuilt) and
+  the `load_features` loader with an `asof` guard. Valuation and asset-quality groups are deferred
+  (GAP-11).
 - **Corporate actions and execution prices (P1-T06):** `vnstratlab data rebuild` builds
   `prices_adjusted` (signals), `prices_exec` (`exec_reconstructed` rows the engine accepts) and
   `exec_exclusions` from the stored Yahoo rows and corporate actions; bad source rows, rows without

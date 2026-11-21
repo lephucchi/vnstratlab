@@ -192,3 +192,15 @@ def test_engine_purity_checker_detects_violations(tmp_path: Path) -> None:
         "call to_parquet()",
     ):
         assert expected in found
+
+
+def test_features_core_stays_pure() -> None:
+    """The feature computation (core, groups, package init) does no I/O; ``build`` is the store
+    side and is the only features module that may import ``vnstratlab.data``."""
+    files = [p for p in (SRC / "features").rglob("*.py") if p.name != "build.py"]
+    assert {p.name for p in files} >= {"__init__.py", "core.py", "groups.py"}
+    offenders = [f"{p.name}: {v}" for p in files for v in _engine_violations(p)]
+    assert offenders == []
+    init_imports = _imports(SRC / "features" / "__init__.py")
+    # importing the package never pulls the store side in
+    assert not [n for n in init_imports if n.startswith("vnstratlab.features.build")]

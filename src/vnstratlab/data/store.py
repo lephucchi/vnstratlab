@@ -10,7 +10,7 @@ a mismatching open or write raises ``SourceError``.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -602,6 +602,74 @@ class MarketStore:
     def read_adjusted(self, source: str) -> pd.DataFrame:
         frame = self._con.execute(
             "SELECT * FROM prices_adjusted WHERE source = ? ORDER BY ticker, date", [source]
+        ).df()
+        frame["date"] = [d.date() if isinstance(d, pd.Timestamp) else d for d in frame["date"]]
+        return frame
+
+    # ------------------------------------------------------------ features (P1-T10)
+
+    def replace_features(self, frame: pd.DataFrame) -> None:
+        """Atomically replace ``features_daily`` with ``frame`` (ticker, date, <DOUBLE feature
+        columns>, feature_version). One feature version lives in the table at a time; the table is
+        dropped and recreated with the frame's columns, so a rebuild with another column set never
+        leaves stale columns. An empty frame leaves an empty table."""
+        names = [str(c) for c in frame.columns]
+        required = ("ticker", "date", "feature_version")
+        if any(c not in names for c in required):
+            raise SourceError(f"features frame needs the columns {required}")
+        for name in names:
+            if not name.isidentifier():
+                raise SourceError(f"invalid feature column name {name!r}")
+        fixed = {"ticker": "VARCHAR NOT NULL", "date": "DATE NOT NULL"}
+        fixed["feature_version"] = "VARCHAR NOT NULL"
+        defs = ", ".join(f'"{c}" {fixed.get(c, "DOUBLE")}' for c in names)
+        with self.transaction():
+            _run(self._con, "DROP TABLE IF EXISTS features_daily")
+            _run(
+                self._con,
+                f"CREATE TABLE features_daily ({defs}, PRIMARY KEY (ticker, date))",
+            )
+            if frame.empty:
+                return
+            self._con.register("incoming_features", frame)
+            try:
+                columns = ", ".join(f'"{c}"' for c in names)
+                selects = ", ".join(
+                    f'CAST("{c}" AS DATE)' if c == "date" else f'"{c}"' for c in names
+                )
+                _run(
+                    self._con,
+                    f"INSERT INTO features_daily ({columns}) "  # noqa: S608
+                    f"SELECT {selects} FROM incoming_features",
+                )
+            finally:
+                self._con.unregister("incoming_features")
+
+    def read_features(
+        self, start: date, end: date, columns: Sequence[str] | None = None
+    ) -> pd.DataFrame:
+        """``features_daily`` rows in ``[start, end]`` with ``ticker``, ``date``, the requested
+        feature columns (default all) and ``feature_version``."""
+        if not self.has_table("features_daily"):
+            raise SourceError("no features in this store: run `vnstratlab features build`")
+        have = [
+            str(r[0])
+            for r in _run(
+                self._con,
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'features_daily' ORDER BY ordinal_position",
+            )
+        ]
+        features = [c for c in have if c not in ("ticker", "date", "feature_version")]
+        wanted = features if columns is None else list(columns)
+        unknown = [c for c in wanted if c not in features]
+        if unknown:
+            raise SourceError(f"unknown feature columns {unknown}")
+        selected = ", ".join(f'"{c}"' for c in ["ticker", "date", *wanted, "feature_version"])
+        frame = self._con.execute(
+            f"SELECT {selected} FROM features_daily "  # noqa: S608
+            "WHERE date BETWEEN ? AND ? ORDER BY ticker, date",
+            [start, end],
         ).df()
         frame["date"] = [d.date() if isinstance(d, pd.Timestamp) else d for d in frame["date"]]
         return frame

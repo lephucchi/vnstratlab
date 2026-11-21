@@ -411,6 +411,7 @@ News-based and ML strategies are excluded from the Phase 1 core. Each strategy h
 - Depends on: P1-T06, P1-T07, P1-T08
 - Goal: `features_daily` with the groups in the design doc: trend and momentum (vs. MA20/MA50; returns 5/20/60/120/250 days; distance to 52-week high/low), relative strength vs. group median and rank, mean reversion (RSI-14, z-score vs. MA20), volatility (ATR-14, 20-day std), volume (vs. 20-day avg), valuation (P/B, E/P, P/B gap vs. ROE-justified P/B), asset quality (NPL, coverage, ROE), market context (VN30 vs. MA50, bank-group breadth).
 - Acceptance: `feature_version` stored; recomputing a past date gives identical values; a test truncates data at t and verifies features at t are unchanged (no lookahead).
+- Note (card [P1-T10](../cards/P1-T10-feature-store.md), GAP-11): v1 ships without the valuation (P/B, E/P, ROE-justified P/B gap) and asset-quality (NPL, coverage, ROE) groups, because P1-T07 and P1-T08 are not available; no empty columns are created and strategies S10-S13 stay blocked until P1-T07 adds them as a new `feature_version`. Market context uses the equal-weight universe index instead of VN30 (GAP-03).
 
 ### M1.3 — Engine
 

@@ -53,6 +53,8 @@ app = typer.Typer(
 
 data_app = typer.Typer(help="Inspect the local market data: stores, runs, checks, gaps.")
 app.add_typer(data_app, name="data")
+features_app = typer.Typer(help="Point-in-time features (features_daily).")
+app.add_typer(features_app, name="features")
 
 
 class Horizon(StrEnum):
@@ -538,6 +540,60 @@ def data_gaps(
         typer.echo(f"  affects:    {', '.join(gap.affects)}")
         typer.echo(f"  workaround: {gap.workaround}")
         typer.echo(f"  closed by:  {gap.close_by}")
+
+
+@features_app.command("build")
+def features_build(
+    source: Annotated[
+        str | None, typer.Option("--source", help="Data source; default data.source in config.")
+    ] = None,
+    dry_run: DryRun = False,
+) -> None:
+    """Compute features_daily from the rebuilt adjusted and execution series (offline)."""
+    from vnstratlab.data.protocol import SourceError, universe_tickers
+    from vnstratlab.data.store import MarketStore, kind_of_source
+    from vnstratlab.features.build import build_features
+    from vnstratlab.features.core import FeatureError
+
+    _tolerant_output()
+    paths = get_paths()
+    try:
+        cfg = load_config(paths.home)
+    except ConfigError as exc:
+        typer.echo("config: INVALID", err=True)
+        for problem in exc.problems:
+            typer.echo(f"  {problem}", err=True)
+        raise typer.Exit(code=1) from None
+    name = source or cfg.data.source
+    db_path = paths.market_db_for(kind_of_source(name))
+    if not db_path.is_file():
+        typer.echo(f"error: no store at {db_path}: run `vnstratlab ingest` first", err=True)
+        raise typer.Exit(code=1)
+    try:
+        with MarketStore(db_path, kind_of_source(name), read_only=dry_run) as store:
+            report = build_features(store, name, universe_tickers(cfg), dry_run=dry_run)
+    except (SourceError, FeatureError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    verb = "would build" if dry_run else "built"
+    typer.echo(f"{verb} features for {name}: {report.rows} rows, version {report.feature_version}")
+    typer.echo("rows per ticker:")
+    for ticker, count in report.rows_per_ticker.items():
+        typer.echo(f"  {ticker} {count}")
+    if report.missing_tickers:
+        typer.echo(f"universe tickers without data: {', '.join(report.missing_tickers)}")
+    typer.echo("NaN share per feature group:")
+    for group, share in report.nan_share.items():
+        typer.echo(f"  {group} {share:.3f}")
+    typer.echo(
+        f"sessions_in_window: 20 sessions span {report.span_20:.1f} weekdays, "
+        f"250 sessions span {report.span_250:.1f} weekdays (median over tickers)"
+    )
+    typer.echo(f"runtime {report.seconds:.2f} s")
+    for warning in report.warnings:
+        typer.echo(f"warning: {warning}", err=True)
+    if dry_run:
+        typer.echo("dry run: nothing was written")
 
 
 @app.command()
