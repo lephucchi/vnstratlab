@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795226747912,
+  "lastUpdate": 1795227257398,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -713,6 +713,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00017625375027294484",
             "extra": "mean: 7.420452647071376 msec\nrounds: 17"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8b85a3fdc4b1b281abb94fbfa8562c0779bac9fc",
+          "message": "docs(qa): real-data dry run before merging data-cleaning PRs (#38)\n\nManager runs data rebuild --dry-run with branch code on the local store before merging data-cleaning PRs; progress log for #35 and #36.",
+          "timestamp": "2026-11-21T09:13:37+07:00",
+          "tree_id": "280ef0a812eac3db5dadbdfac11e8185d959c230",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/8b85a3fdc4b1b281abb94fbfa8562c0779bac9fc"
+        },
+        "date": 1795227256654,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 72.9131955428528,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00021143946974489005",
+            "extra": "mean: 13.714938599999726 msec\nrounds: 10"
           }
         ]
       }
