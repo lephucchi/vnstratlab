@@ -7,6 +7,12 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Strategies S08 and S09 (P1-T17):** S08 cross-sectional momentum (buy the top 4 by the 6- or
+  12-month return skipping the last month; `L_months` 6 and 12) and S09 medium-term reversal
+  (the bottom 4 by the 6-month signal), both medium horizon with frozen params in the packaged
+  config (`lab register` now lists 15 trials). New feature column `ret_6m_skip1m`; the feature
+  code version is now `features-v4`, so every `feature_version` changes: rebuild
+  `features_daily`. S13 stays blocked on P1-T07.
 - **Strategies S04 and S05 (P1-T16):** S04 long-only bank pairs (formation 250 sessions, top 5
   correlated pairs, buy the laggard when |z| > 2, hold at most 10 sessions or until z crosses 0)
   and S05 residual mean reversion (60-session regression on the group return, buy the 2 most

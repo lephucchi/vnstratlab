@@ -335,6 +335,8 @@ DISABLE_PACKAGED = """strategies:
   S03_oversold_uptrend: {enabled: false, reason: "test isolates the local strategies"}
   S04_bank_pairs: {enabled: false, reason: "test isolates the local strategies"}
   S05_residual_reversion: {enabled: false, reason: "test isolates the local strategies"}
+  S08_momentum: {enabled: false, reason: "test isolates the local strategies"}
+  S09_reversal: {enabled: false, reason: "test isolates the local strategies"}
 """
 STRATEGIES_YAML = """strategies:
   S00_composite: {enabled: false, reason: "test isolates the local strategies"}
@@ -344,6 +346,8 @@ STRATEGIES_YAML = """strategies:
   S03_oversold_uptrend: {enabled: false, reason: "test isolates the local strategies"}
   S04_bank_pairs: {enabled: false, reason: "test isolates the local strategies"}
   S05_residual_reversion: {enabled: false, reason: "test isolates the local strategies"}
+  S08_momentum: {enabled: false, reason: "test isolates the local strategies"}
+  S09_reversal: {enabled: false, reason: "test isolates the local strategies"}
   T_equal: {horizons: [short, medium], params: [{top: 1}, {top: 2}]}
   T_other: {horizons: [long], params: [{top: 1}]}
   S06_foreign_flow: {enabled: false, reason: "pending P1-T04"}
@@ -498,13 +502,13 @@ def test_lab_commands_report_an_unusable_lab_db_cleanly(
 def test_lab_register_dry_run_lists_the_packaged_strategies(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # P1-T14..T16: S00 2 + S17 3 (1 param set x 3 horizons) + S01 2 + S02 1 + S03 2 + S04 1
-    # + S05 1 = 12 trials
+    # P1-T14..T17: S00 2 + S17 3 (1 param set x 3 horizons) + S01 2 + S02 1 + S03 2 + S04 1
+    # + S05 1 + S08 2 + S09 1 = 15 trials
     home = lab_home(monkeypatch, tmp_path, "lab: {}\n")
     dry = runner.invoke(app, ["lab", "register", "--source", "synthetic", "--dry-run"])
     assert dry.exit_code == 0, plain(dry)
     text = plain(dry)
-    assert "would register 12 new trial(s) of 12" in text
+    assert "would register 15 new trial(s) of 15" in text
     assert text.count("S00_composite") == 2
     assert text.count("S17_equal_weight") == 3
     assert text.count("S01_weekly_reversal") == 2
@@ -512,4 +516,6 @@ def test_lab_register_dry_run_lists_the_packaged_strategies(
     assert text.count("S03_oversold_uptrend") == 2
     assert text.count("S04_bank_pairs") == 1
     assert text.count("S05_residual_reversion") == 1
+    assert text.count("S08_momentum") == 2
+    assert text.count("S09_reversal") == 1
     assert not lab_db(home).exists()

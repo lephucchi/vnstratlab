@@ -89,6 +89,9 @@ def test_packaged_config_loads_every_builtin_strategy(engine_cfg: AppConfig) -> 
         ),
         ("S04_bank_pairs", {"form": 250, "k": 5, "entry_z": 2.0, "max_hold": 10}, ("short",)),
         ("S05_residual_reversion", {"window": 60, "entry_z": 1.5, "n": 2}, ("short",)),
+        ("S08_momentum", {"L_months": 6, "n": 4}, ("medium",)),
+        ("S08_momentum", {"L_months": 12, "n": 4}, ("medium",)),
+        ("S09_reversal", {"L_months": 6, "n": 4}, ("medium",)),
     ]
 
 

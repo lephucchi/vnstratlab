@@ -111,6 +111,15 @@ strategies:                    # filled by strategy cards P1-T14..P1-T19
     horizons: [short]
     params:
       - {window: 60, entry_z: 1.5, n: 2}
+  S08_momentum:                # P1-T17: Jegadeesh & Titman (1993); skip the last month
+    horizons: [medium]
+    params:
+      - {L_months: 6, n: 4}
+      - {L_months: 12, n: 4}
+  S09_reversal:                # P1-T17: opposite ranking of S08; the lab decides which survives
+    horizons: [medium]
+    params:
+      - {L_months: 6, n: 4}
 
 news:
   collect_raw: true            # Phase 1: collect only

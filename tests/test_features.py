@@ -198,6 +198,20 @@ def test_hand_ret_1d_is_close_over_previous_good_close_minus_one() -> None:
     assert "ret_1d" in FEATURE_GROUPS["returns"]
 
 
+def test_hand_ret_6m_skip1m_is_close_21_back_over_close_126_back_minus_one() -> None:
+    # closes 100 + i over 130 sessions: row t has close[t - 21] / close[t - 126] - 1
+    closes = [100.0 + i for i in range(130)]
+    out = compute_features(*synthetic_frames("M", closes), ["M"])
+    got = out["ret_6m_skip1m"].to_numpy(dtype=float)
+    assert np.isnan(got[:126]).all()  # warm-up: needs 126 prior sessions
+    assert got[126] == pytest.approx(205.0 / 100.0 - 1)  # close[105] / close[0] - 1
+    assert got[129] == pytest.approx(208.0 / 103.0 - 1)  # close[108] / close[3] - 1
+    assert out["ret_12m_skip1m"].isna().all()  # 130 sessions are too few for the 250 window
+    assert "ret_6m_skip1m" in FEATURE_GROUPS["trend_momentum"]
+    cols = list(FEATURE_GROUPS["trend_momentum"])
+    assert cols.index("ret_6m_skip1m") == cols.index("ret_12m_skip1m") + 1
+
+
 def test_ret_1d_spans_a_missing_session_without_filling() -> None:
     # session 2 is signal_ok = false: it has no row and the next return is 3 vs 1 sessions back:
     # closes 100, 105, (999 missing), 126 -> ret_1d of the last row = 126 / 105 - 1 = 0.2
@@ -209,8 +223,8 @@ def test_ret_1d_spans_a_missing_session_without_filling() -> None:
     assert out["ret_1d"].iloc[-1] == pytest.approx(0.2)
 
 
-def test_features_code_version_is_v3() -> None:
-    assert FEATURES_CODE_VERSION == "features-v3"
+def test_features_code_version_is_v4() -> None:
+    assert FEATURES_CODE_VERSION == "features-v4"
 
 
 def test_hand_rs_20d_rank_and_group_median(synthetic_hand: pd.DataFrame) -> None:
@@ -457,7 +471,7 @@ def test_feature_version_is_stable_and_follows_adj_version() -> None:
     # one value for the whole build, different for every row (cross-sectional features)
     assert second["feature_version"].nunique() == 1
     assert second["feature_version"].iloc[0] != first["feature_version"].iloc[0]
-    assert first["feature_version"].iloc[0].startswith("features-v3:")
+    assert first["feature_version"].iloc[0].startswith("features-v4:")
 
 
 def test_recomputing_a_past_date_gives_identical_values(synthetic_hand: pd.DataFrame) -> None:

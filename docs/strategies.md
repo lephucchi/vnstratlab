@@ -1,6 +1,6 @@
 # Strategy catalogue
 
-> **Status: design.** Implemented so far: S00 and S17 (card P1-T14), S01–S03 (card P1-T15) and S04–S05 (card P1-T16); the
+> **Status: design.** Implemented so far: S00 and S17 (card P1-T14), S01–S03 (card P1-T15), S04–S05 (card P1-T16) and S08–S09 (card P1-T17); the
 > rest follow in cards P1-T17 … P1-T19. Parameter sets
 > below are **proposals**; the owner freezes them in `defaults.yaml` when each card starts.
 > After that, a changed parameter set is a new trial (plan §6.4.3). Each strategy has at most
@@ -30,12 +30,12 @@ How strategies are run, combined and selected: [engine.md](engine.md). How to wr
 | S05 | Residual mean reversion | short | prices (return history) | P1-T16 | **Implemented** |
 | S06 | Foreign flow | short | foreign net buy/sell | P1-T19 | **Blocked** on P1-T04 (free data source) |
 | S07 | LightGBM meta-label filter | short | features | P1-T31 | **Stretch** |
-| S08 | Cross-sectional momentum 6–12m | medium | prices | P1-T17 | Planned |
-| S09 | Medium-term reversal | medium | prices | P1-T17 | Planned |
+| S08 | Cross-sectional momentum 6–12m | medium | prices | P1-T17 | **Implemented** |
+| S09 | Medium-term reversal | medium | prices | P1-T17 | **Implemented** |
 | S10 | P/B vs. ROE-justified P/B | medium, long | equity, net income, prices | P1-T18 | Planned; depends on P1-T07 data quality |
 | S11 | Earnings yield (E/P) | medium, long | net income, prices | P1-T18 | Planned; depends on P1-T07 |
 | S12 | Asset quality and profitability | medium, long | ROE, NPL, NPL coverage | P1-T18 | Planned; **NPL availability from free sources unverified** |
-| S13 | Value + momentum | medium | S08 and S10 ranks | P1-T17 | Planned |
+| S13 | Value + momentum | medium | S08 and S10 ranks | P1-T17 | **Blocked** on P1-T07 (needs S10) |
 | S14 | Low volatility | medium | prices | P1-T19 | Planned |
 | S15 | Sector trend filter | medium | prices | P1-T19 | Planned |
 | S16 | LightGBM ranking (60-day) | medium | features | P1-T31 | **Stretch** |
@@ -142,13 +142,18 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
 
 ### S08 — Cross-sectional momentum
 - **Rule.** Return from `t-L` to `t-1 month` (skip the last month); buy the top `n`.
-- **Proposed params.** `{L_months: 6, n: 4}`, `{L_months: 12, n: 4}`.
+- **As implemented.** Signal = feature `ret_6m_skip1m` (`L_months` 6: close 21 sessions back over
+  close 126 back, minus 1) or `ret_12m_skip1m` (`L_months` 12: 21 over 250); other values are
+  rejected. NaN is not eligible; fewer eligible than `n` buy fewer names and the rest stays in
+  cash; ties by ticker. Equal weight 1/`n`. Reads only the asof rows (`lookback_sessions` 1).
+- **Params (frozen).** `{L_months: 6, n: 4}`, `{L_months: 12, n: 4}`; medium horizon.
 - **Basis.** Jegadeesh & Titman (1993). With 13 highly correlated banks, momentum spreads are
   small; S09 tests the opposite.
 
 ### S09 — Medium-term reversal
 - **Rule.** Opposite ranking of S08: buy the bottom `n`.
-- **Proposed params.** `{L_months: 6, n: 4}`.
+- **As implemented.** Same signal, selection and weights as S08 with the ranking reversed.
+- **Params (frozen).** `{L_months: 6, n: 4}`; medium horizon.
 - **Basis.** Several Vietnamese market studies report reversal rather than momentum; the lab
   decides which survives.
 
@@ -172,6 +177,7 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
 ### S13 — Value + momentum
 - **Rule.** Average of S08 rank and S10 rank; buy the top `n`.
 - **Proposed params.** `{n: 4}`.
+- **Status.** Blocked on P1-T07 (needs S10).
 - **Basis.** Asness, Moskowitz & Pedersen (2013).
 
 ### S14 — Low volatility
