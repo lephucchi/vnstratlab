@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795240144099,
+  "lastUpdate": 1795240261120,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1103,6 +1103,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002585724845993718",
             "extra": "mean: 11.473937272728303 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4c3ffdc29c70c04e3a7f1c5d03faa308f4470324",
+          "message": "fix(strategies): S04 no re-entry across missing sessions (P1-T16b) (#52)\n\nopen_side compares with the last observed z across sessions without a spread; only the window start counts as no z. G2 round 2 (delta) approve.",
+          "timestamp": "2026-11-21T12:50:22+07:00",
+          "tree_id": "3812b4129f36ed7c145b4020dae19c0e5c063cf1",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/4c3ffdc29c70c04e3a7f1c5d03faa308f4470324"
+        },
+        "date": 1795240260485,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 3.072174220296495,
+            "unit": "iter/sec",
+            "range": "stddev: 0.005772539758760874",
+            "extra": "mean: 325.502373333336 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 117.34896779218941,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017426241332582474",
+            "extra": "mean: 8.521591785714529 msec\nrounds: 14"
           }
         ]
       }
