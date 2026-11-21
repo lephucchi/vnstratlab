@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795237963849,
+  "lastUpdate": 1795239797220,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1027,6 +1027,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0006712282628244554",
             "extra": "mean: 7.535809916667802 msec\nrounds: 12"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0263763c4b238fe43b8e150f81cc8f927a307418",
+          "message": "feat(strategies): S04 long-only bank pairs, S05 residual mean reversion (P1-T16) (#50)\n\nS04 (top-5 correlated pairs over 250 sessions, laggard on |z| > 2, onset-based max_hold 10, zero-cross exit), S05 (OLS residual s-score over 60 sessions, n 2 below -1.5); feature ret_1d (features-v3); BaseStrategy.lookback_sessions. Packaged config 12 trials. Merged by owner request with CI green; G2 review still running at merge time.",
+          "timestamp": "2026-11-21T12:42:34+07:00",
+          "tree_id": "0f7ee96b8c12ef760ce3beafadadc86c2b73aca2",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/0263763c4b238fe43b8e150f81cc8f927a307418"
+        },
+        "date": 1795239796621,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 3.107368927887352,
+            "unit": "iter/sec",
+            "range": "stddev: 0.012363707068588428",
+            "extra": "mean: 321.8156656666717 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 117.92242572275576,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001310362961745057",
+            "extra": "mean: 8.480151200002222 msec\nrounds: 15"
           }
         ]
       }
