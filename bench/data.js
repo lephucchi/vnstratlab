@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795228468684,
+  "lastUpdate": 1795229655186,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -806,6 +806,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0003763958531205202",
             "extra": "mean: 13.06481600000069 msec\nrounds: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "81ca997bd8b07cb616a0cbb1cbb1b216b44aab49",
+          "message": "docs(data): GAP-07 Tuesday duplicate pattern; progress log (#42)\n\nGAP-07 medium: Yahoo repeats Monday's bar on Tuesday since 2025-05 (442 rows). Progress log for #38-#40.",
+          "timestamp": "2026-11-21T09:53:37+07:00",
+          "tree_id": "ddf7cbf6db803228dfdc36f687def102917d3ab1",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/81ca997bd8b07cb616a0cbb1cbb1b216b44aab49"
+        },
+        "date": 1795229654920,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 77.4021348112535,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002743983647079421",
+            "extra": "mean: 12.91954029999971 msec\nrounds: 10"
           }
         ]
       }
