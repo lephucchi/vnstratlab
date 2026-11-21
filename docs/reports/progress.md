@@ -25,4 +25,8 @@ date       | card   | PR / commit      | summary                                
 2026-11-21 | docs   | PR #38 squash    | real-data dry run before merging data-cleaning PRs | docs | light tier
 2026-11-21 | P1-T06d | PR #39 squash   | non-HOSE cut only at clustered out-of-band sessions (250/10, owner-approved); real data prices_exec 6,223 -> 24,483 | 593 passed | G2 approve (round 1); minor -> #37
 2026-11-21 | P1-T06e | PR #40 squash   | spike = one event, reset on clustered only, near-tolerance steps (LPB/SHB/VIB kept), duplicate_session, adjusted_is_rebuilt (ratio-v2); real data prices_exec 27,541, no excluded tickers | 604 passed | G2 approve (round 1); minor -> #41
+2026-11-21 | docs   | PR #42 squash    | GAP-07 Tuesday duplicate pattern; progress log | docs | light tier
+2026-11-21 | P1-T10 | PR #43 squash    | feature store v1 (6 groups, signal_ok = missing, rebuilt-store guard, feature_version, asof loader); real data 27,551 rows in 0.9 s | 664 passed, 97.2% | G2 approve (round 2 delta); membership by date -> #44
+2026-11-21 | P1-T13 | PR #45 squash    | Strategy protocol, BaseStrategy (registry requires it), append-only trial_registry, trial_id incl. horizon, lab trials / lab register | 693 passed, 97.2% | G2 approve (round 2 delta); minor -> #46
+2026-11-21 | P1-T14 | PR #47 squash    | S00 composite (4 blocks, owner 2026-11-21; trigger filter before top_n, owner-confirmed), S17 equal weight; packaged config 5 trials | 733 passed, 97.25% | G2 approve (round 1)
 ```
