@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795240607166,
+  "lastUpdate": 1795241359510,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1179,6 +1179,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00018628731950404934",
             "extra": "mean: 14.724585800001933 msec\nrounds: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "785fb9036a6c4e660f465d2aa959e4838ed3ab1c",
+          "message": "feat(strategies): S08 momentum and S09 medium-term reversal (P1-T17) (#54)\n\nS08 (6m/12m skip-1m momentum, top 4), S09 (6m reversal, bottom 4); feature ret_6m_skip1m (features-v4); S13 blocked on P1-T07. Packaged config 15 trials.",
+          "timestamp": "2026-11-21T13:08:45+07:00",
+          "tree_id": "0bd0ac94c5294a9a24d6a5340817466c4d07417b",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/785fb9036a6c4e660f465d2aa959e4838ed3ab1c"
+        },
+        "date": 1795241359068,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 1.887290375819157,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01479668989622117",
+            "extra": "mean: 529.8601703333337 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 66.25572705302127,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00021796577916218627",
+            "extra": "mean: 15.093034888889653 msec\nrounds: 9"
           }
         ]
       }
