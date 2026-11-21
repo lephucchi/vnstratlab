@@ -3,7 +3,7 @@ id: P1-T13
 title: Strategy base, registry and trial log
 milestone: M1.4 Strategies
 release: v0.1.0
-status: in progress
+status: done
 branch: feat/P1-T13-strategy-registry
 due: 2026-11-26
 ---

@@ -3,7 +3,7 @@ id: P1-T10
 title: Feature store v1 (price, volume and market-context features; point-in-time)
 milestone: M1.2 Features
 release: v0.1.0
-status: in progress
+status: done
 branch: feat/P1-T10-feature-store
 due: 2026-11-27
 ---

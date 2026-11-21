@@ -3,7 +3,7 @@ id: P1-T06c
 title: Open G2 findings of P1-T06b (adjust review fixes)
 milestone: M1.1 Data
 release: v0.1.0
-status: in progress
+status: done
 branch: feat/P1-T06c-adjust-review-fixes
 due: 2026-11-24
 ---

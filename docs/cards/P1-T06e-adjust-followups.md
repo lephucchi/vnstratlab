@@ -3,7 +3,7 @@ id: P1-T06e
 title: Adjust follow-ups (issue #37 items 2, 3, 5-9)
 milestone: M1.1 Data
 release: v0.1.0
-status: in progress
+status: done
 branch: fix/P1-T06e-adjust-followups
 due: 2026-11-24
 ---
