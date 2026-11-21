@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795237406953,
+  "lastUpdate": 1795237963849,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -989,6 +989,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002552569055556451",
             "extra": "mean: 9.843949571429025 msec\nrounds: 7"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "70fefd785a42a296143b50580c9ba17d1e3ddf94",
+          "message": "feat(strategies): S01 weekly reversal, S02 breakout, S03 oversold in uptrend (P1-T15) (#49)\n\nS01 (n 2/3), S02 (close_20d_break + volume > 1.5x, max 3; new feature close_20d_break, features-v2), S03 (RSI2<10 / RSI14<30 above MA50, max 3). Packaged config now 10 trials.",
+          "timestamp": "2026-11-21T12:12:14+07:00",
+          "tree_id": "ae10a1616bed9d7995b435b9b6fb70d7ea414df0",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/70fefd785a42a296143b50580c9ba17d1e3ddf94"
+        },
+        "date": 1795237963350,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 3.1879541918186547,
+            "unit": "iter/sec",
+            "range": "stddev: 0.023305011465387864",
+            "extra": "mean: 313.680793333333 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 132.69973779303896,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0006712282628244554",
+            "extra": "mean: 7.535809916667802 msec\nrounds: 12"
           }
         ]
       }
