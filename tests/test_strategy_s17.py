@@ -68,12 +68,25 @@ def test_no_params_and_registration() -> None:
     assert "DeMiguel" in (s17_equal_weight.__doc__ or "")
 
 
-def test_packaged_config_loads_both_strategies(engine_cfg: AppConfig) -> None:
+def test_packaged_config_loads_every_builtin_strategy(engine_cfg: AppConfig) -> None:
     loaded = load_strategies(engine_cfg)
     assert [(s.id, s.params, s.horizons) for s in loaded] == [
         ("S00_composite", {"weights": "equal", "top_n": 3}, ("short",)),
         ("S00_composite", {"weights": "trend_heavy", "top_n": 3}, ("short",)),
         ("S17_equal_weight", {}, ("short", "medium", "long")),
+        ("S01_weekly_reversal", {"n": 2}, ("short",)),
+        ("S01_weekly_reversal", {"n": 3}, ("short",)),
+        ("S02_breakout_volume", {"lookback": 20, "vol_mult": 1.5, "max_n": 3}, ("short",)),
+        (
+            "S03_oversold_uptrend",
+            {"rsi_len": 2, "rsi_max": 10, "ma_len": 50, "max_n": 3},
+            ("short",),
+        ),
+        (
+            "S03_oversold_uptrend",
+            {"rsi_len": 14, "rsi_max": 30, "ma_len": 50, "max_n": 3},
+            ("short",),
+        ),
     ]
 
 

@@ -336,7 +336,9 @@ def test_model_dump_and_json_round_trip_without_warnings(tmp_path: Path) -> None
     assert data["costs"]["sales_tax_pct"] == 0.001
     assert data["market"]["holidays"]["2026"]["coverage"] == "complete"
     assert data["lab"]["weights"]["short"]["lambda_"] == 0.5
-    assert data["strategies"]["s1"] == {"params": {"a": [1, 2]}}  # merged with packaged S00/S17
+    assert data["strategies"]["s1"] == {
+        "params": {"a": [1, 2]}
+    }  # merged with the packaged strategies
     assert py["market"]["holidays"][2026]["coverage"] == "complete"
     assert isinstance(py["strategies"], dict)
 

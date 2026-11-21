@@ -1,8 +1,8 @@
 """Built-in strategies. Each module defines classes decorated with ``@register_strategy``.
 
 Importing this package imports every module in it, so the registry sees them. The packaged
-registry holds the strategy cards' modules (S00, S17 from P1-T14; the rest follow in
-P1-T15..P1-T19); tests register local classes under their own ids.
+registry holds the strategy cards' modules (S00, S17 from P1-T14; S01-S03 from P1-T15; the
+rest follow in P1-T16..P1-T19); tests register local classes under their own ids.
 """
 
 from __future__ import annotations

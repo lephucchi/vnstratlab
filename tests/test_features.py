@@ -151,6 +151,41 @@ def test_hand_high_20d_break(synthetic_hand: pd.DataFrame) -> None:
     assert row(synthetic_hand, "L", 20)["high_20d_break"] == 1.0
 
 
+def test_hand_close_20d_break_uses_prior_closes_not_highs() -> None:
+    # H: close 100 for rows 0..19, then 101 (row 20), 101 (row 21), 102 (row 22); high = close + 5
+    # high_20d_break: the prior 20 highs peak at 105 >= every close -> 0.0 at rows 20..22
+    # close_20d_break: row 20: prior closes (rows 0..19) peak at 100 < 101 -> 1.0
+    #                  row 21: prior closes (rows 1..20) peak at 101 == 101 -> 0.0 (not strictly)
+    #                  row 22: prior closes (rows 2..21) peak at 101 < 102 -> 1.0
+    #                  rows 0..19: fewer than 20 prior sessions -> NaN
+    closes = [100.0] * 20 + [101.0, 101.0, 102.0]
+    highs = [c + 5.0 for c in closes]
+    out = compute_features(*synthetic_frames("H", closes, highs=highs), ["H"])
+    got = out["close_20d_break"].tolist()
+    assert all(math.isnan(v) for v in got[:20])
+    assert got[20:] == [1.0, 0.0, 1.0]
+    assert math.isnan(out["high_20d_break"].iloc[19])
+    assert out["high_20d_break"].tolist()[20:] == [0.0, 0.0, 0.0]
+
+
+def test_hand_close_20d_break_on_the_hand_fixture(synthetic_hand: pd.DataFrame) -> None:
+    # L: prior 20 closes (rows 9..28) peak at 119 < 120 -> 1.0; M: peak 115 > 110 -> 0.0
+    assert row(synthetic_hand, "L", 29)["close_20d_break"] == 1.0
+    assert row(synthetic_hand, "M", 29)["close_20d_break"] == 0.0
+    assert math.isnan(row(synthetic_hand, "L", 19)["close_20d_break"])
+    assert row(synthetic_hand, "L", 20)["close_20d_break"] == 1.0
+
+
+def test_close_20d_break_skips_missing_sessions() -> None:
+    # a signal_ok = false session is missing: the window counts good sessions only
+    closes = [100.0] * 20 + [500.0, 101.0]
+    ok = [True] * 20 + [False, True]
+    out = compute_features(*synthetic_frames("H", closes, signal_ok=ok), ["H"])
+    assert len(out) == 21  # the bad row has no output row
+    # last row: 20 prior good sessions are rows 0..19 (500 is missing) -> 101 > 100 -> 1.0
+    assert out["close_20d_break"].iloc[-1] == 1.0
+
+
 def test_hand_rs_20d_rank_and_group_median(synthetic_hand: pd.DataFrame) -> None:
     # ret_20d at row 29: L 120 / 100 - 1 = 0.2, M 110 / 100 - 1 = 0.1, N 99.75 / 95 - 1 = 0.05
     ranks = {t: row(synthetic_hand, t, 29)["rs_20d_rank"] for t in "LMN"}
@@ -395,7 +430,7 @@ def test_feature_version_is_stable_and_follows_adj_version() -> None:
     # one value for the whole build, different for every row (cross-sectional features)
     assert second["feature_version"].nunique() == 1
     assert second["feature_version"].iloc[0] != first["feature_version"].iloc[0]
-    assert first["feature_version"].iloc[0].startswith("features-v1:")
+    assert first["feature_version"].iloc[0].startswith("features-v2:")
 
 
 def test_recomputing_a_past_date_gives_identical_values(synthetic_hand: pd.DataFrame) -> None:

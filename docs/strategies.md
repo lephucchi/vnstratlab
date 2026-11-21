@@ -1,7 +1,7 @@
 # Strategy catalogue
 
-> **Status: design.** Implemented so far: S00 and S17 (card P1-T14); the rest follow in cards
-> P1-T15 … P1-T19. Parameter sets
+> **Status: design.** Implemented so far: S00 and S17 (card P1-T14) and S01–S03 (card P1-T15); the rest follow
+> in cards P1-T16 … P1-T19. Parameter sets
 > below are **proposals**; the owner freezes them in `defaults.yaml` when each card starts.
 > After that, a changed parameter set is a new trial (plan §6.4.3). Each strategy has at most
 > 3 parameter sets.
@@ -23,9 +23,9 @@ How strategies are run, combined and selected: [engine.md](engine.md). How to wr
 | ID | Name | Horizons | Data needed | Card | Status |
 |---|---|---|---|---|---|
 | S00 | Composite score | short | prices, volume (4 blocks; valuation omitted, GAP-11) | P1-T14 | **Implemented** (v1, 4 blocks) |
-| S01 | Weekly reversal within group | short | prices | P1-T15 | Planned |
-| S02 | 20-day breakout with volume | short | prices, volume | P1-T15 | Planned |
-| S03 | Oversold in uptrend | short | prices | P1-T15 | Planned |
+| S01 | Weekly reversal within group | short | prices | P1-T15 | **Implemented** |
+| S02 | 20-day breakout with volume | short | prices, volume | P1-T15 | **Implemented** |
+| S03 | Oversold in uptrend | short | prices | P1-T15 | **Implemented** |
 | S04 | Long-only bank pairs | short | prices | P1-T16 | Planned |
 | S05 | Residual mean reversion | short | prices | P1-T16 | Planned |
 | S06 | Foreign flow | short | foreign net buy/sell | P1-T19 | **Blocked** on P1-T04 (free data source) |
@@ -69,20 +69,30 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
 - **Basis.** Design doc. Risk: many moving parts → one trial per weight set, no tuning.
 
 ### S01 — Weekly reversal within group
-- **Rule.** Last week's return minus the group median; buy the `n` biggest losers, equal weight.
-- **Proposed params.** `{n: 2}`, `{n: 3}`.
+- **Rule.** Feature `ret_5d_vs_group_median` (last week's return minus the group median); buy the
+  `n` most negative, equal weight 1/`n`. NaN is not eligible; fewer than `n` eligible leaves
+  cash; ties by ticker. The sign is not filtered.
+- **Params (frozen).** `{n: 2}`, `{n: 3}`; short horizon.
 - **Basis.** Jegadeesh (1990), short-term reversal. Sensitive to costs: watch the ×2 cost stress test.
 
 ### S02 — 20-day breakout with volume
 - **Rule.** Close > highest close of the previous `lookback` sessions **and** volume >
-  `vol_mult` × 20-day average volume. Equal weight across signals, max `max_n`.
-- **Proposed params.** `{lookback: 20, vol_mult: 1.5, max_n: 3}` (from the plan).
+  `vol_mult` × 20-day average volume. Equal weight across signals, max `max_n` (ranked by
+  `vol_vs_avg20` descending, ties by ticker), 1/`max_n` each, the rest in cash.
+- **Close-based feature.** The older `high_20d_break` compares the close with prior *highs*; S02
+  uses the new `close_20d_break` (features-v2: adjusted close above the highest adjusted close of
+  the previous 20 good sessions, NaN during warm-up). `lookback` must be 20 (the feature window);
+  other values are rejected.
+- **Params (frozen).** `{lookback: 20, vol_mult: 1.5, max_n: 3}` (the only set); short horizon.
 - **Basis.** Brock, Lakonishok & LeBaron (1992). Breakouts often open near the ceiling, so
   ceiling-blocked buys matter; check `order_events`.
 
 ### S03 — Oversold in uptrend
-- **Rule.** RSI(`rsi_len`) < `rsi_max` while close > MA(`ma_len`). Buy up to `max_n` lowest RSI.
-- **Proposed params.** `{rsi_len: 2, rsi_max: 10, ma_len: 50, max_n: 3}`, `{rsi_len: 14, rsi_max: 30, ma_len: 50, max_n: 3}`.
+- **Rule.** RSI(`rsi_len`) < `rsi_max` while close > MA(`ma_len`) (`close_vs_ma50` > 0). Buy up to
+  `max_n` lowest RSI, 1/`max_n` each, the rest in cash; ties by ticker. `rsi_len` 2 / 14 read the
+  features `rsi_2` / `rsi_14`; `ma_len` must be 50; other values are rejected.
+- **Params (frozen).** `{rsi_len: 2, rsi_max: 10, ma_len: 50, max_n: 3}`,
+  `{rsi_len: 14, rsi_max: 30, ma_len: 50, max_n: 3}`; short horizon.
 - **Basis.** Jegadeesh (1990); Moskowitz, Ooi & Pedersen (2012) for the trend filter.
 
 ### S04 — Long-only bank pairs
