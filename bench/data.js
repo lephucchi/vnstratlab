@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795226277608,
+  "lastUpdate": 1795226747912,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -682,6 +682,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00019234669818567917",
             "extra": "mean: 12.725325545452714 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0c18200254ebe28275ae54a8c1b64808c4714943",
+          "message": "fix(data): P1-T06c adjust review findings (#36)\n\nCloses #34. Persistent step vs outlier classification (nearer-old-level + continuity break; AC1(c) dropped, see #37), pre-HOSE cut at the last out-of-band session followed by >= 60 in-band sessions (bad rows neutral), cash ex-dates exempt from the band test, split-adjusted dividend end-to-end test, exec_exclusions.rows, prices_adjusted.signal_ok. Minor follow-ups in #37.",
+          "timestamp": "2026-11-21T09:05:09+07:00",
+          "tree_id": "f1bdf47a68e52c53b3fc15914989b3a998619546",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/0c18200254ebe28275ae54a8c1b64808c4714943"
+        },
+        "date": 1795226747252,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 134.76266847342112,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017625375027294484",
+            "extra": "mean: 7.420452647071376 msec\nrounds: 17"
           }
         ]
       }
