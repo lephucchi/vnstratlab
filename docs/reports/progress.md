@@ -29,4 +29,6 @@ date       | card   | PR / commit      | summary                                
 2026-11-21 | P1-T10 | PR #43 squash    | feature store v1 (6 groups, signal_ok = missing, rebuilt-store guard, feature_version, asof loader); real data 27,551 rows in 0.9 s | 664 passed, 97.2% | G2 approve (round 2 delta); membership by date -> #44
 2026-11-21 | P1-T13 | PR #45 squash    | Strategy protocol, BaseStrategy (registry requires it), append-only trial_registry, trial_id incl. horizon, lab trials / lab register | 693 passed, 97.2% | G2 approve (round 2 delta); minor -> #46
 2026-11-21 | P1-T14 | PR #47 squash    | S00 composite (4 blocks, owner 2026-11-21; trigger filter before top_n, owner-confirmed), S17 equal weight; packaged config 5 trials | 733 passed, 97.25% | G2 approve (round 1)
+2026-11-21 | P1-T15 | PR #49 squash    | S01 weekly reversal, S02 breakout (close_20d_break, features-v2), S03 oversold in uptrend; 10 packaged trials | 833 passed, 97.3% | G2 approve (round 1); minor -> #46
+2026-11-21 | P1-T16 | PR #50 squash    | S04 bank pairs (onset max_hold), S05 residual s-score, ret_1d (features-v3), lookback_sessions; 12 packaged trials | 907 passed, 97.4% | owner merge with CI green before G2 finished; G2 request changes (S04 re-entry across NaN) -> P1-T16b; no trials registered yet
 ```

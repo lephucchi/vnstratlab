@@ -30,9 +30,9 @@ Planned dates; the PO dashboard shows the live status of each card.
 | [P1-T37](cards/P1-T37-yahoo-source.md) | `YahooSource` adapter (optional `[yahoo]`) | P1-T36 | 2026-11-20 | `feat/P1-T37-yahoo-source` |
 | [P1-T38](cards/P1-T38-quality-gaps.md) | Quality checks v0, gap register, `data status` | P1-T37 | 2026-11-21 | `feat/P1-T38-quality-gaps` |
 | P1-T05 | Universe membership history (GAP-13) | P1-T02 | week of 2026-11-23 | — |
-| P1-T06 | Corporate actions and adjusted prices (respects `price_basis`) | P1-T38 | week of 2026-11-23 | — |
-| P1-T10 | Feature store v1 | P1-T06 | week of 2026-11-30 | — |
-| P1-T11 … P1-T19 | Engine, risk, strategies | P1-T36 | 2026-11-30 → 2026-12-18 | — |
+| P1-T06 | Corporate actions and adjusted prices (respects `price_basis`) ✅ (+ T06b–T06e) | P1-T38 | done 2026-11-21 | — |
+| P1-T10 | Feature store v1 ✅ | P1-T06 | done 2026-11-21 | — |
+| P1-T11 … P1-T19 | Engine, risk, strategies (T11–T16 ✅; T17 next; T18 and S13 blocked on P1-T07) | P1-T36 | 2026-11-30 → 2026-12-18 | — |
 | P1-T32, P1-T35 | `demo`, `init` | P1-T19 | week of 2026-12-21 | — |
 | release/v0.1.0 | Gate G3 (reality analyst) and G4 (owner) | all above | 2026-12-28 | — |
 

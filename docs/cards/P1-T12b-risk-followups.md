@@ -3,7 +3,7 @@ id: P1-T12b
 title: Risk follow-ups — ATR for late actions, exact lot shrink, bonus lots
 milestone: M1.3 Engine
 release: v0.1.0
-status: in progress
+status: done
 branch: feat/P1-T12b-risk-followups
 due: 2026-11-21
 ---

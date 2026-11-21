@@ -3,7 +3,7 @@ id: P1-T06d
 title: Density guard for the non-HOSE cut (hotfix of P1-T06c / PR #36)
 milestone: M1.1 Data
 release: v0.1.0
-status: in progress
+status: done
 branch: fix/P1-T06d-non-hose-guard
 due: 2026-11-22
 ---

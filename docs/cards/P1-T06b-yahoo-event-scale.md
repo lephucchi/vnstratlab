@@ -3,7 +3,7 @@ id: P1-T06b
 title: Yahoo event-scale repair, split-adjusted dividends, pre-HOSE history
 milestone: M1.1 Data
 release: v0.1.0
-status: in progress
+status: done
 branch: feat/P1-T06b-yahoo-event-scale
 due: 2026-11-21
 ---
