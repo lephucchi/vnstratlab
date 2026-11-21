@@ -19,6 +19,7 @@ from vnstratlab.calendar import TradingCalendar
 from vnstratlab.config.loader import load_config
 from vnstratlab.config.models import AppConfig
 from vnstratlab.data.adjust import (
+    adjusted_is_rebuilt,
     build_series,
     execution_actions,
     precondition_tolerance,
@@ -42,7 +43,10 @@ def bars(
     volume: int = 1_000_000,
     source: str = "yahoo",
 ) -> pd.DataFrame:
-    """open = high = low = close; ref = previous close (the first row keeps its own close)."""
+    """open = high = low = close; ref = previous close (the first row keeps its own close).
+
+    Volume is ``volume + row index`` so that flat price runs are not duplicated sessions (GAP-07).
+    """
     days = days or D[: len(closes)]
     ref = [closes[0], *closes[:-1]]
     ceiling, floor = TICKS.limits(np.array(ref, dtype=float))
@@ -54,7 +58,7 @@ def bars(
             "high": closes,
             "low": closes,
             "close": closes,
-            "volume": volume,
+            "volume": volume + np.arange(len(closes)),
             "value": 0.0,
             "ref_price": ref,
             "ceiling": ceiling,
@@ -145,7 +149,7 @@ def test_adjusted_version_is_stable_and_follows_the_events() -> None:
     other = build_series(prices, events(("AAA", D[3], "stock", 0.05)), TICKS).adjusted
     assert list(one) == list(two)
     assert len(one) == 1
-    assert one[0].startswith("ratio-v1:")
+    assert one[0].startswith("ratio-v2:")
     assert other["adj_version"].iloc[0] != one[0]
 
 
@@ -161,8 +165,10 @@ def test_execution_series_of_a_split_adjusted_fixture() -> None:
     assert out["close"].tolist() == [55_000.0, 54_300.0, 55_000.0, 50_000.0, 50_400.0]
     assert out["open"].tolist() == out["close"].tolist()
     assert out["stock_factor"].tolist() == pytest.approx([1.1, 1.1, 1.1, 1.0, 1.0])
-    # volume / F: 1,100,000 / 1.1 = 1,000,000 before the event, unchanged after
-    assert out["volume"].tolist() == [1_000_000] * 3 + [1_100_000] * 2
+    # stored volume 1,100,000 + row index; volume / F with F = 1.1 before the event, floored:
+    # 1,100,000 / 1.1 = 1,000,000; 1,100,001 / 1.1 = 1,000,000.9 -> 1,000,000;
+    # 1,100,002 / 1.1 = 1,000,001.8 -> 1,000,001; unchanged after the event
+    assert out["volume"].tolist() == [1_000_000, 1_000_000, 1_000_001, 1_100_003, 1_100_004]
     # ref = round_down(previous stored close x F(t)): the first row uses its stored ref
     #   D0 50,000 x 1.1 = 55,000 ; D1 50,000 x 1.1 = 55,000 ; D2 49,363.64 x 1.1 = 54,300
     #   D3 (ex-date) 50,000 x 1 = 50,000 = 55,000 / 1.1 ; D4 previous close 50,000
@@ -833,6 +839,12 @@ def _alternating(count: int) -> list[float]:
     return [50_000.0 if i % 2 == 0 else 54_750.0 for i in range(count)]
 
 
+def _cycle(count: int) -> list[float]:
+    """50,000 / 55,000 / 60,500 cycling: +10 %, +10 %, -17.4 %. Every move is out of band and
+    none lands back within 8 % of the close before it (no up-and-back spike)."""
+    return [(50_000.0, 55_000.0, 60_500.0)[i % 3] for i in range(count)]
+
+
 def test_probe_e_cut_is_the_last_out_of_band_session_followed_by_60_calm() -> None:
     # 100 wild (row 0 has no previous close, rows 1..99 are out of band), 60 calm, 50 wild
     # (row 160 jumps 54,750 -> 50,000; rows 160..209 are out of band), 80 calm. The last
@@ -882,7 +894,7 @@ def test_probe_f_cash_ex_date_is_exempt_from_the_band_test() -> None:
     # (P1-T06d): nothing is cut. With 10+ out-of-band sessions in the window it is cut again.
     without = build_series(prices, events(), TICKS)
     assert without.report.non_hose_rows_excluded == 0
-    wild = _alternating(12) + [54_750.0] * 100
+    wild = _cycle(12) + [60_500.0] * 100
     wild_prices = bars("AAA", wild, "split_adjusted", days=make_days(112))
     assert build_series(wild_prices, events(), TICKS).report.non_hose_rows_excluded == 12
 
@@ -958,3 +970,152 @@ def test_flagged_bad_row_does_not_cut_hose_history() -> None:
     )
     assert [e.kind for e in r.report.exclusions] == ["dq_error"]
     assert len(r.execution) == 299
+
+
+# ------------------------------------------------------------------ P1-T06e
+
+
+def test_up_and_back_spike_counts_as_one_event() -> None:
+    # 5 spikes (50,000 -> 60,000 -> 50,000; +20 % and -16.7 %) 50 sessions apart at rows 20, 70,
+    # 120, 170, 220, then 80 calm. Each spike is ONE event: 5 < 10, no cluster, no cut. (Counting
+    # up and back separately gave 10 and cut 222 rows.)
+    closes = [50_000.0] * 302
+    for row in (20, 70, 120, 170, 220):
+        closes[row] = 60_000.0
+    prices = bars("AAA", closes, "split_adjusted", days=make_days(302))
+    result = build_series(prices, events(), TICKS)
+    assert result.report.non_hose_rows_excluded == 0
+    assert len(result.execution) == 302
+    # control: 10 spikes 20 sessions apart (rows 20..200) are 10 events -> cluster; the last
+    # out-of-band session is the return at row 201: rows 0..201 = 202 are cut
+    many = [50_000.0] * 300
+    for row in range(20, 201, 20):
+        many[row] = 60_000.0
+    cut = build_series(bars("AAA", many, "split_adjusted", days=make_days(300)), events(), TICKS)
+    assert cut.report.non_hose_rows_excluded == 202
+
+
+def test_wild_tail_to_the_end_of_history_does_not_cut_the_clean_sessions() -> None:
+    # 900 calm sessions at 50,000, then 300 sessions that toggle 55,000 / 50,000 every 15
+    # sessions (rows 900, 915, ..., 1185: 20 out-of-band moves, none an up-and-back spike).
+    # Scanning back from the end every clustered move (the 10th onwards) resets the in-band run
+    # at 14 sessions < 60, the first nine moves are not clustered: there is no cut point at all
+    # (no non_hose cut anywhere, also none inside the wild tail: it is not followed by 60 calm
+    # sessions). Before P1-T06e the run never reset and rows 0..1125 were cut.
+    tail = [55_000.0 if (i // 15) % 2 == 0 else 50_000.0 for i in range(300)]
+    closes = [50_000.0] * 900 + tail
+    prices = bars("AAA", closes, "split_adjusted", days=make_days(1200))
+    result = build_series(prices, events(), TICKS)
+    assert result.report.non_hose_rows_excluded == 0
+    assert len(result.execution) == 1200
+    assert result.adjusted["signal_ok"].all()
+
+
+def test_isolated_glitch_after_a_real_cluster_does_not_block_the_cut() -> None:
+    # cycle(12): rows 1..11 are 11 events; 93 calm rows 12..104; a spike at row 105 (+20 %) and
+    # its return; 5 in-band rows. The glitch resets the run, but rows 12..104 are 93 in-band
+    # sessions >= 60 -> cut at row 11 (12 rows).
+    closes = [*_cycle(12), *[60_500.0] * 93, 72_600.0, 60_500.0, *[60_500.0] * 5]
+    prices = bars("AAA", closes, "split_adjusted", days=make_days(len(closes)))
+    assert build_series(prices, events(), TICKS).report.non_hose_rows_excluded == 12
+
+
+def test_cash_ex_date_that_would_qualify_is_exempt_inside_a_cluster() -> None:
+    # cycle(12): rows 1..11 out of band (11 events); row 11 (55,000 -> 60,500) is the cash
+    # ex-date of a 5,500 dividend. Exempt: only rows 1..10 count, row 10 is the cut point (11
+    # rows). Same data without the dividend: row 11 is the cut point (12 rows).
+    days = make_days(112)
+    prices = bars("AAA", [*_cycle(12), *[60_500.0] * 100], "split_adjusted", days=days)
+    with_cash = build_series(prices, events(("AAA", days[11], "cash", 5_500.0)), TICKS)
+    without = build_series(prices, events(), TICKS)
+    assert with_cash.report.non_hose_rows_excluded == 11
+    (item,) = with_cash.report.exclusions
+    assert item.date == days[10]
+    assert without.report.non_hose_rows_excluded == 12
+
+
+EVENT19 = events(("AAA", D10[3], "stock", 0.19))
+
+
+def test_near_tolerance_event_shape_is_a_step_not_a_whole_ticker_loss() -> None:
+    # previous close 14,530.73, ex-date open 15,850: +9.08 % > 8 %; stored ratio 0.19 (stepped
+    # level 17,291.57; the open is 8.3 % below it, 9.1 % above the old level). It stays at
+    # 15,850: a persistent step -> rows D0..D3 excluded, event suspect, ticker kept.
+    # The sessions after it drift 15,600 / 15,350 / 15,700 ...: 15,600 is within 8 % of the old
+    # level (7.4 %) and nearer it than the stepped level, but it continues from 15,850 (-1.6 %),
+    # so it is no return to the old level.
+    closes = [14_530.73] * 3 + [
+        15_850.0,
+        15_600.0,
+        15_350.0,
+        15_700.0,
+        15_750.0,
+        15_900.0,
+        15_950.0,
+    ]
+    prices = bars("AAA", closes, "split_adjusted", days=D10)
+    result = build_series(prices, EVENT19, TICKS)
+    report = result.report
+    assert report.excluded_tickers == ()
+    assert [(e.kind, e.date, e.rows) for e in report.exclusions] == [
+        ("scale_step_before", D10[3], 4)
+    ]
+    assert result.execution["date"].tolist() == D10[4:]
+    assert result.adjusted["signal_ok"].tolist() == [False] * 4 + [True] * 6
+
+
+def test_near_tolerance_event_shape_that_returns_is_an_outlier_row() -> None:
+    # same open 15,850, but D4 is back at 14,530.73: -8.3 % from the outlier (breaks
+    # continuity), 0 % from the old level -> one outlier row
+    closes = [14_530.73] * 3 + [15_850.0] + [14_530.73] * 6
+    result = build_series(bars("AAA", closes, "split_adjusted", days=D10), EVENT19, TICKS)
+    assert result.report.excluded_tickers == ()
+    assert [(e.kind, e.date) for e in result.report.exclusions] == [("scale_outlier_row", D10[3])]
+
+
+def test_open_far_past_the_stepped_level_or_away_from_it_still_excludes_the_ticker() -> None:
+    # ratio 0.19: stepped level 17,291.57, upper bound 17,291.57 x 1.08 = 18,674.9
+    over = bars("AAA", [14_530.73] * 3 + [19_000.0] * 7, "split_adjusted", days=D10)
+    assert build_series(over, EVENT19, TICKS).report.excluded_tickers == ("AAA",)
+    # opening below the old level is no step toward the stored ratio: 13,000 / 14,530.73 = -10.5 %
+    away = bars("AAA", [14_530.73] * 3 + [13_000.0] * 7, "split_adjusted", days=D10)
+    assert build_series(away, EVENT19, TICKS).report.excluded_tickers == ("AAA",)
+
+
+@pytest.mark.parametrize("basis", ["split_adjusted", "raw"])
+def test_duplicated_session_is_omitted_counted_and_not_a_signal(basis: str) -> None:
+    prices = bars("AAA", [50_000.0, 50_500.0, 50_500.0, 51_000.0, 51_000.0], basis)
+    prices.loc[2, "volume"] = prices.loc[1, "volume"]  # row 2 repeats row 1 in OHLC and volume
+    result = build_series(prices, events(), TICKS)  # row 4 repeats the close only (volume differs)
+    report = result.report
+    assert [(e.kind, e.date, e.rows) for e in report.exclusions] == [("duplicate_session", D[2], 1)]
+    assert report.duplicate_rows_omitted == 1
+    assert result.execution["date"].tolist() == [D[0], D[1], D[3], D[4]]
+    assert result.execution["ref_price"].tolist()[2] == 50_500.0  # D3 refers to the close of D2
+    assert result.adjusted["signal_ok"].tolist() == [True, True, False, True, True]
+    assert len(result.adjusted) == 5
+
+
+def test_zero_volume_repeat_and_dq_error_rows_are_not_duplicates() -> None:
+    prices = bars("AAA", [50_000.0, 50_500.0, 50_500.0, 51_000.0, 51_000.0], "raw")
+    prices["volume"] = [10, 0, 0, 20, 20]  # rows 1 and 2 repeat with volume 0: not flagged
+    prices.loc[4, "volume"] = 20
+    prices.loc[3, "volume"] = 20  # row 4 repeats row 3 in full but is a dq_error row
+    result = build_series(prices, events(), TICKS, bad_rows={("AAA", D[4])})
+    assert [(e.kind, e.date) for e in result.report.exclusions] == [("dq_error", D[4])]
+    assert result.report.duplicate_rows_omitted == 0
+
+
+def test_adjusted_is_rebuilt_check(tmp_path: Path) -> None:
+    prices = bars("AAA", [50_000.0, 50_500.0, 51_000.0], "raw")
+    fresh = build_series(prices, events(), TICKS).adjusted
+    assert adjusted_is_rebuilt(fresh)
+    assert not adjusted_is_rebuilt(pd.DataFrame())
+    stale = fresh.assign(adj_version="ratio-v1:abcdef")
+    assert not adjusted_is_rebuilt(stale)
+    assert not adjusted_is_rebuilt(pd.concat([fresh, stale]))
+    with _store(tmp_path) as store:
+        _fill(store, prices, events())
+        assert not adjusted_is_rebuilt(store.read_adjusted("yahoo"))  # never rebuilt
+        rebuild(store, "yahoo", TICKS)
+        assert adjusted_is_rebuilt(store.read_adjusted("yahoo"))

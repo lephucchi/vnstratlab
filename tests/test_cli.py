@@ -193,7 +193,7 @@ def test_data_rebuild_prints_counts_per_exclusion_kind(
                     "high": values,
                     "low": values,
                     "close": values,
-                    "volume": 1_000_000,
+                    "volume": [1_000_000 + i for i in range(len(values))],  # not duplicates
                     "value": 0.0,
                     "ref_price": ref,
                     "ceiling": [r * 1.07 for r in ref],

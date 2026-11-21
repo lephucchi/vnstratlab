@@ -75,7 +75,7 @@ gaps:
       outside the HOSE band that is followed by 60 in-band sessions are another exchange's history
       under the same symbol and are excluded from execution (non_hose_history, P1-T06b). That session
       must belong to a cluster (at least 10 out-of-band sessions in the trailing 250); isolated
-      out-of-band sessions never cut history (P1-T06d, thresholds pending owner approval).
+      out-of-band sessions never cut history (P1-T06d, thresholds owner-approved 2026-11-21).
     close_by: CafeF files (cover HNX/UPCoM history) or another source — new card.
     since: 2026-11-18
 
@@ -123,7 +123,10 @@ gaps:
     severity: low
     missing: Occasional consecutive sessions with identical close/volume.
     affects: [prices_daily, P1-T08, P1-T38]
-    workaround: Quality checks flag them (warning); they are kept but marked.
+    workaround: >-
+      Quality checks flag them (warning). A session whose open, high, low, close and volume
+      (> 0) repeat the previous session is omitted from prices_exec (duplicate_session, counted)
+      and has signal_ok = false in prices_adjusted (P1-T06e); stored rows are kept.
     close_by: Cross-check with a second source.
     since: 2026-11-18
 
