@@ -32,4 +32,5 @@ date       | card   | PR / commit      | summary                                
 2026-11-21 | P1-T15 | PR #49 squash    | S01 weekly reversal, S02 breakout (close_20d_break, features-v2), S03 oversold in uptrend; 10 packaged trials | 833 passed, 97.3% | G2 approve (round 1); minor -> #46
 2026-11-21 | P1-T16 | PR #50 squash    | S04 bank pairs (onset max_hold), S05 residual s-score, ret_1d (features-v3), lookback_sessions; 12 packaged trials | 907 passed, 97.4% | owner merge with CI green before G2 finished; G2 request changes (S04 re-entry across NaN) -> P1-T16b; no trials registered yet
 2026-11-21 | P1-T16b | PR #52 squash   | S04 open_side carries the last observed z across missing sessions (no re-entry after a time stop) | targeted 76 passed, CI green | G2 approve (P1-T16 round 2 delta)
+2026-11-21 | P1-T17 | PR #54 squash    | S08 momentum (6m/12m skip-1m, top 4), S09 6m reversal (bottom 4), ret_6m_skip1m (features-v4); S13 blocked on P1-T07; 15 packaged trials | 966 passed, 97.5% | G2 approve (round 1)
 ```
