@@ -29,7 +29,7 @@ from vnstratlab.risk.atr import atr
 VERSION = "ratio-v2:abc123"
 
 
-def frames(
+def synthetic_frames(
     ticker: str,
     closes: Sequence[float],
     volume: Sequence[float] | float = 1_000.0,
@@ -83,15 +83,13 @@ def row(out: pd.DataFrame, ticker: str, index: int) -> pd.Series:
     return out[out["ticker"] == ticker].reset_index(drop=True).iloc[index]
 
 
-# Wilder's textbook series (StockCharts "RSI" worked example). The published RSI(14) values
-# (70.53, 66.32, 66.55, 69.41, 66.36, 57.97) use rounded gains and losses; with exact arithmetic
-# the first is 100 * 3.34 / (3.34 + 1.40) = 70.4641 (sum of the 14 gains 3.34, of the losses 1.40),
-# then avg = (avg * 13 + x) / 14: 66.2496, 66.4809, 69.3469, 66.2947, 57.9150.
-WILDER = [
-    44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.10, 45.42, 45.84, 46.08,
-    45.89, 46.03, 45.61, 46.28, 46.28, 46.00, 46.03, 46.41, 46.22, 45.64,
-]  # fmt: skip
-WILDER_RSI = [70.4641, 66.2496, 66.4809, 69.3469, 66.2947, 57.9150]
+# Made-up RSI series: 50, then 14 changes [+1, +1, -1, 0] x 3 + [+1, 0] (gains sum 7, losses sum 3),
+# then -2 and +3. Wilder: first RSI (row 14) = 100 * 7 / (7 + 3) = 70 exactly; afterwards
+# avg = (avg * 13 + x) / 14: row 15 avg gain 6.5 / 14 = 91 / 196, avg loss 67 / 196
+# -> 100 * 91 / 158 = 57.5949; row 16 avg gain 1771 / 2744, avg loss 871 / 2744
+# -> 100 * 1771 / 2642 = 67.0326.
+RSI_SERIES = [50.0, 51, 52, 51, 51, 52, 53, 52, 52, 53, 54, 53, 53, 54, 54, 52, 55]
+RSI_VALUES = [70.0, 57.5949, 67.0326]
 
 # ------------------------------------------------------------------ 30-row hand fixture
 # L: 100 for rows 0..9, then 101..120 (rows 10..29); volume 1000 + 10 * row
@@ -106,17 +104,17 @@ L_VOLUME = [1000.0 + 10.0 * i for i in range(30)]
 
 
 @pytest.fixture(scope="module")
-def hand() -> pd.DataFrame:
+def synthetic_hand() -> pd.DataFrame:
     adjusted, executed = stack(
-        frames("L", L_CLOSE, L_VOLUME),
-        frames("M", M_CLOSE),
-        frames("N", N_CLOSE),
+        synthetic_frames("L", L_CLOSE, L_VOLUME),
+        synthetic_frames("M", M_CLOSE),
+        synthetic_frames("N", N_CLOSE),
     )
     return compute_features(adjusted, executed, ["L", "M", "N"])
 
 
-def test_hand_close_vs_ma20_ret_20d_z_and_std(hand: pd.DataFrame) -> None:
-    last = row(hand, "L", 29)
+def test_hand_close_vs_ma20_ret_20d_z_and_std(synthetic_hand: pd.DataFrame) -> None:
+    last = row(synthetic_hand, "L", 29)
     # window rows 10..29 = 101..120: mean 110.5; 120 / 110.5 - 1 = 0.0859728507
     assert last["close_vs_ma20"] == pytest.approx(120 / 110.5 - 1, abs=1e-12)
     assert last["close_vs_ma20"] == pytest.approx(0.0859728507, abs=1e-9)
@@ -130,10 +128,11 @@ def test_hand_close_vs_ma20_ret_20d_z_and_std(hand: pd.DataFrame) -> None:
     mean = sum(rets) / 20
     expected = math.sqrt(sum((r - mean) ** 2 for r in rets) / 19)
     assert last["std_20d"] == pytest.approx(expected, abs=1e-12)
+    assert last["std_20d"] == pytest.approx(0.000496426, abs=1e-9)  # hand value of the formula
 
 
-def test_hand_vol_vs_avg20_and_value_traded(hand: pd.DataFrame) -> None:
-    last = row(hand, "L", 29)
+def test_hand_vol_vs_avg20_and_value_traded(synthetic_hand: pd.DataFrame) -> None:
+    last = row(synthetic_hand, "L", 29)
     # volume row 29 = 1290; mean of rows 10..29 = 1000 + 10 * 19.5 = 1195; 1290 / 1195 = 1.07950
     assert last["vol_vs_avg20"] == pytest.approx(1290 / 1195, abs=1e-12)
     # value traded: mean of close * volume over rows 10..29
@@ -141,44 +140,48 @@ def test_hand_vol_vs_avg20_and_value_traded(hand: pd.DataFrame) -> None:
     assert last["value_traded_20d"] == pytest.approx(expected, rel=1e-12)
 
 
-def test_hand_high_20d_break(hand: pd.DataFrame) -> None:
+def test_hand_high_20d_break(synthetic_hand: pd.DataFrame) -> None:
     # L: prior 20 highs (rows 9..28) peak at 119 < 120 -> break; M: peak 115 > 110 -> none
-    assert row(hand, "L", 29)["high_20d_break"] == 1.0
-    assert row(hand, "M", 29)["high_20d_break"] == 0.0
-    assert math.isnan(row(hand, "L", 19)["high_20d_break"])  # 20 prior sessions needed (row 20)
+    assert row(synthetic_hand, "L", 29)["high_20d_break"] == 1.0
+    assert row(synthetic_hand, "M", 29)["high_20d_break"] == 0.0
+    assert math.isnan(
+        row(synthetic_hand, "L", 19)["high_20d_break"]
+    )  # 20 prior sessions needed (row 20)
     # row 20: rows 0..19 hold 100 and 101..110, so the prior high is 110 < close 111
-    assert row(hand, "L", 20)["high_20d_break"] == 1.0
+    assert row(synthetic_hand, "L", 20)["high_20d_break"] == 1.0
 
 
-def test_hand_rs_20d_rank_and_group_median(hand: pd.DataFrame) -> None:
+def test_hand_rs_20d_rank_and_group_median(synthetic_hand: pd.DataFrame) -> None:
     # ret_20d at row 29: L 120 / 100 - 1 = 0.2, M 110 / 100 - 1 = 0.1, N 99.75 / 95 - 1 = 0.05
-    ranks = {t: row(hand, t, 29)["rs_20d_rank"] for t in "LMN"}
+    ranks = {t: row(synthetic_hand, t, 29)["rs_20d_rank"] for t in "LMN"}
     assert ranks == pytest.approx({"L": 1.0, "M": 2 / 3, "N": 1 / 3})
     # group median 0.1
-    assert row(hand, "L", 29)["rs_20d_vs_group_median"] == pytest.approx(0.1)
-    assert row(hand, "M", 29)["rs_20d_vs_group_median"] == pytest.approx(0.0, abs=1e-12)
-    assert row(hand, "N", 29)["rs_20d_vs_group_median"] == pytest.approx(-0.05)
+    assert row(synthetic_hand, "L", 29)["rs_20d_vs_group_median"] == pytest.approx(0.1)
+    assert row(synthetic_hand, "M", 29)["rs_20d_vs_group_median"] == pytest.approx(0.0, abs=1e-12)
+    assert row(synthetic_hand, "N", 29)["rs_20d_vs_group_median"] == pytest.approx(-0.05)
     # ret_5d: L 120/115, M 110/115 (row 24 = 115), N 99.75/98.5625; median = M's
     r5 = {"L": 120 / 115 - 1, "M": 110 / 115 - 1, "N": 99.75 / 98.5625 - 1}
     median = sorted(r5.values())[1]
-    assert row(hand, "L", 29)["ret_5d_vs_group_median"] == pytest.approx(r5["L"] - median)
+    assert row(synthetic_hand, "L", 29)["ret_5d_vs_group_median"] == pytest.approx(r5["L"] - median)
 
 
-def test_wilder_rsi_matches_the_published_example() -> None:
-    values = wilder_rsi(np.array(WILDER), 14)
+def test_wilder_rsi_matches_the_hand_computed_values() -> None:
+    values = wilder_rsi(np.array(RSI_SERIES), 14)
     assert np.isnan(values[:14]).all()
-    assert values[14:20] == pytest.approx(WILDER_RSI, abs=1e-4)
+    assert values[14] == pytest.approx(70.0, abs=1e-12)
+    assert values[14:17] == pytest.approx(RSI_VALUES, abs=1e-4)
 
 
-def test_rsi_14_column_follows_the_textbook_values() -> None:
-    adjusted, executed = frames("W", [*WILDER, *([46.0] * 10)])
+def test_rsi_14_and_rsi_2_columns_follow_the_hand_values() -> None:
+    adjusted, executed = synthetic_frames("W", [*RSI_SERIES, *([55.0] * 10)])
     out = compute_features(adjusted, executed, ["W"])
-    assert [row(out, "W", i)["rsi_14"] for i in range(14, 20)] == pytest.approx(
-        WILDER_RSI, abs=1e-4
-    )
+    assert [row(out, "W", i)["rsi_14"] for i in (14, 15, 16)] == pytest.approx(RSI_VALUES, abs=1e-4)
     assert math.isnan(row(out, "W", 13)["rsi_14"])
-    # rsi_2 on the same series: first value at row 2; changes -0.25, +0.06 -> gain 0.03, loss 0.125
-    assert row(out, "W", 2)["rsi_2"] == pytest.approx(100 - 100 / (1 + 0.03 / 0.125), abs=1e-9)
+    # rsi_2: changes +1, +1 -> no losses -> 100 at row 2; change -1 -> avg gain (1 + 0) / 2 = 0.5,
+    # avg loss (0 + 1) / 2 = 0.5 -> 50 at row 3
+    assert row(out, "W", 2)["rsi_2"] == 100.0
+    assert row(out, "W", 3)["rsi_2"] == pytest.approx(50.0)
+    assert math.isnan(row(out, "W", 1)["rsi_2"])
 
 
 def test_rsi_edge_cases() -> None:
@@ -187,8 +190,8 @@ def test_rsi_edge_cases() -> None:
 
 
 # ------------------------------------------------------------------ AC4 warm-up and missing
-def test_warm_up_is_nan_and_never_backfilled(hand: pd.DataFrame) -> None:
-    rows = hand[hand["ticker"] == "L"].reset_index(drop=True)
+def test_warm_up_is_nan_and_never_backfilled(synthetic_hand: pd.DataFrame) -> None:
+    rows = synthetic_hand[synthetic_hand["ticker"] == "L"].reset_index(drop=True)
     assert rows["ret_20d"].iloc[:20].isna().all()
     assert rows["ret_20d"].iloc[20:].notna().all()
     assert rows["close_vs_ma20"].iloc[:19].isna().all()
@@ -202,7 +205,7 @@ def test_a_missing_session_is_skipped_by_the_windows() -> None:
     days = make_days(25)
     kept = [d for i, d in enumerate(days) if i != 10]  # one session omitted
     closes = [float(100 + days.index(d)) for d in kept]
-    adjusted, executed = frames("S", closes, days=kept)
+    adjusted, executed = synthetic_frames("S", closes, days=kept)
     out = compute_features(adjusted, executed, ["S"])
     assert len(out) == 24  # no row for the missing session, none invented
     # last row is day 24 = stored index 23; five stored sessions back is stored index 18 = day 19
@@ -213,7 +216,9 @@ def test_signal_ok_false_rows_are_missing_like_omitted_rows() -> None:
     days = make_days(30)
     closes = [100.0 + 2 * (i % 5) + i for i in range(30)]
     flag = [i != 25 for i in range(30)]
-    adjusted, executed = frames("S", closes, list(range(1000, 1030)), days=days, signal_ok=flag)
+    adjusted, executed = synthetic_frames(
+        "S", closes, list(range(1000, 1030)), days=days, signal_ok=flag
+    )
     flagged = compute_features(adjusted, executed, ["S"])
     # the same data with the flagged row deleted from both inputs gives the same output
     keep = [i != 25 for i in range(30)]
@@ -226,7 +231,7 @@ def test_signal_ok_false_rows_are_missing_like_omitted_rows() -> None:
 
 
 def test_signal_ok_column_is_optional_and_null_counts_as_good() -> None:
-    adjusted, executed = frames("S", [100.0 + i for i in range(30)])
+    adjusted, executed = synthetic_frames("S", [100.0 + i for i in range(30)])
     full = compute_features(adjusted, executed, ["S"])
     pd.testing.assert_frame_equal(
         full, compute_features(adjusted.drop(columns="signal_ok"), executed, ["S"])
@@ -234,7 +239,7 @@ def test_signal_ok_column_is_optional_and_null_counts_as_good() -> None:
 
 
 def test_a_good_session_without_an_exec_row_has_nan_level_features_only() -> None:
-    adjusted, executed = frames("S", [100.0 + i for i in range(40)])
+    adjusted, executed = synthetic_frames("S", [100.0 + i for i in range(40)])
     executed = executed[executed.index != 30].reset_index(drop=True)
     out = compute_features(adjusted, executed, ["S"])
     assert len(out) == 40
@@ -257,7 +262,7 @@ EVENT_AT = 255
 EVENT_ROWS = 260
 
 
-def event_case() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, list[float]]:
+def synthetic_event_case() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, list[float]]:
     """Flat 100 (post-event basis); raw exec 110 and 1,000 shares before a 10 % stock dividend on
     row 255, 100 and 1,100 after. Adjusted rows before the event are divided by 1.1 -> 100."""
     n = EVENT_ROWS
@@ -292,7 +297,7 @@ def event_case() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, list[float]]
 
 
 def test_returns_use_adjusted_and_levels_use_exec_across_a_stock_event() -> None:
-    adjusted, executed, actions, _ = event_case()
+    adjusted, executed, actions, _ = synthetic_event_case()
     out = compute_features(adjusted, executed, ["S"], actions=actions)
     last = row(out, "S", EVENT_ROWS - 1)
     # adjusted closes are flat: no artificial -9.09 % gap (the raw gap is 100 / 110 - 1)
@@ -313,7 +318,7 @@ def test_returns_use_adjusted_and_levels_use_exec_across_a_stock_event() -> None
 
 
 def test_atr_14_equals_the_risk_atr_with_the_same_ex_date_factors() -> None:
-    adjusted, executed, actions, factors = event_case()
+    adjusted, executed, actions, factors = synthetic_event_case()
     out = compute_features(adjusted, executed, ["S"], actions=actions)
     expected = atr(executed["high"], executed["low"], executed["close"], 14, factors)
     got = out["atr_14"].to_numpy()
@@ -325,7 +330,7 @@ def test_atr_14_equals_the_risk_atr_with_the_same_ex_date_factors() -> None:
 
 
 def test_actions_after_the_last_row_and_cash_actions_are_ignored() -> None:
-    adjusted, executed = frames(
+    adjusted, executed = synthetic_frames(
         "S", [100.0 + i for i in range(40)], highs=[101.0 + i for i in range(40)]
     )
     days = make_days(60)
@@ -349,7 +354,9 @@ def test_market_context_is_the_equal_weight_universe_index() -> None:
     up = [100.0 * 1.03**i for i in range(n)]
     flat_a = [100.0] * n
     flat_b = [50.0] * n
-    adjusted, executed = stack(frames("X", up), frames("Y", flat_a), frames("Z", flat_b))
+    adjusted, executed = stack(
+        synthetic_frames("X", up), synthetic_frames("Y", flat_a), synthetic_frames("Z", flat_b)
+    )
     out = compute_features(adjusted, executed, ["X", "Y", "Z"])
     # mean daily return = 0.03 / 3 = 0.01; the index is 1.01 ** i from row 1 on (row 0 = 1.0)
     last = row(out, "X", n - 1)
@@ -376,7 +383,7 @@ def test_deferred_groups_have_no_columns() -> None:
 
 # ------------------------------------------------------------------ AC3 version
 def test_feature_version_is_stable_and_follows_adj_version() -> None:
-    adjusted, executed = stack(frames("A", L_CLOSE), frames("B", M_CLOSE))
+    adjusted, executed = stack(synthetic_frames("A", L_CLOSE), synthetic_frames("B", M_CLOSE))
     first = compute_features(adjusted, executed, ["A", "B"])
     again = compute_features(adjusted, executed, ["A", "B"])
     pd.testing.assert_frame_equal(first, again)  # reproducible
@@ -391,38 +398,42 @@ def test_feature_version_is_stable_and_follows_adj_version() -> None:
     assert first["feature_version"].iloc[0].startswith("features-v1:")
 
 
-def test_recomputing_a_past_date_gives_identical_values(hand: pd.DataFrame) -> None:
+def test_recomputing_a_past_date_gives_identical_values(synthetic_hand: pd.DataFrame) -> None:
     adjusted, executed = stack(
-        frames("L", L_CLOSE, L_VOLUME), frames("M", M_CLOSE), frames("N", N_CLOSE)
+        synthetic_frames("L", L_CLOSE, L_VOLUME),
+        synthetic_frames("M", M_CLOSE),
+        synthetic_frames("N", N_CLOSE),
     )
     past = make_days(30)[22]
     only = compute_features(adjusted, executed, ["L", "M", "N"], asof_dates=[past])
     assert len(only) == 3
-    expected = hand[hand["date"] == past].reset_index(drop=True)
+    expected = synthetic_hand[synthetic_hand["date"] == past].reset_index(drop=True)
     pd.testing.assert_frame_equal(only, expected)
 
 
 def test_tickers_outside_the_universe_are_ignored() -> None:
-    adjusted, executed = stack(frames("A", L_CLOSE), frames("B", M_CLOSE))
+    adjusted, executed = stack(synthetic_frames("A", L_CLOSE), synthetic_frames("B", M_CLOSE))
     out = compute_features(adjusted, executed, ["A"])
     assert set(out["ticker"]) == {"A"}
 
 
 def test_empty_input_gives_an_empty_frame_with_all_columns() -> None:
-    adjusted, executed = frames("A", L_CLOSE)
+    adjusted, executed = synthetic_frames("A", L_CLOSE)
     out = compute_features(adjusted.iloc[0:0], executed.iloc[0:0], ["A"])
     assert out.empty
     assert list(out.columns)[2:-1] == list(FEATURE_COLUMNS)
 
 
 def test_missing_columns_raise() -> None:
-    adjusted, executed = frames("A", L_CLOSE)
+    adjusted, executed = synthetic_frames("A", L_CLOSE)
     with pytest.raises(FeatureError, match="adj_close"):
         compute_features(adjusted.drop(columns="adj_close"), executed, ["A"])
 
 
 # ------------------------------------------------------------------ AC2 no lookahead
-def world(seed: int, known_until: int | None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def synthetic_world(
+    seed: int, known_until: int | None
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Random 3-ticker world of 300 sessions with gaps, flagged rows and stock events.
 
     ``known_until`` truncates it to rows ``<= known_until`` AS KNOWN THEN: events after the cut are
@@ -487,8 +498,8 @@ def world(seed: int, known_until: int | None) -> tuple[pd.DataFrame, pd.DataFram
 def test_no_lookahead_truncated_features_equal_full_history_features(seed: int) -> None:
     cut = int(np.random.default_rng(1000 + seed).integers(60, 299))
     universe = ["A", "B", "C"]
-    f_adj, f_exec, f_act = world(seed, None)
-    t_adj, t_exec, t_act = world(seed, cut)
+    f_adj, f_exec, f_act = synthetic_world(seed, None)
+    t_adj, t_exec, t_act = synthetic_world(seed, cut)
     full = compute_features(f_adj, f_exec, universe, actions=f_act)
     truncated = compute_features(t_adj, t_exec, universe, actions=t_act)
     day = make_days(300)[cut]
@@ -508,7 +519,7 @@ def test_no_lookahead_truncated_features_equal_full_history_features(seed: int) 
 
 
 def test_the_property_world_exercises_long_windows_and_events() -> None:
-    adjusted, executed, actions = world(0, None)
+    adjusted, executed, actions = synthetic_world(0, None)
     out = compute_features(adjusted, executed, ["A", "B", "C"], actions=actions)
     late = out[out["date"] == make_days(300)[299]]
     assert late[list(FEATURE_COLUMNS)].notna().to_numpy().mean() > 0.8
@@ -516,7 +527,7 @@ def test_the_property_world_exercises_long_windows_and_events() -> None:
 
 
 def test_features_are_deterministic_across_input_order() -> None:
-    adjusted, executed, actions = world(3, None)
+    adjusted, executed, actions = synthetic_world(3, None)
     first = compute_features(adjusted, executed, ["A", "B", "C"], actions=actions)
     shuffled = compute_features(
         adjusted.sample(frac=1.0, random_state=1),
@@ -528,7 +539,7 @@ def test_features_are_deterministic_across_input_order() -> None:
 
 
 # ------------------------------------------------------------------ loader guards
-def feature_frame(version: str, days: Sequence[date]) -> pd.DataFrame:
+def synthetic_feature_frame(version: str, days: Sequence[date]) -> pd.DataFrame:
     frame = pd.DataFrame({"ticker": "A", "date": list(days)})
     for column in FEATURE_COLUMNS:
         frame[column] = 1.0
@@ -538,7 +549,7 @@ def feature_frame(version: str, days: Sequence[date]) -> pd.DataFrame:
 
 def test_asof_view_drops_later_rows() -> None:
     days = make_days(5)
-    frame = feature_frame("v", days)
+    frame = synthetic_feature_frame("v", days)
     assert list(asof_view(frame, days[2])["date"]) == days[:3]
     assert len(asof_view(frame, days[0] - pd.Timedelta(days=1))) == 0
 
@@ -548,12 +559,14 @@ def test_load_features_clamps_to_asof_and_refuses_mixed_versions(tmp_path: Path)
     with MarketStore(tmp_path / "m.duckdb", "synthetic") as store:
         with pytest.raises(SourceError, match="features build"):
             load_features(store, days[0], days[-1])
-        store.replace_features(feature_frame("v1", days))
+        store.replace_features(synthetic_feature_frame("v1", days))
         got = load_features(store, days[0], days[-1], ["rsi_14"], asof=days[2])
         assert list(got.columns) == ["ticker", "date", "rsi_14", "feature_version"]
         assert list(got["date"]) == days[:3]  # rows after asof cannot be received
         assert len(load_features(store, days[0], days[-1])) == 5
-        mixed = pd.concat([feature_frame("v1", days[:2]), feature_frame("v2", days[2:])])
+        mixed = pd.concat(
+            [synthetic_feature_frame("v1", days[:2]), synthetic_feature_frame("v2", days[2:])]
+        )
         store.replace_features(mixed)
         with pytest.raises(FeatureError, match="mixed feature versions"):
             load_features(store, days[0], days[-1])

@@ -71,8 +71,8 @@ def build_features(
     missing = tuple(t for t in tickers if t not in present)
     start, end = min(adjusted["date"]), max(adjusted["date"])
     frame = load_execution_frame(store, tickers, start, end, source)
-    warnings = [SURVIVORSHIP_WARNING]
-    log.warning(SURVIVORSHIP_WARNING)
+    warnings: list[str] = []
+    log.warning(SURVIVORSHIP_WARNING)  # once per run (plan section 0)
     if frame.stale:
         warnings.append("execution series is older than the latest ingest run: run data rebuild")
     features = compute_features(

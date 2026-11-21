@@ -17,9 +17,10 @@ Missing sessions
   any window is built and gets no output row. Nothing is interpolated.
 * Windows count the ticker's stored good sessions, so window lengths are in AVAILABLE sessions,
   not calendar days. Recent real history misses about one session in five (GAP-07), so a
-  250-session window then spans roughly 300 trading days. ``sessions_in_window`` sanity note:
-  ``calendar_span_sessions(dates, n)`` (below) gives the median number of weekdays a window of ``n``
-  sessions covers; ``features build --dry-run`` prints it. No resampling to the calendar.
+  250-session window spans more than 250 trading days there; the dry run prints the actual span.
+  ``sessions_in_window`` sanity note: ``calendar_span_sessions(dates, n)`` (below) gives the
+  median number of weekdays a window of ``n`` sessions covers; ``features build --dry-run``
+  prints it. No resampling to the calendar.
 * A good session without an execution row (ticker excluded, row omitted) has NaN level and
   liquidity features, and so does every window that contains it.
 

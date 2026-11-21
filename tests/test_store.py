@@ -242,7 +242,7 @@ def test_record_run_and_read_only_open(tmp_path: Path) -> None:
 # ------------------------------------------------------------------ features_daily (P1-T10)
 
 
-def feature_rows(version: str, values: list[float | None]) -> pd.DataFrame:
+def synthetic_feature_rows(version: str, values: list[float | None]) -> pd.DataFrame:
     days = [date(2026, 3, 2), date(2026, 3, 3)]
     return pd.DataFrame(
         {
@@ -256,14 +256,14 @@ def feature_rows(version: str, values: list[float | None]) -> pd.DataFrame:
 
 def test_replace_features_round_trips_and_replaces_the_whole_table(tmp_path: Path) -> None:
     with MarketStore(tmp_path / "m.duckdb", "synthetic") as store:
-        store.replace_features(feature_rows("v1", [0.1, None]))
+        store.replace_features(synthetic_feature_rows("v1", [0.1, None]))
         got = store.read_features(date(2026, 3, 2), date(2026, 3, 3))
         assert list(got.columns) == ["ticker", "date", "ret_5d", "feature_version"]
         assert got["date"].tolist() == [date(2026, 3, 2), date(2026, 3, 3)]
         assert got["ret_5d"].iloc[0] == pytest.approx(0.1)
         assert pd.isna(got["ret_5d"].iloc[1])
         # a rebuild with another version and column set leaves no stale rows or columns
-        other = feature_rows("v2", [0.2, 0.3]).rename(columns={"ret_5d": "rsi_2"})
+        other = synthetic_feature_rows("v2", [0.2, 0.3]).rename(columns={"ret_5d": "rsi_2"})
         store.replace_features(other)
         again = store.read_features(date(2026, 3, 2), date(2026, 3, 3))
         assert list(again.columns) == ["ticker", "date", "rsi_2", "feature_version"]
@@ -273,8 +273,8 @@ def test_replace_features_round_trips_and_replaces_the_whole_table(tmp_path: Pat
 
 def test_replace_features_is_atomic(tmp_path: Path) -> None:
     with MarketStore(tmp_path / "m.duckdb", "synthetic") as store:
-        store.replace_features(feature_rows("v1", [0.1, 0.2]))
-        bad = feature_rows("v2", [0.5, 0.6])
+        store.replace_features(synthetic_feature_rows("v1", [0.1, 0.2]))
+        bad = synthetic_feature_rows("v2", [0.5, 0.6])
         bad.loc[0, "ticker"] = None  # NOT NULL violation inside the transaction
         with pytest.raises(duckdb.Error):
             store.replace_features(bad)
@@ -288,9 +288,11 @@ def test_replace_features_validates_the_frame_and_reads_validate_columns(tmp_pat
         with pytest.raises(SourceError, match="needs the columns"):
             store.replace_features(pd.DataFrame({"ticker": ["A"]}))
         with pytest.raises(SourceError, match="invalid feature column"):
-            store.replace_features(feature_rows("v", [1.0, 2.0]).rename(columns={"ret_5d": "x; y"}))
-        store.replace_features(feature_rows("v", [1.0, 2.0]).iloc[0:0])
+            store.replace_features(
+                synthetic_feature_rows("v", [1.0, 2.0]).rename(columns={"ret_5d": "x; y"})
+            )
+        store.replace_features(synthetic_feature_rows("v", [1.0, 2.0]).iloc[0:0])
         assert store.read_features(date(2026, 3, 2), date(2026, 3, 3)).empty
-        store.replace_features(feature_rows("v", [1.0, 2.0]))
+        store.replace_features(synthetic_feature_rows("v", [1.0, 2.0]))
         with pytest.raises(SourceError, match="unknown feature columns"):
             store.read_features(date(2026, 3, 2), date(2026, 3, 3), ["nope"])
