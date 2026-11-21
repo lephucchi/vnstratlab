@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795229655186,
+  "lastUpdate": 1795230646241,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -837,6 +837,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002743983647079421",
             "extra": "mean: 12.91954029999971 msec\nrounds: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "bb6a3fe7e3647324c21d19b83bd3e06f17d1651c",
+          "message": "feat(features): feature store v1 (P1-T10) (#43)\n\nPure point-in-time features (trend/momentum, relative strength, mean reversion, volatility, volume/liquidity, equal-weight market context); signal_ok=false treated as missing; refuses non-rebuilt stores; feature_version from code, windows and adj_version; features_daily + features build [--dry-run]; load_features with asof guard. Membership by date follow-up: #44.",
+          "timestamp": "2026-11-21T10:10:07+07:00",
+          "tree_id": "4249078679e311fab77dcf375fdda6ab5d9dd45e",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/bb6a3fe7e3647324c21d19b83bd3e06f17d1651c"
+        },
+        "date": 1795230645645,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 3.097949709966878,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0153097691924778",
+            "extra": "mean: 322.7941359999325 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 126.21989955179838,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001616187235462767",
+            "extra": "mean: 7.92268099999254 msec\nrounds: 14"
           }
         ]
       }
