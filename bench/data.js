@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795098012678,
+  "lastUpdate": 1795226277608,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -651,6 +651,37 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00017145282877721268",
             "extra": "mean: 8.683114923077103 msec\nrounds: 13"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cf89688723ed408aa9007cc36311af7104e8175c",
+          "message": "docs(workflow): tiered G2 review, delta rounds, no duplicate test runs (#35)\n\nOwner decision 2026-11-21: light tier (manager) for docs/tools/CI PRs, full tier (QA Reviewer) for finance and engine logic; round 2+ is a delta review, max 2 rounds, minor findings go to a follow-up issue; reviewer and manager rely on green CI on the head SHA instead of re-running the full suite.",
+          "timestamp": "2026-11-21T08:57:21+07:00",
+          "tree_id": "b8ee9324e1d7acd4e662d376168cfc7fe26d96cf",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/cf89688723ed408aa9007cc36311af7104e8175c"
+        },
+        "date": 1795226277283,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 78.58345127817508,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00019234669818567917",
+            "extra": "mean: 12.725325545452714 msec\nrounds: 11"
           }
         ]
       }
