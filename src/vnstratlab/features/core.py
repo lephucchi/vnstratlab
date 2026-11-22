@@ -50,6 +50,9 @@ Cross-section (the tradable universe on a date)
 * ``ret_6m_skip1m`` (features-v4, used by S08 and S09): ``adj close[t - 21] / adj close[t - 126]
   - 1`` in good sessions, the same construction and skip as ``ret_12m_skip1m``, 6-month window.
 
+* ``group_ret_6m`` (features-v5, used by S15): ``index / index[126 dates back] - 1`` on the same
+  equal-weight universe index as ``group_ret_12m`` (windows in dates of the index).
+
 Warm-up: a feature is NaN until its window is full; never back-filled.
 
 Deferred (GAP-11, P1-T07): valuation (P/B, E/P, ROE-justified P/B gap) and asset quality (NPL,
@@ -74,6 +77,7 @@ from vnstratlab.features.groups import (
     FEATURE_COLUMNS,
     INDEX_MA,
     INDEX_RET,
+    INDEX_RET_6M,
     RS_WINDOW,
     WINDOWS,
     FloatArray,
@@ -81,7 +85,7 @@ from vnstratlab.features.groups import (
 )
 from vnstratlab.risk.atr import ATR_WINDOW, atr
 
-FEATURES_CODE_VERSION = "features-v4"
+FEATURES_CODE_VERSION = "features-v5"
 OUTPUT_COLUMNS = ("ticker", "date", *FEATURE_COLUMNS, "feature_version")
 _STOCK_TYPES = ("stock", "bonus")
 
@@ -242,6 +246,7 @@ def _cross_section(panel: pd.DataFrame) -> pd.DataFrame:
         {
             "group_ew_vs_ma50": index / ma - 1.0,
             "group_ret_12m": index / index.shift(INDEX_RET) - 1.0,
+            "group_ret_6m": index / index.shift(INDEX_RET_6M) - 1.0,
             "group_breadth_ma50": by_date["_above_ma50"].mean(),
         }
     )

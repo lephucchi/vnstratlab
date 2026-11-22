@@ -294,6 +294,9 @@ runtime, writing nothing.
 - **6-month momentum**: `ret_6m_skip1m` (features-v4, group `trend_momentum`, used by S08 and
   S09) is the adjusted close 21 good sessions back over the adjusted close 126 good sessions back
   minus 1, the same construction and one-month skip as `ret_12m_skip1m`; NaN during warm-up.
+- **6-month group return**: `group_ret_6m` (features-v5, group `market_context`, used by S15) is
+  the equal-weight universe index over its value 126 index dates back, minus 1, built like
+  `group_ret_12m`; NaN during warm-up.
 - **Missing sessions**: a `prices_adjusted` row with `signal_ok = false` is missing for every
   feature (dropped before any window, no output row, no interpolation). Windows count stored good
   sessions, so window lengths are in AVAILABLE sessions, not calendar days. Real history misses
