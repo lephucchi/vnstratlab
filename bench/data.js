@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795241676026,
+  "lastUpdate": 1795353773810,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1255,6 +1255,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00017602419553517518",
             "extra": "mean: 14.93063570000146 msec\nrounds: 10"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a94e92b2574cd1924445f505869a9e21c80fd75b",
+          "message": "feat(strategies): S14 low volatility, S15 sector trend, S18 HRP (P1-T19) (#57)\n\nS14 low volatility (std_60d, bottom 4), S15 sector trend filter (group_ret_12m / group_ret_6m, 1/N or cash), S18 Hierarchical Risk Parity (250-session ret_1d, single linkage, cash fallback on non-PSD pairwise covariance); feature group_ret_6m (features-v5); scipy runtime dependency. Packaged config 19 trials, 12 strategy ids. Closes #56.",
+          "timestamp": "2026-11-22T20:22:16+07:00",
+          "tree_id": "187cb3736011978beff52e8fc13a1b1765a1b7ee",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/a94e92b2574cd1924445f505869a9e21c80fd75b"
+        },
+        "date": 1795353773535,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 1.9467860365260932,
+            "unit": "iter/sec",
+            "range": "stddev: 0.029594747959098968",
+            "extra": "mean: 513.6671319999972 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 66.79346783128625,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001919927352424068",
+            "extra": "mean: 14.97152390000025 msec\nrounds: 10"
           }
         ]
       }
