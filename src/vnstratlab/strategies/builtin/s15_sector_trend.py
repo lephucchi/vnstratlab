@@ -53,9 +53,10 @@ class S15SectorTrend(BaseStrategy):
         if not tickers:
             return pd.Series(dtype=float)
         values = pd.to_numeric(on_day[column], errors="coerce")
-        values = values[values.map(math.isfinite)]  # NaN and infinite are no signal
-        if values.empty or float(values.max() - values.min()) > AGREE_TOLERANCE:
-            return pd.Series(dtype=float)  # no signal, or the rows disagree: cash
+        if not bool(values.map(math.isfinite).all()):
+            return pd.Series(dtype=float)  # NaN or infinite on any row: no signal or disagreement
+        if float(values.max() - values.min()) > AGREE_TOLERANCE:
+            return pd.Series(dtype=float)  # the rows disagree: cash
         signal = float(values.iloc[0])
         if signal <= 0.0:
             return pd.Series(dtype=float)

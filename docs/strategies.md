@@ -195,7 +195,7 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
 - **As implemented.** Signal = feature `group_ret_12m` (12) or `group_ret_6m` (6, new in
   features-v5: index over 126 index sessions) on the asof row; other values are rejected. Signal
   > 0: 1/N across every ticker with a feature row on asof (the S17 universe rule). Signal <= 0 or
-  NaN, rows that disagree, or no row: empty target (all cash). Reads only the asof rows
+  NaN or infinite on any row (a mix with finite values counts as disagreement), rows that disagree, or no row: empty target (all cash). Reads only the asof rows
   (`lookback_sessions` 1).
 - **Params (frozen).** `{lookback_months: 12}`, `{lookback_months: 6}`; medium horizon.
 - **Basis.** Moskowitz, Ooi & Pedersen (2012), time-series momentum.
@@ -226,7 +226,9 @@ economically grounded strategies and the lab is used mainly to **drop** broken o
   pairs (ties: the later ticker alphabetically). One eligible ticker gets 1.0, none gives cash.
   Distance `sqrt(0.5 (1 - rho))`, single linkage (scipy, imported locally), quasi-diagonal order,
   recursive bisection with inverse-variance cluster variance. Weights are long-only and sum to 1.
-  Fewer than `window` sessions of history gives cash.
+  Fewer than `window` sessions of history, or no rows on asof, gives cash. Pairwise covariance can
+  be non-PSD: if any cluster variance in the bisection is not finite or <= 0, or a final weight is
+  negative, the target is empty (cash); weights are never clipped.
 - **Params (frozen).** `{window: 250}`; long horizon.
 - **Basis.** López de Prado (2016).
 

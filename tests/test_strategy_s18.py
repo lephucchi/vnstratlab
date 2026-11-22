@@ -197,9 +197,34 @@ def test_zero_and_one_eligible_tickers() -> None:
     assert make().target_weights(one.iloc[0:0], pd.Timestamp("2026-03-10")).empty
 
 
+def test_non_psd_pairwise_covariance_falls_back_to_cash() -> None:
+    # regression (G2): pairwise covariance is not PSD here, a cluster variance goes <= 0 and the
+    # bisection would give negative weights; the rule is cash, never a repaired or short target
+    n = 250
+    rng = np.random.default_rng(2)
+    x = 0.01 * rng.normal(size=n)
+    aaa = x.copy()
+    aaa[-50:] = 0.0
+    bbb = -x
+    bbb[-50:] = NAN
+    ppp = 0.5 * x + 0.003 * rng.normal(size=n)
+    qqq = 0.5 * x + 0.003 * rng.normal(size=n)
+    frame = feature_frame({"AAA": list(aaa), "BBB": list(bbb), "PPP": list(ppp), "QQQ": list(qqq)})
+    got = make(n).target_weights(frame, asof_of(frame))
+    assert got.empty
+    assert (got >= 0).all()  # long-only holds trivially for cash
+
+
 def test_insufficient_history_is_all_cash() -> None:
     frame = feature_frame(full_returns(n=WINDOW - 1))
     assert make().target_weights(frame, asof_of(frame)).empty
+
+
+def test_asof_without_rows_is_all_cash() -> None:
+    frame = feature_frame(full_returns())
+    later = asof_of(frame) + pd.Timedelta(days=3)  # no session on asof; the frame ends earlier
+    assert make().target_weights(frame, later).empty
+    assert not make().target_weights(frame, asof_of(frame)).empty
 
 
 def test_ticker_with_the_most_nan_pairs_is_dropped_first() -> None:

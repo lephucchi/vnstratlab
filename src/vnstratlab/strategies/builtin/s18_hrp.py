@@ -6,7 +6,8 @@ Basis: Lopez de Prado (2016), Building Diversified Portfolios that Outperform Ou
 History contract: ``lookback_sessions = window``. The strategy reads the feature ``ret_1d`` of
 every feature row dated <= ``asof``. Sessions are the dates present in the frame (union over
 tickers); a missing return stays NaN (no fill); a return that is infinite or <= -1 is NaN. Fewer
-than ``window`` sessions in the frame gives all cash.
+than ``window`` sessions in the frame, or ``asof`` not being the last session of the frame (no
+rows on ``asof``), gives all cash.
 
 Rule as implemented (all steps deterministic; tickers are processed in sorted order)
 1. Return matrix: ``ret_1d`` of the last ``window`` sessions <= ``asof`` (rows = sessions,
@@ -22,6 +23,9 @@ Rule as implemented (all steps deterministic; tickers are processed in sorted or
    cluster is split in half (the first ``len // 2`` items vs the rest) and the weight is shared
    in inverse proportion to the two cluster variances, where a cluster variance is ``w' V w``
    with the cluster's inverse-variance weights ``w``.
+   Fallback: pairwise covariance need not be positive semi-definite. If any cluster variance in
+   the bisection is not finite or <= 0, or a final weight is negative, the target is empty (all
+   cash); weights are never clipped or repaired.
 6. Weights are long-only and sum to 1 (fully invested).
 
 The module is self-contained on purpose: the trial id hashes the source of this module only.
@@ -58,7 +62,8 @@ def min_observations(window: int) -> int:
 def return_panel(features: pd.DataFrame, asof: pd.Timestamp, sessions: int) -> pd.DataFrame | None:
     """Daily returns of the last ``sessions`` sessions <= ``asof`` (columns = tickers, sorted).
 
-    ``None`` when the frame has fewer than ``sessions`` sessions up to ``asof``.
+    ``None`` when the frame has fewer than ``sessions`` sessions up to ``asof`` or ``asof`` is
+    not its last session (no rows on ``asof``).
     """
     missing = [c for c in ("ticker", "date", FEATURE) if c not in features.columns]
     if missing:
@@ -69,8 +74,8 @@ def return_panel(features: pd.DataFrame, asof: pd.Timestamp, sessions: int) -> p
     if frame.duplicated(["ticker", "date"]).any():
         raise ValueError("more than one feature row per ticker and date")
     dates = sorted(frame["date"].unique())
-    if len(dates) < sessions:
-        return None
+    if len(dates) < sessions or pd.Timestamp(dates[-1]) != pd.Timestamp(asof).normalize():
+        return None  # too little history, or asof is not the last session of the frame
     window = frame[frame["date"].isin(dates[-sessions:])]
     panel = window.pivot(index="date", columns="ticker", values=FEATURE)
     panel = panel.apply(pd.to_numeric, errors="coerce").sort_index().sort_index(axis=1)
@@ -112,13 +117,20 @@ def quasi_diagonal(link: FloatArray, count: int) -> list[int]:
 def cluster_variance(cov: FloatArray, items: Sequence[int]) -> float:
     """``w' V w`` of the cluster with inverse-variance weights."""
     sub = cov[np.ix_(items, items)]
-    inverse = 1.0 / np.diag(sub)
+    diagonal = np.diag(sub)
+    if not (np.isfinite(diagonal).all() and (diagonal > 0).all()):
+        return math.nan
+    inverse = 1.0 / diagonal
     w = inverse / inverse.sum()
     return float(w @ sub @ w)
 
 
-def hrp_weights(cov: FloatArray, corr: FloatArray) -> FloatArray:
-    """HRP weights (sum 1) for a covariance and correlation matrix of at least two assets."""
+def hrp_weights(cov: FloatArray, corr: FloatArray) -> FloatArray | None:
+    """HRP weights (sum 1) for a covariance and correlation matrix of at least two assets.
+
+    ``None`` when a cluster variance is not finite or <= 0 (a pairwise covariance matrix need not
+    be positive semi-definite), so the weights could leave [0, 1].
+    """
     from scipy.cluster.hierarchy import linkage  # local: keep scipy off the CLI import path
     from scipy.spatial.distance import squareform
 
@@ -135,6 +147,10 @@ def hrp_weights(cov: FloatArray, corr: FloatArray) -> FloatArray:
             half = len(cluster) // 2
             first, second = cluster[:half], cluster[half:]
             v_first, v_second = cluster_variance(cov, first), cluster_variance(cov, second)
+            if not (math.isfinite(v_first) and math.isfinite(v_second)):
+                return None
+            if v_first <= 0.0 or v_second <= 0.0:
+                return None
             alpha = 1.0 - v_first / (v_first + v_second)
             weights[first] *= alpha
             weights[second] *= 1.0 - alpha
@@ -188,8 +204,10 @@ class S18Hrp(BaseStrategy):
         cov = sub.cov(min_periods=min_obs).to_numpy(dtype=float)
         rho = sub.corr(min_periods=min_obs).to_numpy(dtype=float)
         weights = hrp_weights(cov, rho)
-        if not (
-            np.isfinite(weights).all() and math.isclose(float(weights.sum()), 1.0, abs_tol=1e-9)
+        if weights is None or not (
+            np.isfinite(weights).all()
+            and (weights >= 0).all()
+            and math.isclose(float(weights.sum()), 1.0, abs_tol=1e-9)
         ):
             return pd.Series(dtype=float)
         return pd.Series(weights, index=keep, dtype=float)

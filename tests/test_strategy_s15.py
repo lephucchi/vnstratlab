@@ -68,6 +68,13 @@ def test_nan_signal_is_cash_and_disagreeing_rows_are_cash() -> None:
     assert make(TWELVE).target_weights(synthetic_section().iloc[0:0], ASOF).empty
 
 
+def test_a_mix_of_finite_and_non_finite_rows_is_cash() -> None:
+    for bad in (np.nan, np.inf):
+        mixed = synthetic_section(g12=0.1)
+        mixed.loc[0, "group_ret_12m"] = bad
+        assert make(TWELVE).target_weights(mixed, ASOF).empty
+
+
 def test_six_and_twelve_month_variants_read_their_own_column() -> None:
     sec = synthetic_section(g12=0.10, g6=-0.05)  # 12m up, 6m down
     assert not make(TWELVE).target_weights(sec, ASOF).empty
