@@ -1,7 +1,7 @@
 # Strategy catalogue
 
-> **Status: design.** Implemented so far: S00 and S17 (card P1-T14), S01–S03 (card P1-T15), S04–S05 (card P1-T16) and S08–S09 (card P1-T17); the
-> rest follow in cards P1-T17 … P1-T19. Parameter sets
+> **Status: design.** Implemented so far: S00 and S17 (card P1-T14), S01–S03 (card P1-T15), S04–S05 (card P1-T16), S08–S09 (card P1-T17) and S14, S15, S18 (card P1-T19);
+> the rest follow in card P1-T18 (S06, S13 blocked). Parameter sets
 > below are **proposals**; the owner freezes them in `defaults.yaml` when each card starts.
 > After that, a changed parameter set is a new trial (plan §6.4.3). Each strategy has at most
 > 3 parameter sets.
@@ -36,11 +36,11 @@ How strategies are run, combined and selected: [engine.md](engine.md). How to wr
 | S11 | Earnings yield (E/P) | medium, long | net income, prices | P1-T18 | Planned; depends on P1-T07 |
 | S12 | Asset quality and profitability | medium, long | ROE, NPL, NPL coverage | P1-T18 | Planned; **NPL availability from free sources unverified** |
 | S13 | Value + momentum | medium | S08 and S10 ranks | P1-T17 | **Blocked** on P1-T07 (needs S10) |
-| S14 | Low volatility | medium | prices | P1-T19 | Planned |
-| S15 | Sector trend filter | medium | prices | P1-T19 | Planned |
+| S14 | Low volatility | medium | prices | P1-T19 | **Implemented** |
+| S15 | Sector trend filter | medium | prices | P1-T19 | **Implemented** |
 | S16 | LightGBM ranking (60-day) | medium | features | P1-T31 | **Stretch** |
 | S17 | Equal weight | all | membership | P1-T14 | **Implemented**; **benchmark and selectable strategy** |
-| S18 | Hierarchical Risk Parity | long | returns | P1-T19 | Planned |
+| S18 | Hierarchical Risk Parity | long | returns | P1-T19 | **Implemented** |
 
 Candidates per horizon, excluding stretch S07/S16: **short 8** (S00–S06, S17; 7 while S06 is
 blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
@@ -182,13 +182,22 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
 
 ### S14 — Low volatility
 - **Rule.** Lowest `window`-session volatility; buy the bottom `n`, equal weight.
-- **Proposed params.** `{window: 60, n: 4}`.
+- **As implemented.** Signal = feature `std_60d` on the asof row (`window` must be 60, other
+  values are rejected). Buy the `n` lowest; NaN is not eligible; fewer eligible than `n` buy
+  fewer names and the rest stays in cash; ties by ticker. Equal weight 1/`n`. Reads only the
+  asof rows (`lookback_sessions` 1).
+- **Params (frozen).** `{window: 60, n: 4}`; medium horizon.
 - **Basis.** Frazzini & Pedersen (2014).
 
 ### S15 — Sector trend filter
 - **Rule.** If the equal-weight bank group's 12-month return > 0, hold all members equally;
   otherwise hold cash.
-- **Proposed params.** `{lookback_months: 12}`, `{lookback_months: 6}`.
+- **As implemented.** Signal = feature `group_ret_12m` (12) or `group_ret_6m` (6, new in
+  features-v5: index over 126 index sessions) on the asof row; other values are rejected. Signal
+  > 0: 1/N across every ticker with a feature row on asof (the S17 universe rule). Signal <= 0 or
+  NaN or infinite on any row (a mix with finite values counts as disagreement), rows that disagree, or no row: empty target (all cash). Reads only the asof rows
+  (`lookback_sessions` 1).
+- **Params (frozen).** `{lookback_months: 12}`, `{lookback_months: 6}`; medium horizon.
 - **Basis.** Moskowitz, Ooi & Pedersen (2012), time-series momentum.
 
 ### S16 — LightGBM ranking *(stretch)*
@@ -200,13 +209,28 @@ blocked), **medium 9** (S08–S15, S17), **long 5** (S10, S11, S12, S17, S18).
 |---|---|
 | S10, S11, S12 | As above; one of 12 tranches rebalanced each month |
 | S17 | Equal weight of current members (DeMiguel, Garlappi & Uppal, 2009) |
-| S18 | Hierarchical Risk Parity on 1-year daily returns (López de Prado, 2016) |
+| S18 | Hierarchical Risk Parity on 1-year daily returns (López de Prado, 2016); **Implemented** (P1-T19), params `{window: 250}` frozen |
 
 The long horizon decides monthly (~96 decisions in 8 years, ADR-005), but with a 1-year
 holding period the outcomes overlap: there are only **~8 non-overlapping 1-year outcomes** in
 8 years (plan §12), and that is what statistical power depends on. Gates have little power here, so the long book defaults to equal weight across 2–4
 economically grounded strategies and the lab is used mainly to **drop** broken ones
 (plan §12).
+
+### S18 — Hierarchical Risk Parity
+- **As implemented.** `src/vnstratlab/strategies/builtin/s18_hrp.py`, history contract
+  `lookback_sessions = window` (frozen 250). Return matrix = `ret_1d` of the last `window`
+  sessions up to asof; candidates have a feature row on asof; eligible = at least
+  `ceil(0.8 * window)` non-NaN returns and non-zero variance. Pairwise covariance and correlation
+  with `min_periods` the same count; while a correlation is NaN, drop the ticker with the most NaN
+  pairs (ties: the later ticker alphabetically). One eligible ticker gets 1.0, none gives cash.
+  Distance `sqrt(0.5 (1 - rho))`, single linkage (scipy, imported locally), quasi-diagonal order,
+  recursive bisection with inverse-variance cluster variance. Weights are long-only and sum to 1.
+  Fewer than `window` sessions of history, or no rows on asof, gives cash. Pairwise covariance can
+  be non-PSD: if any cluster variance in the bisection is not finite or <= 0, or a final weight is
+  negative, the target is empty (cash); weights are never clipped.
+- **Params (frozen).** `{window: 250}`; long horizon.
+- **Basis.** López de Prado (2016).
 
 ## All horizons
 

@@ -7,6 +7,14 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Strategies S14, S15 and S18 (P1-T19):** S14 low volatility (buy the 4 lowest `std_60d`), S15
+  sector trend filter (1/N of the cross-section when the group return over 12 or 6 months is > 0,
+  else cash) and S18 Hierarchical Risk Parity (250-session `ret_1d`, single linkage, recursive
+  bisection), medium, medium and long horizon with frozen params in the packaged config (`lab
+  register` now lists 19 trials, 12 strategy ids). New feature column `group_ret_6m`; the feature
+  code version is now `features-v5`, so every `feature_version` changes: rebuild
+  `features_daily`. New runtime dependency `scipy>=1.11` (S18 only, imported locally). S06 stays
+  blocked on P1-T04.
 - **Strategies S08 and S09 (P1-T17):** S08 cross-sectional momentum (buy the top 4 by the 6- or
   12-month return skipping the last month; `L_months` 6 and 12) and S09 medium-term reversal
   (the bottom 4 by the 6-month signal), both medium horizon with frozen params in the packaged

@@ -38,6 +38,7 @@ VALUE_WINDOW = 20
 RS_WINDOW = 20  # relative strength vs the group (ret_20d)
 INDEX_MA = 50  # equal-weight index moving average (sessions of the index)
 INDEX_RET = 250  # group_ret_12m (sessions of the index)
+INDEX_RET_6M = 126  # group_ret_6m (features-v5, S15): same construction, 126 index sessions
 
 WINDOWS: dict[str, int] = {
     "ma_short": MA_SHORT,
@@ -58,6 +59,7 @@ WINDOWS: dict[str, int] = {
     "rs": RS_WINDOW,
     "index_ma": INDEX_MA,
     "index_ret": INDEX_RET,
+    "index_ret_6m": INDEX_RET_6M,
     **{f"ret_{n}": n for n in RET_WINDOWS},
 }
 
@@ -82,7 +84,7 @@ FEATURE_GROUPS: dict[str, tuple[str, ...]] = {
     "mean_reversion": ("rsi_14", "rsi_2", "z_ma20", "ret_5d_vs_group_median"),
     "volatility": ("atr_14", "std_20d", "std_60d"),
     "volume_liquidity": ("vol_vs_avg20", "value_traded_20d"),
-    "market_context": ("group_ew_vs_ma50", "group_breadth_ma50", "group_ret_12m"),
+    "market_context": ("group_ew_vs_ma50", "group_breadth_ma50", "group_ret_12m", "group_ret_6m"),
     # features-v3 (S04, S05): the daily return series the history strategies rebuild windows from
     "returns": ("ret_1d",),
 }

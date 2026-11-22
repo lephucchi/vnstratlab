@@ -120,6 +120,19 @@ strategies:                    # filled by strategy cards P1-T14..P1-T19
     horizons: [medium]
     params:
       - {L_months: 6, n: 4}
+  S14_low_volatility:          # P1-T19: Frazzini & Pedersen (2014); window = the std_60d feature
+    horizons: [medium]
+    params:
+      - {window: 60, n: 4}
+  S15_sector_trend:            # P1-T19: Moskowitz, Ooi & Pedersen (2012); group index trend filter
+    horizons: [medium]
+    params:
+      - {lookback_months: 12}
+      - {lookback_months: 6}
+  S18_hrp:                     # P1-T19: Lopez de Prado (2016); needs 250 sessions of ret_1d
+    horizons: [long]
+    params:
+      - {window: 250}
 
 news:
   collect_raw: true            # Phase 1: collect only

@@ -24,7 +24,7 @@ from vnstratlab.features import (
 )
 from vnstratlab.features.build import asof_view, load_features
 from vnstratlab.features.core import FEATURES_CODE_VERSION
-from vnstratlab.features.groups import wilder_rsi
+from vnstratlab.features.groups import WINDOWS, wilder_rsi
 from vnstratlab.risk.atr import atr
 
 VERSION = "ratio-v2:abc123"
@@ -223,8 +223,8 @@ def test_ret_1d_spans_a_missing_session_without_filling() -> None:
     assert out["ret_1d"].iloc[-1] == pytest.approx(0.2)
 
 
-def test_features_code_version_is_v4() -> None:
-    assert FEATURES_CODE_VERSION == "features-v4"
+def test_features_code_version_is_v5() -> None:
+    assert FEATURES_CODE_VERSION == "features-v5"
 
 
 def test_hand_rs_20d_rank_and_group_median(synthetic_hand: pd.DataFrame) -> None:
@@ -446,6 +446,27 @@ def test_market_context_is_the_equal_weight_universe_index() -> None:
     assert last["group_breadth_ma50"] == pytest.approx(1 / 3)
 
 
+def test_hand_group_ret_6m_is_the_index_over_126_dates_back_minus_one() -> None:
+    n = 260
+    up = [100.0 * 1.03**i for i in range(n)]
+    adjusted, executed = stack(
+        synthetic_frames("X", up),
+        synthetic_frames("Y", [100.0] * n),
+        synthetic_frames("Z", [50.0] * n),
+    )
+    out = compute_features(adjusted, executed, ["X", "Y", "Z"])
+    # mean daily return 0.01: index[i] = 1.01 ** i; row t has index[t] / index[t - 126] - 1
+    got = out[out["ticker"] == "X"]["group_ret_6m"].to_numpy(dtype=float)
+    assert np.isnan(got[:126]).all()  # warm-up: needs 126 prior index dates
+    assert got[126] == pytest.approx(1.01**126 - 1)
+    assert got[n - 1] == pytest.approx(1.01**126 - 1)
+    # the 12-month column is still NaN where only the 6-month window is full
+    assert np.isnan(out[out["ticker"] == "X"]["group_ret_12m"].to_numpy(dtype=float)[200])
+    cols = list(FEATURE_GROUPS["market_context"])
+    assert cols.index("group_ret_6m") == cols.index("group_ret_12m") + 1
+    assert WINDOWS["index_ret_6m"] == 126
+
+
 def test_no_column_name_says_vn30() -> None:
     assert not [c for c in FEATURE_COLUMNS if "vn30" in c.lower()]
     assert not [g for g in FEATURE_GROUPS if "vn30" in g.lower()]
@@ -471,7 +492,7 @@ def test_feature_version_is_stable_and_follows_adj_version() -> None:
     # one value for the whole build, different for every row (cross-sectional features)
     assert second["feature_version"].nunique() == 1
     assert second["feature_version"].iloc[0] != first["feature_version"].iloc[0]
-    assert first["feature_version"].iloc[0].startswith("features-v4:")
+    assert first["feature_version"].iloc[0].startswith("features-v5:")
 
 
 def test_recomputing_a_past_date_gives_identical_values(synthetic_hand: pd.DataFrame) -> None:

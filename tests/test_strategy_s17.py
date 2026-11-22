@@ -92,6 +92,10 @@ def test_packaged_config_loads_every_builtin_strategy(engine_cfg: AppConfig) -> 
         ("S08_momentum", {"L_months": 6, "n": 4}, ("medium",)),
         ("S08_momentum", {"L_months": 12, "n": 4}, ("medium",)),
         ("S09_reversal", {"L_months": 6, "n": 4}, ("medium",)),
+        ("S14_low_volatility", {"window": 60, "n": 4}, ("medium",)),
+        ("S15_sector_trend", {"lookback_months": 12}, ("medium",)),
+        ("S15_sector_trend", {"lookback_months": 6}, ("medium",)),
+        ("S18_hrp", {"window": 250}, ("long",)),
     ]
 
 
