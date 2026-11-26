@@ -118,6 +118,31 @@ Prices are split-adjusted and Yahoo history starts at different dates per ticker
 [data-gaps.md](data-gaps.md). Data is written to `market.duckdb` in your data directory and is
 never part of the repository.
 
+### Walk-forward backtest: `vnstratlab backtest`
+
+After `ingest`, `data rebuild` and `features build` (it never ingests or builds), `backtest` walks
+every **registered** trial forward and stores its out-of-sample return per decision period, ideal
+and executable, in `lab.duckdb` (table `oos_returns`):
+
+```bash
+vnstratlab lab register                       # or add --register below (it says so)
+vnstratlab backtest --strategy S08_momentum   # all its registered parameter sets x horizons
+vnstratlab backtest --all                     # every enabled strategy
+vnstratlab backtest --all --source synthetic  # offline: needs `ingest --source synthetic` first
+vnstratlab backtest --all --mode ideal        # ideal | executable | both (default)
+```
+
+A trial that is not in the registry is refused before anything runs. At each decision day a
+strategy sees only feature rows dated up to that day; a period's return runs from the close of one
+decision day to the close of the next (orders fill at the next open). The table prints, per trial
+and mode, the number of periods, CAGR, volatility, Sharpe, max drawdown and turnover, split into
+**historical** periods (before the trial was registered: in-sample by design) and **forward**
+periods (after: true out-of-sample). Short results use 52 periods a year, medium and long 12.
+Synthetic runs are labelled `SYNTHETIC DATA`; real-data runs carry the Yahoo / survivorship
+(GAP-13) label. Re-running replaces a trial's rows for that source. The same work is the
+`backtest_all` pipeline in the Console, and `GET /api/backtest/summary?source=` returns the
+summary rows.
+
 ### Runs, and the local Console: `vnstratlab serve`
 
 `demo`, `ingest`, `data rebuild` and `features build` are recorded as **runs**: a small chain of
