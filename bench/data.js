@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795681882255,
+  "lastUpdate": 1795682249130,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1407,6 +1407,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0001995515183769415",
             "extra": "mean: 9.783620416667915 msec\nrounds: 12"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "30541a54b1819407c08ee3ed719027eeb4323623",
+          "message": "feat(demo): vnstratlab demo, offline end-to-end run on synthetic data (P1-T32) (#63)\n\nP1-T32: synthetic ingest, rebuild, features, 19 packaged trials through the simulator with the risk layer (executable mode); lab/metrics.py; demo --quiet in the CI smoke step. G2 approve round 1; minor findings in a follow-up issue.",
+          "timestamp": "2026-11-26T15:36:51+07:00",
+          "tree_id": "e457d5ec7739753ab590233007b55e6746688647",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/30541a54b1819407c08ee3ed719027eeb4323623"
+        },
+        "date": 1795682248515,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 2.2784757946602485,
+            "unit": "iter/sec",
+            "range": "stddev: 0.016213633559338567",
+            "extra": "mean: 438.889893999999 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 82.9961081992048,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002593017119385446",
+            "extra": "mean: 12.048757727288002 msec\nrounds: 11"
           }
         ]
       }
