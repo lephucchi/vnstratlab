@@ -52,7 +52,7 @@ COOLDOWN_SESSIONS: dict[str, int] = {"short": 5, "medium": 21, "long": 21}
 SOURCE = "synthetic"
 WARNING_LINE = "SYNTHETIC DATA - results say nothing about the real market."
 BENCHMARK_ID = "S17_equal_weight"
-BENCHMARK_NOTE = "benchmark, no risk layer"
+BENCHMARK_NOTE = "(benchmark) no risk layer"
 SUMMARY_COLUMNS = (
     "trial_id",
     "trial",
@@ -93,7 +93,7 @@ class DemoRow:
     @property
     def label(self) -> str:
         text = self.strategy_id if not self.params else f"{self.strategy_id} {self.params}"
-        return f"{text} ({BENCHMARK_NOTE})" if self.benchmark else text
+        return f"{text} {BENCHMARK_NOTE}" if self.benchmark else text
 
 
 @dataclass(frozen=True)
@@ -327,7 +327,7 @@ def stage_simulate(st: DemoState, progress: Callable[[str], None] | None = None)
         if strategy.id == BENCHMARK_ID:
             # Equal weight without the risk layer: capital, lots, costs and T+ only. Not a
             # trial: never registered and not in the trial count.
-            note(f"{strategy.id} {horizon} (benchmark, no risk layer)")
+            note(f"{strategy.id} {horizon} (benchmark) no risk layer")
             bench_id = f"benchmark_{strategy.id}_{horizon}"
             benchmarks.append(_row(bench_id, strategy, horizon, run(risk=None), benchmark=True))
     st.rows.extend(benchmarks)

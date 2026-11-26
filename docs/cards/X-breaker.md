@@ -33,10 +33,14 @@ New rule (update docs/engine.md §7 "Circuit breaker" with this text, marked "ow
    close; corporate actions applied as in marking). `shadow` starts at the actual equity at the
    trigger close. No costs, no lots, no settlement — it measures whether the **strategy**
    recovered, not the book.
-3. **Re-arm (off):** at a close, if active and `shadow >= trigger_peak × (1 − dd)` → breaker
-   **off**, and **reset `peak` to the current actual equity** (otherwise it would re-trigger
-   immediately because the cash book is still below the old threshold). Log the transition as
-   today (`circuit_breaker_off`, with shadow and peak values).
+3. **Re-arm (off), owner decision 2026-11-26 (hysteresis, supersedes the first version
+   `shadow >= trigger_peak × (1 − dd)`):** at a close, if active, `shadow >= trigger_peak` (full
+   recovery) **and** at least one decision period has passed since the trigger close (sessions
+   elapsed >= the resolved stop cooldown: `risk.stop_cooldown_sessions` if set, else the run's
+   `cooldown_sessions`; 5 short, 21 medium/long in demo and walk-forward) → breaker **off**, and
+   **reset `peak` to the current actual equity** (otherwise it would re-trigger immediately
+   because the cash book is still below the old threshold). Log the transition as today
+   (`circuit_breaker_off`, with shadow and peak values).
 4. While on, behaviour is unchanged (no weight above held weight; pending buys cancelled).
 5. `ENGINE_VERSION` **bumped** (results change → new trial ids; this is expected).
 
@@ -63,9 +67,10 @@ Console results already tag benchmark rows by label — keep the label text stab
 #### Acceptance criteria (lean, hand-computed where it matters)
 
 1. Hand-computed scenario (3–4 tickers, ~15 sessions): price drop triggers the breaker → book
-   goes to cash → prices recover → shadow crosses `trigger_peak × (1 − dd)` → breaker off at
-   that exact close, `peak` reset to actual equity, buys resume at the next decision; assert
-   the on/off sessions and the shadow values.
+   goes to cash → a partial bounce does not re-arm → shadow reaches `trigger_peak` after at
+   least one period → breaker off at that exact close, `peak` reset to actual equity, buys
+   resume at the next decision; assert the on/off sessions and the shadow values. A second case:
+   the shadow recovers before the period has elapsed and the breaker stays on until both hold.
 2. If prices never recover, the breaker stays on (no spurious re-arm).
 3. The S17 real-data symptom cannot recur on synthetic data: a synthetic crash-and-recover
    path re-arms within the expected session.

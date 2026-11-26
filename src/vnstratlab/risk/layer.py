@@ -54,10 +54,13 @@ class RiskLayer:
         """
         return equity <= peak_equity * (1.0 - self.config.circuit_breaker_drawdown_pct)
 
-    def breaker_rearmed(self, shadow_equity: float, trigger_peak: float) -> bool:
-        """Re-arm test while the breaker is on (owner decision 2026-11-26): the shadow book is
-        back at ``trigger_peak * (1 - circuit_breaker_drawdown_pct)`` or above."""
-        return shadow_equity >= trigger_peak * (1.0 - self.config.circuit_breaker_drawdown_pct)
+    def breaker_rearmed(
+        self, shadow_equity: float, trigger_peak: float, sessions_on: int, period: int
+    ) -> bool:
+        """Re-arm test while the breaker is on (owner decision 2026-11-26, hysteresis): the
+        shadow book is back at ``trigger_peak`` or above (full recovery) **and** at least
+        ``period`` sessions (one decision period) have passed since the trigger close."""
+        return shadow_equity >= trigger_peak and sessions_on >= period
 
     def stop_price(self, entry_price: float, atr_at_entry: float) -> float:
         """ATR stop level: ``entry - atr_stop_multiple * ATR14(at entry)``."""

@@ -497,7 +497,7 @@ def downsample(values: list[Any], limit: int = DEMO_MAX_POINTS) -> list[Any]:
 
 
 def _is_benchmark(row: dict[str, str]) -> bool:
-    return row.get("trial", "").startswith("S17") or "(benchmark)" in row.get("trial", "")
+    return row.get("trial_id", "").startswith("benchmark_") or "(benchmark" in row.get("trial", "")
 
 
 def _float(value: str) -> float | None:

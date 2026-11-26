@@ -85,9 +85,7 @@ def test_every_enabled_packaged_trial_runs_once(full_run: tuple[DemoReport, Path
     assert all(r.trades >= 0 and len(r.equity) > 50 for r in report.rows)
     assert {r.strategy_id for r in benchmarks} == {"S17_equal_weight"}
     assert not any(r.benchmark or "benchmark" in r.label for r in s17)  # packaged S17: a trial
-    assert all(
-        not r.is_trial and r.label.endswith("(benchmark, no risk layer)") for r in benchmarks
-    )
+    assert all(not r.is_trial and r.label.endswith("(benchmark) no risk layer") for r in benchmarks)
     horizons = [r.horizon for r in report.rows]
     order = {"short": 0, "medium": 1, "long": 2}
     assert horizons == sorted(horizons, key=order.__getitem__)
@@ -181,7 +179,7 @@ def test_report_lists_skipped_and_the_run_leaves_the_app_home_unchanged(
     text = format_report(report)
     assert text.splitlines()[0] == WARNING_LINE
     assert "skipped: S06_blocked: blocked on P1-T04 (synthetic reason)" in text
-    assert "S17_equal_weight (benchmark, no risk layer)" in text
+    assert "S17_equal_weight (benchmark) no risk layer" in text
     assert "trials run 2, skipped 1" in text
     assert "benchmark rows (2): S17 equal weight without the risk layer; not trials" in text
     assert "no trials were registered" in text

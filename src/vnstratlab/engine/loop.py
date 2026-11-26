@@ -376,6 +376,7 @@ class Simulator:
         self._peak = self.params.capital
         self._breaker = False
         self._trigger_peak = self.params.capital  # peak at the close the breaker turned on
+        self._trigger_index = 0  # session index of that close
         self._shadow_cash = 0.0  # frictionless fractional paper book, only while the breaker is on
         self._shadow_shares: dict[str, float] = {}
         self._index = {d: i for i, d in enumerate(self.sessions)}
@@ -536,7 +537,8 @@ class Simulator:
                 self._breaker_on(today, equity)
         else:
             shadow = self._shadow_equity()
-            if risk.breaker_rearmed(shadow, self._trigger_peak):
+            elapsed = self._index[today] - self._trigger_index
+            if risk.breaker_rearmed(shadow, self._trigger_peak, elapsed, self._cooldown_n):
                 self._breaker_off(today, equity, shadow)
         if self._breaker:
             for order in [o for o in self._pending if o.side == "buy"]:
@@ -548,6 +550,7 @@ class Simulator:
         what the book holds now (engine.md section 7)."""
         self._breaker = True
         self._trigger_peak = self._peak
+        self._trigger_index = self._index[today]
         self._shadow_shares = dict(self.ledger.holdings())
         self._shadow_cash = equity - self._positions_value()
         detail = f"equity {equity:.0f}, peak {self._peak:.0f}"
