@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795699554917,
+  "lastUpdate": 1795700191794,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1901,6 +1901,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00024751651446759286",
             "extra": "mean: 9.556261789486454 msec\nrounds: 19"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "301c1734e8de969f653c897526d192499e5aa460",
+          "message": "feat(lab): Sharpe, Deflated Sharpe Ratio and PBO (CSCV), lab stats (P1-T21) (#91)\n\nCloses #89. G2 full round 1 approve: DSR matches Bailey & Lopez de Prado (2014) example to 1e-16 (per-period scale, non-excess kurtosis), CSCV matches a brute-force reference, every registered trial counted in N. Minors -> follow-up issue.",
+          "timestamp": "2026-11-26T20:35:49+07:00",
+          "tree_id": "8a8ae29958f9137eda7e421bec8732183168967a",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/301c1734e8de969f653c897526d192499e5aa460"
+        },
+        "date": 1795700191282,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 2.0396553824373127,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01290786388575924",
+            "extra": "mean: 490.2789013333404 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 55.391817622432164,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00031168944030954016",
+            "extra": "mean: 18.053207909087053 msec\nrounds: 11"
           }
         ]
       }
