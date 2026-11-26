@@ -9,7 +9,7 @@ import copy
 import datetime as dt
 import os
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -107,6 +107,36 @@ def build_overrides(
     return result
 
 
+def apply_changes(
+    existing: Mapping[str, Any] | None,
+    changes: Mapping[tuple[str, ...], Any],
+    *,
+    defaults: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """``existing`` with each dotted-path change applied; a value equal to the packaged default
+    removes the override. Other existing keys are kept (the Console's config editor uses this)."""
+    base = defaults if defaults is not None else packaged_defaults()
+    result = copy.deepcopy(dict(existing or {}))
+    for path, value in changes.items():
+        _set_or_drop(result, path, value, get_path(base, path))
+    return result
+
+
+def reset_paths(
+    existing: Mapping[str, Any] | None,
+    paths: Sequence[tuple[str, ...]],
+    *,
+    defaults: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """``existing`` without the overrides at ``paths`` (back to the packaged defaults)."""
+    base = defaults if defaults is not None else packaged_defaults()
+    result = copy.deepcopy(dict(existing or {}))
+    for path in paths:
+        default = get_path(base, path)
+        _set_or_drop(result, path, default, default)
+    return result
+
+
 def render_config(overrides: Mapping[str, Any], today: dt.date) -> str:
     """YAML text with the header comment; ``{}`` when there is nothing to override."""
     header = HEADER.format(date=today.isoformat())
@@ -116,17 +146,23 @@ def render_config(overrides: Mapping[str, Any], today: dt.date) -> str:
     return header + body
 
 
-def validate_overrides(overrides: Mapping[str, Any]) -> list[str]:
-    """Run the real loader on the candidate (in a scratch home); return ``path: reason`` lines."""
+def load_candidate(overrides: Mapping[str, Any]) -> Any:
+    """The ``AppConfig`` the real loader builds from ``overrides`` (in a scratch home).
+    Raises ``ConfigError`` listing every problem."""
     with tempfile.TemporaryDirectory(prefix="vnstratlab-init-") as scratch:
         home = Path(scratch)
         (home / "config.yaml").write_text(
             yaml.safe_dump(dict(overrides)) if overrides else "{}\n", encoding="utf-8"
         )
-        try:
-            load_config(home)
-        except ConfigError as exc:
-            return list(exc.problems)
+        return load_config(home)
+
+
+def validate_overrides(overrides: Mapping[str, Any]) -> list[str]:
+    """Run the real loader on the candidate (in a scratch home); return ``path: reason`` lines."""
+    try:
+        load_candidate(overrides)
+    except ConfigError as exc:
+        return list(exc.problems)
     return []
 
 

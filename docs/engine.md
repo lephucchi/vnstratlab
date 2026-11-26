@@ -369,11 +369,48 @@ not truly out-of-sample for them. Lab reports always split performance at
   on the registration day counts as historical).
 - **Summary:** per trial, mode and segment (historical / forward): periods, CAGR, volatility,
   Sharpe, max drawdown, mean turnover of traded periods; `lab.metrics` formulas with 52 periods a
-  year for short and 12 for medium and long.
+  year for short and 12 for medium and long. CAGR counts one period per stored decision period:
+  a decision day skipped because it is not a session still counts as one period, so a series
+  with gaps is annualised as if it had none.
+- **Trials:** `backtest --all` / `--strategy` run the registry records of the current
+  `feature_version` and `ENGINE_VERSION` (not the config), rebuilt from id, params and horizon
+  with the code hash checked; a record that cannot be rebuilt is reported as not runnable, never
+  skipped silently. The summary shows only trials of the current versions.
 - **Fitted components:** none yet. `fit_cutoff(sessions, d, label_sessions, embargo)` is the hook
   for S07 / S16 (P1-T31): the last session whose label is known on `d`, minus the embargo.
 - **Source label:** `synthetic` results are labelled `SYNTHETIC DATA`; others carry the Yahoo /
   GAP-13 survivorship note.
+
+### As implemented (P1-T21)
+
+`vnstratlab.lab.stats`, `vnstratlab lab stats [--horizon H] [--source S] [--mode M]`, the
+`lab_stats` task of `backtest_all` (after `backtest`, executable mode) and
+`GET /api/lab/stats?horizon=&source=`.
+
+- **Sharpe** is per period (not annualised): mean / sample std (ddof 1), NaN when std is 0 or
+  there are fewer than 2 periods. Skewness (gamma3) and **non-excess** kurtosis (gamma4, a normal
+  is 3; scipy's default is excess) use the population moment estimators.
+- **DSR** is plan Appendix C (Bailey & Lopez de Prado, 2014): `SR0 = sqrt(V)((1-g)Phi^-1(1-1/N) +
+  g Phi^-1(1-1/(N e)))`, `DSR = Phi((SR-SR0) sqrt(T-1) / sqrt(1 - g3 SR + (g4-1)/4 SR^2))`.
+  N = 1 or V = 0 gives SR0 = 0 (the PSR); a non-positive radicand gives NaN with a reason.
+  The tests reproduce the paper's worked example (SR0 = 0.1132, DSR = 0.9004) from memory, since
+  the paper was not reachable offline.
+- **N and V:** N counts **every** registered trial of the horizon at the current feature and
+  engine version, including trials with no or too few periods; V is the sample variance (ddof 1)
+  of the finite historical Sharpe ratios of those trials.
+- **PBO** is CSCV (Bailey, Borwein, Lopez de Prado & Zhu, 2015) with `s = 16` contiguous blocks
+  and all C(16, 8) = 12,870 splits (a seeded sample above 20,000 splits, `lab.seed`). The best
+  in-sample Sharpe is picked; omega = rank / (N + 1) out-of-sample; PBO = share of logit <= 0. The
+  matrix holds the trials with at least `min_periods` historical periods, aligned on the
+  `period_end` they all share; fewer than 2 such trials or fewer common rows than blocks gives NaN.
+  PBO is a property of the horizon and is repeated on its rows.
+- **Segments:** DSR, PBO and the gate-1 verdicts use the historical (in-sample by design) segment;
+  the forward segment row reports periods, Sharpe, skew and kurtosis only.
+- **Storage:** `lab.duckdb` table `trial_stats(trial_id, horizon, mode, source, segment, periods,
+  sr, skew, kurt, dsr, n_trials, var_sr, pbo, computed_at, feature_version, engine_version)`,
+  replaced per (source, horizon, mode). The CLI and the endpoint add `periods_ok`, `dsr_ok`,
+  `pbo_ok` (periods >= `min_periods`, DSR >= `dsr_min`, PBO <= `pbo_max`; `lab.gate1`, read only).
+  No selection yet (P1-T22).
 
 ## 13. Reproducibility
 

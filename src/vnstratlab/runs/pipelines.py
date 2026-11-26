@@ -5,7 +5,8 @@
 - ``refresh``: ingest -> rebuild -> features on the configured source (real data).
 - ``ingest``, ``rebuild``, ``features``: one task each.
 - ``backtest_all``: features (check only, never ingests or builds) -> backtest (walk-forward of the
-  registered trials, results in ``lab.duckdb``) -> report. Parameters: ``source``, ``strategy``,
+  registered trials, results in ``lab.duckdb``) -> lab_stats (DSR and PBO, table ``trial_stats``)
+  -> report. Parameters: ``source``, ``strategy``,
   ``modes``, ``register``, ``start``, ``end``; all optional.
 
 Heavy imports (pandas, duckdb) happen inside the task functions, so importing this module is cheap.
@@ -14,6 +15,7 @@ Heavy imports (pandas, duckdb) happen inside the task functions, so importing th
 from __future__ import annotations
 
 import importlib.util
+import logging
 import tempfile
 from collections.abc import Mapping
 from datetime import date
@@ -227,9 +229,14 @@ def _bt_backtest(ctx: RunContext) -> Mapping[str, Any]:
         progress=ctx.note,
     )
     ctx.state["backtest"] = result
+    unrunnable = logging.getLogger("vnstratlab.runs")
+    for item in result.not_runnable:
+        unrunnable.warning("trial %s not runnable: %s", item.trial_id, item.reason)
     return {
         "source": result.source,
         "trials": len(result.trials),
+        "not_runnable": [{"trial_id": n.trial_id, "reason": n.reason} for n in result.not_runnable],
+        "not_runnable_count": len(result.not_runnable),
         "registered_now": len(result.registered_now),
         "rows_written": result.rows_written,
     }
@@ -246,6 +253,26 @@ def _bt_report(ctx: RunContext) -> Mapping[str, Any]:
     summary.to_csv(out / "summary.csv", index=False, lineterminator="\n")
     ctx.note(result.label)
     return {"source": result.source, "trials": len(result.trials), "summary_rows": len(summary)}
+
+
+def _bt_lab_stats(ctx: RunContext) -> Mapping[str, Any]:
+    """DSR and PBO of the current trials (executable mode) into ``lab.duckdb`` (trial_stats)."""
+    from vnstratlab.lab.stats import add_gate_columns, compute_lab_stats
+
+    result = ctx.state["backtest"]
+    cfg = _config(ctx)
+    frame = compute_lab_stats(cfg, get_paths(ctx.home), result.source, mode="executable")
+    gated = add_gate_columns(frame, cfg)
+    hist = gated[gated["segment"] == "historical"]
+    ctx.state["lab_stats"] = gated
+    ctx.note(f"lab stats: DSR and PBO of {len(hist)} trial(s)")
+    return {
+        "source": result.source,
+        "trials": len(hist),
+        "periods_ok": int((hist["periods_ok"] == True).sum()),  # noqa: E712
+        "dsr_ok": int((hist["dsr_ok"] == True).sum()),  # noqa: E712
+        "pbo_ok": int((hist["pbo_ok"] == True).sum()),  # noqa: E712
+    }
 
 
 def _opt_date(value: object) -> date | None:
@@ -287,7 +314,8 @@ def _build() -> dict[str, Pipeline]:
         (
             Task("features", "Kiểm tra đặc trưng", _bt_features),
             Task("backtest", "Chạy walk-forward", _bt_backtest, ("features",)),
-            Task("report", "Lập báo cáo", _bt_report, ("backtest",)),
+            Task("lab_stats", "Tính DSR và PBO", _bt_lab_stats, ("backtest",)),
+            Task("report", "Lập báo cáo", _bt_report, ("lab_stats",)),
         ),
     )
     return {

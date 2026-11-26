@@ -1,55 +1,91 @@
-// Logs panel: task selector, level filter, search, auto-tail, download.
+// Logs panel: task selector, level filter, search with highlight + next/prev, auto-tail, copy line, download.
+import { copyText } from "./ui.js";
 import { h } from "./util.js";
 
 const LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"];
 const LINE = /^\d\d:\d\d:\d\d (DEBUG|INFO|WARNING|ERROR|CRITICAL)\b/;
-
-function levelRank(level) {
-  if (level === "CRITICAL") return 3;
-  return Math.max(LEVELS.indexOf(level), 0);
-}
+const levelRank = (level) => (level === "CRITICAL" ? 3 : Math.max(LEVELS.indexOf(level), 0));
 
 /** ``tasks``: the run's task list. ``onTask(id)`` is called when the user picks another task. */
 export function createLogs(runId, tasks, onTask) {
   const buffers = {}; // task -> [{text, level}]
   const pending = {}; // task -> partial last line
   let current = tasks[0] ? tasks[0].id : null;
+  let matchIdx = -1;
 
-  const select = h(
-    "select",
-    { "aria-label": "Tác vụ", onchange: () => setTask(select.value, true) },
-    tasks.map((t) => h("option", { value: t.id }, t.label_vi))
-  );
-  const level = h(
-    "select",
-    { "aria-label": "Mức log", onchange: redraw },
-    h("option", { value: "0" }, "Mọi mức"),
-    LEVELS.slice(1).map((l, i) => h("option", { value: String(i + 1) }, `${l} trở lên`))
-  );
-  const search = h("input", { type: "search", placeholder: "Tìm trong log", "aria-label": "Tìm trong log", oninput: redraw });
+  const select = h("select", { "aria-label": "Tác vụ", onchange: () => setTask(select.value, true) }, tasks.map((t) => h("option", { value: t.id }, t.label_vi)));
+  const level = h("select", { "aria-label": "Mức log", onchange: redraw }, h("option", { value: "0" }, "Mọi mức"), LEVELS.slice(1).map((l, i) => h("option", { value: String(i + 1) }, `${l} trở lên`)));
+  const search = h("input", {
+    type: "search",
+    placeholder: "Tìm trong log (Enter: kết quả sau)",
+    "aria-label": "Tìm trong log",
+    oninput: () => ((matchIdx = -1), redraw(), step(1)),
+    onkeydown: (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        step(e.shiftKey ? -1 : 1);
+      }
+    },
+  });
+  const count = h("span", { class: "count" }, "");
+  const only = h("input", { type: "checkbox", onchange: redraw });
   const tail = h("input", { type: "checkbox", checked: true, id: "tail" });
-  const pre = h("pre", { class: "log", tabindex: 0 });
-  const download = h("button", { class: "btn btn-small", type: "button", onclick: downloadLog }, "Tải log");
+  const pre = h("div", { class: "log", tabindex: 0, role: "log" });
+  const q = () => search.value.trim().toLowerCase();
+
+  function highlight(text) {
+    const needle = q();
+    if (!needle) return [text || " "];
+    const out = [];
+    const low = text.toLowerCase();
+    let from = 0;
+    let at;
+    while ((at = low.indexOf(needle, from)) !== -1) {
+      if (at > from) out.push(text.slice(from, at));
+      out.push(h("mark", null, text.slice(at, at + needle.length)));
+      from = at + needle.length;
+    }
+    out.push(text.slice(from) || (out.length ? "" : " "));
+    return out;
+  }
 
   function lineEl(entry) {
     const cls = entry.level === "WARNING" ? "warn" : entry.level === "ERROR" || entry.level === "CRITICAL" ? "err" : "";
-    return h("div", { class: `ln ${cls}` }, entry.text || " ");
+    return h(
+      "div",
+      { class: `ln ${cls}` },
+      h("span", { class: "tx" }, highlight(entry.text)),
+      h("button", { class: "cp", type: "button", "aria-label": "Sao chép dòng này", onclick: () => copyText(entry.text, "Đã sao chép dòng log") }, "chép")
+    );
   }
 
   function visible(entry) {
-    const q = search.value.trim().toLowerCase();
-    return levelRank(entry.level) >= Number(level.value) && (!q || entry.text.toLowerCase().includes(q));
+    if (levelRank(entry.level) < Number(level.value)) return false;
+    return !(only.checked && q() && !entry.text.toLowerCase().includes(q()));
   }
 
-  function scroll() {
-    if (tail.checked) pre.scrollTop = pre.scrollHeight;
+  const scroll = () => tail.checked && (pre.scrollTop = pre.scrollHeight);
+
+  function updateCount() {
+    const marks = pre.querySelectorAll("mark");
+    count.textContent = q() ? (marks.length ? `${matchIdx + 1}/${marks.length}` : "0") : "";
+  }
+
+  function step(dir) {
+    const marks = [...pre.querySelectorAll("mark")];
+    if (!q() || !marks.length) return updateCount();
+    matchIdx = (matchIdx + dir + marks.length) % marks.length;
+    marks.forEach((m, i) => m.classList.toggle("cur", i === matchIdx));
+    tail.checked = false;
+    marks[matchIdx].scrollIntoView({ block: "center" });
+    updateCount();
   }
 
   function redraw() {
-    const entries = buffers[current] || [];
-    const shown = entries.filter(visible);
+    const shown = (buffers[current] || []).filter(visible);
     pre.replaceChildren(...(shown.length ? shown.map(lineEl) : [h("div", { class: "ln muted" }, "(chưa có dòng log nào)")]));
     scroll();
+    updateCount();
   }
 
   function downloadLog() {
@@ -66,6 +102,7 @@ export function createLogs(runId, tasks, onTask) {
     if (!id) return;
     current = id;
     select.value = id;
+    matchIdx = -1;
     redraw();
     if (fromUser && onTask) onTask(id);
   }
@@ -89,24 +126,26 @@ export function createLogs(runId, tasks, onTask) {
     if (pre.querySelector(".muted")) pre.replaceChildren();
     pre.append(...rows.map(lineEl));
     scroll();
+    updateCount();
   }
 
-  function reset(task) {
+  const reset = (task) => {
     buffers[task] = [];
     pending[task] = "";
     if (task === current) redraw();
-  }
-
-  function flush(task) {
-    if (pending[task]) {
-      append(task, "\n");
-    }
-  }
+  };
+  const flush = (task) => pending[task] && append(task, "\n");
 
   const el = h(
     "section",
     { class: "card logs" },
-    h("div", { class: "log-bar" }, select, level, search, h("label", { class: "check" }, tail, " Tự cuộn"), download),
+    h(
+      "div",
+      { class: "log-bar" },
+      h("div", { class: "log-grp" }, select, level),
+      h("div", { class: "log-grp grow" }, h("div", { class: "grow" }, search), h("button", { class: "btn ghost sm", type: "button", "aria-label": "Kết quả trước", onclick: () => step(-1) }, "‹"), count, h("button", { class: "btn ghost sm", type: "button", "aria-label": "Kết quả sau", onclick: () => step(1) }, "›")),
+      h("div", { class: "log-grp" }, h("label", { class: "check small" }, only, " Chỉ dòng khớp"), h("label", { class: "check small" }, tail, " Tự cuộn"), h("button", { class: "btn ghost sm", type: "button", onclick: downloadLog }, "Tải log"))
+    ),
     pre
   );
   setTask(current, false);

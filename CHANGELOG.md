@@ -18,7 +18,20 @@ All notable changes are documented here. The format follows
   sizing, position cap, vol scaling, stops or breaker). It is not a trial: not registered and not
   counted. The packaged S17 trials run with the risk layer and lose the benchmark label.
 
+### Added
+- **Lab statistics (P1-T21):** `vnstratlab.lab.stats` with per-period Sharpe, the Deflated
+  Sharpe Ratio (plan Appendix C, non-excess kurtosis, N = every registered trial of the horizon)
+  and PBO by CSCV; table `trial_stats` in `lab.duckdb`; `vnstratlab lab stats` with gate-1
+  pass/fail columns; `GET /api/lab/stats`; a `lab_stats` task in the `backtest_all` pipeline.
+
 ### Changed
+- **Backtest trials from the registry (P1-T20b):** `backtest --all` / `--strategy` run the
+  registered trials of the current feature and engine version, rebuilt from id, params and
+  horizon with the code hash checked, not the config; trials that cannot be rebuilt are listed
+  as not runnable (CLI and `BacktestResult.not_runnable`); unregistered config trials are an
+  error unless `--register`. The summary and `GET /api/backtest/summary` show only the current
+  versions (`?all_versions=1` for all). The shared simulator bars are built once per run. The
+  CAGR period-count convention is documented.
 - **Demo follow-ups (X-65):** the risk layer logs a blocked decision at DEBUG (the engine already
   warns once when the circuit breaker turns on or off, so a demo run has a handful of warnings
   instead of over a thousand); the demo warning line is pure ASCII (Windows consoles); the demo
@@ -33,6 +46,25 @@ All notable changes are documented here. The format follows
   dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
 
 ### Added
+- **Console v2 UI (X-console-ui):** the Console now looks like the intro site and the PO dashboard
+  (monochrome tokens, dot grid, bundled Geist fonts with the OFL licence, buffalo mascot, light and
+  dark). New pages Tổng quan, Chiến lược and Cấu hình; command palette (Ctrl/⌘+K), keyboard
+  shortcuts, toasts, an active-run tracker, Cancel and Rerun, log search with highlight, chart
+  hovers, a Tour, a built-in terminal for `vnstratlab` commands and the equivalent CLI line on every
+  action. `?mock=1` serves contract-shaped synthetic fixtures (`docs/cards/console-v2-api.md`) so every
+  page works without the new API. Static files only, no external URLs.
+- **Console v2 API (X-console-api):** `GET /api/overview`; run `cancel` (cooperative between tasks) and
+  `rerun`; config editing (`GET/PUT /api/config`, `validate`, `reset`) restricted to whitelisted
+  fields, validated with the real loader and written atomically with a `.bak-<stamp>` copy that keeps
+  your other keys; strategy parameter sets (`GET /api/strategies`, add, enable/disable, delete): a
+  new set is stored in your `config.yaml` as `strategies.<id>.user_params` and its trials are
+  registered first (append-only, so every trial is counted), packaged sets can only be switched
+  off with `disabled_params`; chart data from the local store (`/api/data/prices/<ticker>`,
+  `/api/data/quality`); a built-in terminal (`GET /api/cli/commands`, `POST /api/cli`) that runs only
+  `vnstratlab` subcommands as a run of pipeline `cli` (no shell, no `serve`, `init` needs `--yes`,
+  the source-terms gate applies, 30 minute limit, cancel kills the command); pipelines and started
+  runs show their equivalent `cli` command. Parameter schemas live in `strategies/schemas.py`, so
+  built-in trial ids are unchanged. Packaged defaults are untouched.
 - **Walk-forward runner and `vnstratlab backtest` (P1-T20):** for every registered trial, ideal and
   executable out-of-sample returns per decision period (strategies see rows up to the decision day
   only; close of one decision day to the close of the next) stored in `lab.duckdb` table

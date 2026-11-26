@@ -1,0 +1,56 @@
+/* Terminal dock, dbt-style CLI lines and overview extras. Uses the tokens of console.css. */
+
+/* ---------------- CLI line (equivalent command of a UI action) */
+.cli-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; font-size: 12px; }
+.cli-line code { background: var(--soft); max-width: 100%; overflow-x: auto; white-space: nowrap; font-size: 12px; padding: 3px 8px; }
+.cli-line code::before { content: "$ "; color: var(--faint); }
+.cli-btn { all: unset; cursor: pointer; font: 500 11.5px var(--sans); color: var(--muted); border-bottom: 1px solid var(--line-2); }
+.cli-btn:hover { color: var(--fg); border-color: var(--fg); }
+.cli-btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.pcard { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.pcard .pc-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.pcard .pc-act { margin-top: 4px; }
+.pcard .cli-line { margin: 4px 0 0; }
+
+/* ---------------- overview */
+.fresh .value { font: 500 30px/1.2 var(--mono); letter-spacing: -.03em; }
+.qa-item { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+.qa-item:first-of-type { border-top: 0; padding-top: 0; }
+.qa-item .cli-line { grid-column: 1 / -1; margin: 0; }
+.sevs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.sevbox { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; transition: border-color .15s, transform .15s; }
+.sevbox:hover { border-color: var(--fg); transform: translateY(-1px); }
+.sevbox .value { font: 500 28px/1 var(--mono); }
+
+/* ---------------- terminal dock */
+.term { position: fixed; z-index: 25; left: 216px; right: 0; bottom: 0; height: var(--term-h, 260px); display: flex; flex-direction: column; background: #0a0a0a; color: #e5e5e5; border-top: 1px solid var(--line-2); font-family: var(--mono); font-size: 12.5px; box-shadow: 0 -20px 50px -30px rgba(0, 0, 0, .5); }
+:root[data-theme="dark"] .term { background: #050505; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .term { background: #050505; } }
+body.term-open main { padding-bottom: calc(var(--term-h, 260px) + 48px); }
+body.term-open .toasts { bottom: calc(var(--term-h, 260px) + 16px); }
+@media (max-width: 760px) { .term { left: 0; } }
+.term-grip { height: 7px; margin-top: -4px; cursor: row-resize; flex: none; position: relative; touch-action: none; }
+.term-grip::after { content: ""; position: absolute; left: 50%; top: 3px; width: 36px; height: 3px; margin-left: -18px; border-radius: 2px; background: #525252; }
+.term-grip:hover::after { background: #fafafa; }
+.term-head { display: flex; align-items: center; gap: 12px; padding: 4px 14px 6px; border-bottom: 1px solid #1f1f1f; flex: none; }
+.term-head .grow { flex: 1; }
+.term-title { font-weight: 600; color: #fafafa; }
+.term-sub { color: #6b6b6b; font-size: 11.5px; }
+.term .cli-btn { color: #8f8f8f; border-color: #2e2e2e; }
+.term .cli-btn:hover { color: #fafafa; border-color: #fafafa; }
+.term-out { flex: 1; overflow: auto; padding: 8px 14px; line-height: 1.55; }
+.tl { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tl.cmd { color: #fafafa; font-weight: 500; }
+.tl.dim { color: #6b6b6b; }
+.tl.warn { color: #e0a93b; }
+.tl.err { color: #f0615a; }
+.tl.ok { color: #3cbf74; }
+.tl.sugg { color: #4b93ff; cursor: pointer; }
+.tl.sugg:hover { text-decoration: underline; }
+.tl a { color: inherit; border-color: #525252; }
+.term-line { display: flex; align-items: center; gap: 8px; padding: 4px 14px; border-top: 1px solid #1f1f1f; flex: none; }
+.term-prompt { color: #fafafa; font-weight: 600; white-space: nowrap; }
+.term-input { flex: 1; height: 28px; border: 0; background: transparent; color: #e5e5e5; font: 500 12.5px var(--mono); padding: 0; box-shadow: none !important; }
+.term-input::placeholder { color: #525252; }
+.term-hint { padding: 0 14px 6px; color: #6b6b6b; font-size: 11.5px; min-height: 20px; flex: none; }

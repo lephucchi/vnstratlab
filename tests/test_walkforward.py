@@ -43,11 +43,11 @@ from vnstratlab.lab.walkforward import (
     run_trial,
 )
 from vnstratlab.paths import get_paths
-from vnstratlab.runs import run_pipeline
-from vnstratlab.strategies.base import BaseStrategy, Strategy
+from vnstratlab.runs import RunStore, run_pipeline
+from vnstratlab.strategies.base import BaseStrategy, LookaheadError, Strategy
 from vnstratlab.strategies.builtin.s01_weekly_reversal import S01WeeklyReversal
 from vnstratlab.strategies.builtin.s17_equal_weight import S17EqualWeight
-from vnstratlab.strategies.registry import make_trial_spec
+from vnstratlab.strategies.registry import TrialSpec, make_trial_spec
 
 runner = CliRunner()
 DATA_START = date(2015, 1, 1)
@@ -181,6 +181,13 @@ def test_runner_never_hands_a_strategy_rows_after_asof(tmp_path: Path, cfg: AppC
     assert (run.periods["ideal"]["ret"] == 0.0).all()  # all cash
 
 
+def test_a_row_dated_after_asof_is_refused_by_the_asof_guard() -> None:
+    days = make_days(30)
+    _, features = hand_market(days)
+    with pytest.raises(LookaheadError, match="dated after asof"):
+        S17EqualWeight({}, ("short",)).target_weights(features, pd.Timestamp(days[10]))
+
+
 def test_results_do_not_depend_on_data_after_the_period(
     store_file: Path, cfg: AppConfig, tmp_path: Path
 ) -> None:
@@ -227,6 +234,70 @@ def test_unregistered_trial_is_refused_and_register_flag_registers_first(
 
 
 # ------------------------------------------------------------------ AC 3: hand-computed S17
+
+
+def test_trials_come_from_the_registry_and_unrunnable_ones_are_reported(
+    home: Path, cfg: AppConfig
+) -> None:
+    paths = get_paths(home)
+    both = small(cfg, **{S17: {"horizons": ["short", "medium"], "params": [{}]}})
+    run_backtest(both, paths, source="synthetic", register=True)
+    short_only = small(cfg, **{S17: {"horizons": ["short"], "params": [{}]}})
+    with MarketStore(paths.synthetic_market_db, "synthetic", read_only=True) as market:
+        version = store_feature_version(market)
+    strategy = S17EqualWeight({}, ("long",))
+    stale = make_trial_spec(strategy, "long", version, ENGINE_VERSION, "0" * 64)
+    gone = TrialSpec("u" * 16, "S99_gone", "{}", "long", "0" * 64, version, ENGINE_VERSION)
+    with LabStore(paths.lab_db) as lab:
+        lab.register(stale, "test")  # a code hash that is not the current module's
+        lab.register(gone, "test")
+    result = run_backtest(short_only, paths, source="synthetic")
+    with LabStore(paths.lab_db, read_only=True) as lab:
+        horizons = set(lab.oos_returns()["horizon"])
+    assert horizons == {"short", "medium"}  # medium left the config but still runs
+    assert len(result.trials) == 2
+    reasons = {n.trial_id: n.reason for n in result.not_runnable}
+    assert "hash mismatch" in reasons[stale.trial_id]
+    assert "unknown strategy id" in reasons["u" * 16]
+    assert len(reasons) == 2  # nothing skipped silently
+
+    piped = run_pipeline(home, "backtest_all", {"source": "synthetic", "register": True})
+    piped.raise_for_failure()
+    task = piped.state["backtest"]
+    assert set(reasons) <= {n.trial_id for n in task.not_runnable}
+    run = RunStore(home).get(piped.run_id)
+    assert run is not None
+    summary = next(t for t in run["tasks"] if t["id"] == "backtest")["summary"]
+    assert summary["not_runnable_count"] == 2
+    assert {n["trial_id"] for n in summary["not_runnable"]} == set(reasons)
+
+
+def test_summary_shows_only_trials_of_the_current_engine_version(
+    home: Path, cfg: AppConfig
+) -> None:
+    paths = get_paths(home)
+    only = small(cfg, **{S17: {"horizons": ["short"], "params": [{}]}})
+    run_backtest(only, paths, source="synthetic", register=True)
+    with MarketStore(paths.synthetic_market_db, "synthetic", read_only=True) as market:
+        version = store_feature_version(market)
+    old = make_trial_spec(S17EqualWeight({}, ("short",)), "short", version, "engine-old")
+    rows = pd.DataFrame({"period_end": [date(2016, 1, 8)], "ret": [0.01], "turnover": [0.1]})
+    with LabStore(paths.lab_db) as lab:
+        lab.register(old, "test")
+        lab.replace_oos(
+            old.trial_id,
+            "ideal",
+            "synthetic",
+            rows,
+            horizon="short",
+            feature_version=version,
+            engine_version="engine-old",
+            registered_date=date(2016, 1, 1),
+        )
+    current = load_summary(paths, "synthetic")
+    assert len(current) > 0
+    assert old.trial_id not in set(current["trial_id"])
+    assert old.trial_id in set(load_summary(paths, "synthetic", all_versions=True)["trial_id"])
 
 
 def frictionless(cfg: AppConfig) -> AppConfig:
@@ -381,7 +452,7 @@ def test_backtest_needs_one_selector_and_a_known_strategy(
     assert backtested("--all", "--strategy", S17).exit_code != 0
     unknown = backtested("--strategy", "S99_nothing")
     assert unknown.exit_code == 1
-    assert "not enabled" in unknown.output
+    assert "no registered trial" in unknown.output
 
 
 def test_backtest_all_pipeline_and_summary_endpoint(home: Path) -> None:
@@ -398,7 +469,7 @@ def test_backtest_all_pipeline_and_summary_endpoint(home: Path) -> None:
     client = TestClient(create_app(home), base_url="http://127.0.0.1:8000")
     listing = client.get("/api/pipelines").json()["pipelines"]
     tasks = next(p for p in listing if p["id"] == "backtest_all")["tasks"]
-    assert [t["id"] for t in tasks] == ["features", "backtest", "report"]
+    assert [t["id"] for t in tasks] == ["features", "backtest", "lab_stats", "report"]
     body = client.get("/api/backtest/summary", params={"source": "synthetic"}).json()
     assert body["synthetic"] is True
     assert "SYNTHETIC" in body["label"]
