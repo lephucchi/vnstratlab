@@ -62,7 +62,6 @@ def test_version() -> None:
         (["meta-backtest", "--horizon", "long"], "P1-T23"),
         (["stress", "--horizon", "medium"], "P1-T33"),
         (["daily", "--dry-run"], "P1-T26"),
-        (["serve"], "P1-T27"),
     ],
 )
 def test_stubs_fail_loudly_and_name_their_card(args: list[str], card: str) -> None:

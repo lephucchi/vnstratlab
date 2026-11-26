@@ -15,6 +15,17 @@ All notable changes are documented here. The format follows
   dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
 
 ### Added
+- **Run registry and `vnstratlab serve` (P1-T27a):** new package `vnstratlab.runs`: pipelines
+  (`demo`, `refresh`, `ingest`, `rebuild`, `features`) are DAGs of tasks run in a background thread
+  (one run at a time), each task with a status, a summary and a log, stored under
+  `<home>/logs/runs/<run_id>/` (last 50 kept; an interrupted run loads as failed). `demo`,
+  `ingest`, `data rebuild` and `features build` now go through it with unchanged output, and
+  `vnstratlab runs list` / `runs show` show the history. `vnstratlab serve` (replacing the stub)
+  starts a FastAPI app on loopback only (`--host` other than loopback is refused, `--port`,
+  `--no-open`) with the JSON API under `/api`: pipelines, runs, task logs, Server-Sent Events,
+  data status and gaps, demo results; POSTs need the header `X-Vnstratlab: 1`, and a Yahoo run from
+  the web needs an explicit terms confirmation. New runtime dependencies `fastapi` and `uvicorn`
+  (dev: `httpx` for the test client). The Console UI is P1-T28a.
 - **`vnstratlab init` (P1-T35):** interactive (or `--yes` with flags) wizard that creates the home
   folders and a minimal `config.yaml` (capital per book, data source, brokerage fee), validated with
   the config loader, written atomically; `--force` keeps a `.bak-*` copy and your other keys. It
