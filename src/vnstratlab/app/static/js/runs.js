@@ -1,42 +1,24 @@
-// Page 2: Runs. Pipeline buttons, grid of recent runs, run view (DAG, header, logs).
-import { createDag } from "./dag.js";
-import { createLogs } from "./logs.js";
-import { STATUS_VI, api, errorBox, fmtDur, fmtTime, h, post, statusChip } from "./util.js";
+// Runs page: start a pipeline (with its CLI line), filters, grid with hover cards, compare two runs.
+import { cliLine, confirmDialog, emptyState, hcRow, hooks, hoverCard, pageHead, segmented, toast } from "./ui.js";
+import { STATUS_VI, api, cliOf, errorBox, fmtDur, fmtTime, h, post } from "./util.js";
 
-const GRID_RUNS = 20;
+const GRID_RUNS = 24;
 const GRID_REFRESH_MS = 3000;
-const POLL_MS = 1500;
 
-// ---------- starting a pipeline (shared with the guide page) ----------
+// ---------- starting a pipeline (shared by Overview, Guide, palette) ----------
 
-function showBanner(...content) {
-  const view = document.getElementById("view");
-  view.querySelector(".banner")?.remove();
-  view.prepend(h("div", { class: "notice banner", role: "alert" }, content));
+function termsDialog(info) {
+  return confirmDialog({
+    title: "Điều khoản nguồn dữ liệu",
+    yes: "Tôi đồng ý, bắt đầu chạy",
+    body: h("div", null, h("p", { class: "muted" }, `Nguồn: ${info.source}`), h("pre", { class: "notice-text" }, info.notice)),
+  });
 }
 
-function confirmTerms(info) {
-  return new Promise((resolve) => {
-    const dialog = h(
-      "dialog",
-      { class: "dialog" },
-      h("h2", null, "Điều khoản nguồn dữ liệu"),
-      h("p", { class: "muted" }, `Nguồn: ${info.source}`),
-      h("pre", { class: "notice-text" }, info.notice),
-      h(
-        "div",
-        { class: "dialog-actions" },
-        h("button", { class: "btn", type: "button", onclick: () => dialog.close("no") }, "Hủy"),
-        h("button", { class: "btn btn-primary", type: "button", onclick: () => dialog.close("yes") }, "Tôi đồng ý, bắt đầu chạy")
-      )
-    );
-    dialog.addEventListener("close", () => {
-      resolve(dialog.returnValue === "yes");
-      dialog.remove();
-    });
-    document.body.append(dialog);
-    dialog.showModal();
-  });
+function showBanner(text, link) {
+  const view = document.getElementById("view");
+  view.querySelector(".banner")?.remove();
+  view.prepend(h("div", { class: "notice warn banner", role: "alert" }, text, link ? [" ", link] : null));
 }
 
 /** Start a pipeline; on success go to its run page. Returns the run id or null. */
@@ -44,111 +26,146 @@ export async function startPipeline(id, acceptTerms = false) {
   const res = await post("/runs", { pipeline: id, accept_terms: acceptTerms });
   const body = res.body || {};
   if (res.status === 202) {
+    hooks.pokeTracker && hooks.pokeTracker();
     location.hash = `#/runs/${body.run_id}`;
     return body.run_id;
   }
-  if (res.status === 409 && body.error === "terms_required") {
-    return (await confirmTerms(body)) ? startPipeline(id, true) : null;
-  }
+  if (res.status === 409 && body.error === "terms_required") return (await termsDialog(body)) ? startPipeline(id, true) : null;
   if (res.status === 409 && body.error === "busy") {
+    toast("Đang có một lần chạy khác", { kind: "warn", href: `#/runs/${body.active_run_id}`, sub: "Bấm để xem lần chạy đang chạy" });
     showBanner("Đang có một lần chạy khác. Hãy chờ nó xong. ", h("a", { href: `#/runs/${body.active_run_id}` }, "Xem lần chạy đang chạy"));
   } else if (res.status === 422) {
-    const detail = body.problems ? body.problems.join("; ") : body.message || "";
-    showBanner(`Không bắt đầu được (${body.error === "config_invalid" ? "cấu hình chưa hợp lệ" : "lỗi nguồn dữ liệu"}). ${detail}`);
-  } else {
-    showBanner(`Không bắt đầu được (mã ${res.status}${body.error ? `: ${body.error}` : ""}).`);
-  }
+    showBanner(`Không bắt đầu được (${body.error === "config_invalid" ? "cấu hình chưa hợp lệ" : "lỗi nguồn dữ liệu"}). ${body.problems ? body.problems.join("; ") : body.message || ""}`);
+  } else showBanner(`Không bắt đầu được (mã ${res.status}${body.error ? `: ${body.error}` : ""}).`);
   return null;
+}
+
+export function pipelineButton(p, { label, ghost = false, small = false } = {}) {
+  const btn = h("button", { class: `btn${ghost ? " ghost" : ""}${small ? " sm" : ""}`, type: "button", title: p.needs_source_terms ? "Dùng dữ liệu thật; cần xác nhận điều khoản nguồn" : null }, label || `Chạy: ${p.label_vi}`);
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    await startPipeline(p.id);
+    btn.disabled = false;
+  });
+  return btn;
+}
+
+function pipelineCard(p) {
+  return h(
+    "div",
+    { class: "card hover pcard" },
+    h("div", { class: "pc-top" }, h("b", null, p.label_vi), p.needs_source_terms ? h("span", { class: "chip dashed" }, "dữ liệu thật") : h("span", { class: "chip soft" }, "offline")),
+    h("div", { class: "muted small" }, `${p.tasks.length} tác vụ: ${p.tasks.map((t) => t.label_vi).join(" → ")}`),
+    h("div", { class: "pc-act" }, pipelineButton(p, { label: "Chạy" })),
+    cliLine(cliOf(p))
+  );
 }
 
 // ---------- grid ----------
 
-function pipelineBar(pipelines) {
-  return h(
-    "div",
-    { class: "pipe-buttons" },
-    pipelines.map((p) =>
-      h(
-        "button",
-        {
-          class: "btn",
-          type: "button",
-          title: p.needs_source_terms ? "Dùng dữ liệu thật; cần xác nhận điều khoản nguồn" : "",
-          onclick: (e) => {
-            e.currentTarget.disabled = true;
-            startPipeline(p.id).finally(() => (e.currentTarget.disabled = false));
-          },
-        },
-        `Chạy: ${p.label_vi}`
-      )
-    )
-  );
+function cellCard(r, t, label) {
+  const first = t.error ? String(t.error).split("\n")[0] : null;
+  return [
+    h("b", null, label),
+    hcRow("Trạng thái", STATUS_VI[t.status] || t.status),
+    hcRow("Thời gian", fmtDur(t.duration_s)),
+    hcRow("Lần chạy", r.pipeline),
+    hcRow("Bắt đầu", fmtTime(r.started_at || r.created_at)),
+    first ? h("div", { class: "err" }, first) : null,
+  ];
 }
 
 function gridTable(runs, taskOrder) {
   const cols = runs.slice(0, GRID_RUNS).reverse(); // newest on the right
-  if (!cols.length) return h("p", { class: "muted" }, "Chưa có lần chạy nào. Hãy bấm một nút ở trên hoặc “Chạy demo ngay” ở trang Hướng dẫn.");
+  if (!cols.length) return h("p", { class: "muted" }, "Không có lần chạy nào khớp bộ lọc.");
   const rows = [...taskOrder];
   cols.forEach((r) => r.tasks.forEach((t) => !rows.includes(t.id) && rows.push(t.id)));
   const labels = {};
   cols.forEach((r) => r.tasks.forEach((t) => (labels[t.id] = t.label_vi)));
-  return h(
-    "div",
-    { class: "grid-scroll" },
+  const table = h(
+    "table",
+    { class: "grid" },
     h(
-      "table",
-      { class: "grid" },
+      "thead",
+      null,
       h(
-        "thead",
+        "tr",
         null,
+        h("th", null, ""),
+        cols.map((r) => {
+          const a = h("a", { href: `#/runs/${r.run_id}` }, h("span", { class: `dot st-${r.status}` }), h("span", null, r.pipeline === "cli" ? "cli" : r.pipeline));
+          hoverCard(a, () => [h("b", null, r.label_vi), hcRow("Trạng thái", STATUS_VI[r.status]), hcRow("Thời gian", fmtDur(r.duration_s)), hcRow("Bắt đầu", fmtTime(r.created_at)), r.reason ? hcRow("Lý do", r.reason) : null]);
+          return h("th", { class: "col-head" }, a);
+        })
+      )
+    ),
+    h(
+      "tbody",
+      null,
+      rows.map((id) =>
         h(
           "tr",
           null,
-          h("th", null, "Tác vụ"),
-          cols.map((r) =>
-            h(
-              "th",
-              { class: "col-head", title: `${r.label_vi} — ${fmtTime(r.created_at)}` },
-              h("a", { href: `#/runs/${r.run_id}` }, h("span", { class: `dot st-${r.status}` }), h("span", { class: "col-label" }, r.pipeline))
-            )
-          )
-        )
-      ),
-      h(
-        "tbody",
-        null,
-        rows.map((id) =>
-          h(
-            "tr",
-            null,
-            h("th", { scope: "row", title: id }, labels[id] || id),
-            cols.map((r) => {
-              const t = r.tasks.find((x) => x.id === id);
-              if (!t) return h("td", null, h("span", { class: "cell empty" }));
-              return h(
-                "td",
-                null,
-                h("a", { href: `#/runs/${r.run_id}`, class: `cell st-${t.status}`, title: `${labels[id] || id}: ${STATUS_VI[t.status]} (${fmtDur(t.duration_s)})` })
-              );
-            })
-          )
+          h("th", { scope: "row" }, labels[id] || id),
+          cols.map((r) => {
+            const t = r.tasks.find((x) => x.id === id);
+            if (!t) return h("td", null, h("span", { class: "cell none" }));
+            const a = h("a", { href: `#/runs/${r.run_id}`, class: `cell st-${t.status}`, "aria-label": `${labels[id]}: ${STATUS_VI[t.status]}` });
+            hoverCard(a, () => cellCard(r, t, labels[id] || id));
+            return h("td", null, a);
+          })
         )
       )
-    ),
-    legend()
+    )
+  );
+  return h(
+    "div",
+    null,
+    h("div", { class: "grid-scroll" }, table),
+    h("div", { class: "legend" }, ["queued", "running", "success", "failed", "skipped"].map((s) => h("span", null, h("span", { class: `cell st-${s}` }), STATUS_VI[s])))
   );
 }
 
-function legend() {
+// ---------- compare ----------
+
+function compareCard(runs) {
+  const holder = h("div", { class: "bars" });
+  const opt = (r) => h("option", { value: r.run_id }, `${r.pipeline} · ${fmtTime(r.created_at)}`);
+  const a = h("select", { "aria-label": "Lần chạy A", onchange: draw }, runs.map(opt));
+  const b = h("select", { "aria-label": "Lần chạy B", onchange: draw }, runs.map(opt));
+  if (runs.length > 1) b.selectedIndex = 1;
+  function draw() {
+    const ra = runs.find((r) => r.run_id === a.value);
+    const rb = runs.find((r) => r.run_id === b.value);
+    const ids = [...new Set([...ra.tasks, ...rb.tasks].map((t) => t.id))];
+    const get = (r, id) => (r.tasks.find((t) => t.id === id) || {}).duration_s;
+    const max = Math.max(0.1, ...ids.flatMap((id) => [get(ra, id) || 0, get(rb, id) || 0]));
+    const label = (r, id) => (r.tasks.find((t) => t.id === id) || { label_vi: id }).label_vi;
+    holder.replaceChildren(
+      ...ids.flatMap((id) => [
+        h("span", null, label(ra, id) === id ? label(rb, id) : label(ra, id)),
+        h(
+          "div",
+          { class: "bar" },
+          h("i", { style: `width:${((get(ra, id) || 0) / max) * 100}%` }),
+          h("i", { class: "b", style: `width:${((get(rb, id) || 0) / max) * 100}%` }),
+          h("em", null, `A ${fmtDur(get(ra, id))} · B ${fmtDur(get(rb, id))}`)
+        ),
+      ])
+    );
+  }
+  if (!runs.length) return null;
+  draw();
   return h(
-    "div",
-    { class: "legend" },
-    ["queued", "running", "success", "failed", "skipped"].map((s) => h("span", null, h("span", { class: `cell st-${s}` }), STATUS_VI[s]))
+    "section",
+    { class: "card" },
+    h("div", { class: "card-head" }, h("h2", null, "So sánh thời gian hai lần chạy"), h("div", { class: "btn-row" }, h("span", { class: "small muted" }, "A (thanh đậm)"), a, h("span", { class: "small muted" }, "B (thanh nhạt)"), b)),
+    holder
   );
 }
 
 export async function renderGrid(root) {
-  root.append(h("h1", null, "Runs"));
+  root.append(pageHead("Runs", "Chạy quy trình, xem lịch sử và so sánh các lần chạy"));
   const pipes = await api("/pipelines");
   if (!pipes.ok) {
     root.append(errorBox("Không tải được danh sách quy trình."));
@@ -157,178 +174,39 @@ export async function renderGrid(root) {
   const list = pipes.body.pipelines;
   const order = [];
   list.forEach((p) => p.tasks.forEach((t) => !order.includes(t.id) && order.push(t.id)));
-  const holder = h("div");
-  root.append(pipelineBar(list), holder);
+  const state = { q: "", pipeline: "", status: "" };
+  const gridHolder = h("div");
+  const compareHolder = h("div");
+  let all = [];
+
+  const filtered = () =>
+    all.filter((r) => (!state.pipeline || r.pipeline === state.pipeline) && (!state.status || r.status === state.status) && (!state.q || `${r.run_id} ${r.label_vi} ${r.pipeline}`.toLowerCase().includes(state.q)));
+  function draw() {
+    const runs = filtered();
+    gridHolder.replaceChildren(
+      all.length ? gridTable(runs, order) : emptyState("Chưa có lần chạy nào", "Bấm “Chạy” ở một quy trình phía trên, hoặc mở terminal bên dưới.", pipelineButton(list[0], { label: "Chạy demo" }))
+    );
+  }
+  const pipeSel = h("select", { "aria-label": "Lọc theo quy trình", onchange: () => ((state.pipeline = pipeSel.value), draw()) }, h("option", { value: "" }, "Mọi quy trình"), [...list.map((p) => p.id), "cli"].map((id) => h("option", { value: id }, id)));
+  const search = h("input", { type: "search", placeholder: "Tìm lần chạy…", "aria-label": "Tìm lần chạy", oninput: () => ((state.q = search.value.trim().toLowerCase()), draw()) });
+  const seg = segmented([["", "Tất cả"], ["success", "Thành công"], ["failed", "Lỗi"], ["running", "Đang chạy"]], "", (v) => ((state.status = v), draw()), "Lọc theo trạng thái");
+
+  root.append(
+    h("div", { class: "pcards" }, list.map(pipelineCard)),
+    h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, "Lịch sử (lần chạy mới nhất ở bên phải)")), h("div", { class: "toolbar" }, h("div", { class: "grow" }, search), pipeSel, seg), gridHolder),
+    compareHolder
+  );
   const load = async () => {
     const res = await api(`/runs?limit=${GRID_RUNS}`);
-    if (!res.ok) return holder.replaceChildren(errorBox("Không tải được lịch sử lần chạy."));
-    holder.replaceChildren(gridTable(res.body.runs, order));
+    if (!res.ok) return gridHolder.replaceChildren(errorBox("Không tải được lịch sử lần chạy."));
+    all = res.body.runs;
+    draw();
   };
   await load();
+  const done = all.filter((r) => r.status !== "running" && r.status !== "queued");
+  const cmp = compareCard(done);
+  if (cmp) compareHolder.append(cmp);
   const timer = setInterval(() => !document.hidden && load(), GRID_REFRESH_MS);
   return () => clearInterval(timer);
 }
 
-// ---------- run view ----------
-
-function taskDetail(task) {
-  if (!task) return null;
-  const summary = task.summary == null ? null : typeof task.summary === "string" ? task.summary : Object.entries(task.summary).map(([k, v]) => `${k}: ${v}`).join(", ");
-  return h(
-    "div",
-    { class: "task-detail" },
-    h("strong", null, task.label_vi),
-    " ",
-    statusChip(task.status),
-    h("span", { class: "muted" }, ` ${fmtDur(task.duration_s)}`),
-    summary ? h("div", { class: "muted" }, summary) : null,
-    task.error ? h("div", { class: "notice notice-error" }, task.error) : null
-  );
-}
-
-export async function renderRun(root, runId) {
-  const first = await api(`/runs/${encodeURIComponent(runId)}`);
-  if (!first.ok) {
-    root.append(h("h1", null, "Runs"), errorBox(`Không tìm thấy lần chạy ${runId}.`), h("a", { href: "#/runs" }, "Về danh sách"));
-    return;
-  }
-  let run = first.body;
-  let userPicked = false;
-  let source = null;
-  let poller = null;
-  let closed = false;
-  const offsets = {};
-
-  const head = h("div", { class: "run-head" });
-  const resultBtn = h("div");
-  const detail = h("div");
-  const dag = createDag(run.tasks, (id) => {
-    userPicked = true;
-    logs.setTask(id);
-    dag.select(id);
-    fetchHistory(id);
-    drawDetail();
-  });
-  const logs = createLogs(runId, run.tasks, (id) => {
-    userPicked = true;
-    dag.select(id);
-    fetchHistory(id);
-    drawDetail();
-  });
-
-  const isLive = () => run.status === "queued" || run.status === "running";
-
-  function pickDefault() {
-    const t = run.tasks.find((x) => x.status === "running") || run.tasks.find((x) => x.status === "failed") || run.tasks[run.tasks.length - 1];
-    return t ? t.id : null;
-  }
-
-  function drawHead() {
-    head.replaceChildren(
-      h("h1", null, run.label_vi || run.pipeline),
-      h(
-        "div",
-        { class: "run-meta" },
-        statusChip(run.status),
-        h("span", null, `Quy trình: ${run.pipeline}`),
-        h("span", null, `Bắt đầu: ${fmtTime(run.started_at || run.created_at)}`),
-        h("span", null, `Thời gian: ${fmtDur(run.duration_s)}`),
-        run.reason ? h("span", { class: "reason" }, `Lý do: ${run.reason}`) : null
-      )
-    );
-    resultBtn.replaceChildren(
-      run.pipeline === "demo" && run.status === "success" ? h("a", { class: "btn btn-primary", href: `#/ket-qua/${runId}` }, "Xem kết quả") : null
-    );
-  }
-
-  function drawDetail() {
-    detail.replaceChildren(taskDetail(run.tasks.find((t) => t.id === logs.current)));
-  }
-
-  function apply(next) {
-    run = next;
-    dag.update(run.tasks);
-    drawHead();
-    drawDetail();
-  }
-
-  async function refresh() {
-    const res = await api(`/runs/${encodeURIComponent(runId)}`);
-    if (res.ok && !closed) apply(res.body);
-  }
-
-  async function fetchHistory(task) {
-    // Finished runs (or the polling fallback): read the stored log; SSE supplies it for live runs.
-    if (source) return;
-    const res = await api(`/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(task)}/log?offset=${offsets[task] || 0}`);
-    if (!res.ok || closed) return;
-    offsets[task] = res.body.offset;
-    logs.append(task, res.body.text);
-    if (res.body.status !== "running") logs.flush(task);
-  }
-
-  function startPolling() {
-    poller = setInterval(async () => {
-      await refresh();
-      for (const t of run.tasks) if (t.status !== "queued" && t.status !== "skipped") await fetchHistory(t.id);
-      if (!isLive()) stopLive();
-    }, POLL_MS);
-  }
-
-  function stopLive() {
-    if (source) source.close();
-    source = null;
-    if (poller) clearInterval(poller);
-    poller = null;
-  }
-
-  function startLive() {
-    if (!("EventSource" in window)) return startPolling();
-    source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/events`);
-    source.addEventListener("task", (e) => {
-      const { task, status } = JSON.parse(e.data);
-      if (status === "running" && !userPicked) {
-        logs.setTask(task);
-        dag.select(task);
-      }
-      refresh();
-    });
-    source.addEventListener("log", (e) => {
-      const { task, text } = JSON.parse(e.data);
-      logs.append(task, text);
-    });
-    source.addEventListener("end", async () => {
-      stopLive();
-      run.tasks.forEach((t) => logs.flush(t.id));
-      await refresh();
-    });
-    source.onerror = () => {
-      // SSE failed: fall back to polling (offsets start from what we have: nothing, so re-read).
-      if (closed || !source) return;
-      stopLive();
-      run.tasks.forEach((t) => logs.reset(t.id));
-      startPolling();
-    };
-  }
-
-  root.append(
-    h("p", null, h("a", { href: "#/runs" }, "‹ Tất cả lần chạy")),
-    head,
-    resultBtn,
-    dag.el,
-    detail,
-    logs.el
-  );
-  apply(run);
-  const initial = pickDefault();
-  logs.setTask(initial);
-  dag.select(initial);
-  drawDetail();
-  if (isLive()) startLive();
-  else await fetchHistory(initial);
-
-  return () => {
-    closed = true;
-    stopLive();
-  };
-}

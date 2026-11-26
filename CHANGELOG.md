@@ -28,6 +28,13 @@ All notable changes are documented here. The format follows
   dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
 
 ### Added
+- **Console v2 UI (X-console-ui):** the Console now looks like the intro site and the PO dashboard
+  (monochrome tokens, dot grid, bundled Geist fonts with the OFL licence, buffalo mascot, light and
+  dark). New pages Tổng quan, Chiến lược and Cấu hình; command palette (Ctrl/⌘+K), keyboard
+  shortcuts, toasts, an active-run tracker, Cancel and Rerun, log search with highlight, chart
+  hovers, a Tour, a built-in terminal for `vnstratlab` commands and the equivalent CLI line on every
+  action. `?mock=1` serves contract-shaped synthetic fixtures (`docs/cards/console-v2-api.md`) so every
+  page works without the new API. Static files only, no external URLs.
 - **Console v2 API (X-console-api):** `GET /api/overview`; run `cancel` (cooperative between tasks) and
   `rerun`; config editing (`GET/PUT /api/config`, `validate`, `reset`) restricted to whitelisted
   fields, validated with the real loader and written atomically with a `.bak-<stamp>` copy that keeps

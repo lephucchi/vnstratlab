@@ -166,21 +166,27 @@ to confirm the source terms first. The API is JSON under `/api` (`/api/pipelines
 
 #### The Console pages
 
-The page opens in Vietnamese and works offline (no build step, nothing loaded from the internet).
-It has four pages, a permanent "Chỉ khuyến nghị — không đặt lệnh" tag, and light and dark themes:
+The page opens in Vietnamese and works offline (no build step, nothing loaded from the internet;
+Geist fonts are bundled under the SIL OFL). It uses the same monochrome look as the intro site and
+the PO dashboard, in light and dark, with a permanent "Chỉ khuyến nghị — không đặt lệnh" tag.
 
-- **Hướng dẫn** (`#/huong-dan`, default): the six pipeline steps (Ingest, Rebuild, Features,
-  Strategies, Simulator, Báo cáo) as a diagram you can play ("Phát") or step through
-  ("Trước"/"Sau"). Each frame shows what the step does, its command and the "Cần để ý" points.
-  "Chạy demo ngay" starts the offline demo. With reduced motion on, frames are static.
-- **Runs** (`#/runs`, `#/runs/<run_id>`): buttons to start a pipeline (the Yahoo one asks you to
-  confirm the source terms first), a grid of the last 20 runs by task, and a run view with the task
-  DAG, live status and logs (level filter, search, auto-tail, download). A finished demo has a
-  "Xem kết quả" button.
-- **Dữ liệu** (`#/du-lieu`): each store (SYNTHETIC or THẬT badge), tickers, last ingest runs, the
-  last checks and the open data gaps.
-- **Kết quả** (`#/ket-qua/<run_id>`): for a demo run, a red synthetic-data banner, the sortable
-  summary table (the equal-weight S17 is marked as the benchmark) and the equity chart.
+Seven pages in the left nav (a drawer under 760 px): **Tổng quan** (data freshness, last runs,
+quick actions, gaps by severity, strategy and trial counts), **Hướng dẫn** (the six-step guide, plus
+a "Tour" that highlights real parts of the page), **Runs** (start a pipeline, filter the grid, hover
+cards, compare two runs; the run page has Hủy / Chạy lại, a DAG and a log panel with search),
+**Dữ liệu** (tickers with sparklines, price and volume chart, DQ findings, gaps), **Kết quả**
+(trial table that drives the equity chart, drawdown, comparison with the S17 benchmark),
+**Chiến lược** (strategies, their param sets, add or delete your own sets) and **Cấu hình**
+(editable config with live validation, a diff preview and a backup on save).
+
+Every action shows its equivalent CLI line (copy it or open it in the terminal). A **terminal** is
+docked at the bottom of every page (Ctrl+`): type `vnstratlab ...` commands (Tab completes, ↑/↓
+history, Ctrl+C cancels); only `vnstratlab` subcommands run, never a shell. Press Ctrl/⌘+K or `/`
+for the command palette and `?` for the shortcuts (`g o`, `g r`, `g d`, ...). Toasts and the
+active-run tracker in the top bar follow your runs on every page.
+
+To try the page without a backend, open it with `?mock=1` (for example
+`http://127.0.0.1:8000/?mock=1`): all data is synthetic and answered in the browser.
 
 ## 4. Daily use (planned for v0.3)
 
