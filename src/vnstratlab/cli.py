@@ -157,10 +157,144 @@ def demo() -> None:
     _not_implemented("P1-T32")
 
 
+def _ask_checked(label: str, default: Any, kind: type, check: Any) -> Any:
+    """Prompt until the value passes ``check`` (which returns an error text or None)."""
+    while True:
+        value = typer.prompt(label, default=default, type=kind)
+        problem = check(value)
+        if problem is None:
+            return value
+        typer.echo(f"  invalid: {problem}")
+
+
+def _init_fail(problems: list[str]) -> NoReturn:
+    for problem in problems:
+        typer.echo(f"error: {problem}", err=True)
+    raise typer.Exit(code=1)
+
+
 @app.command()
-def init() -> None:
-    """Interactive setup: universe, capital, data directory, optional notifications."""
-    _not_implemented("P1-T35")
+def init(
+    yes: Annotated[
+        bool, typer.Option("--yes", help="No prompts; unspecified values keep defaults.")
+    ] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Overwrite an existing config.yaml (after a backup).")
+    ] = False,
+    capital_short: Annotated[int | None, typer.Option(help="Capital in VND, short book.")] = None,
+    capital_medium: Annotated[int | None, typer.Option(help="Capital in VND, medium book.")] = None,
+    capital_long: Annotated[int | None, typer.Option(help="Capital in VND, long book.")] = None,
+    source: Annotated[str | None, typer.Option(help="Data source: yahoo or synthetic.")] = None,
+    brokerage_fee: Annotated[
+        float | None, typer.Option(help="Brokerage fee as a fraction, e.g. 0.0015.")
+    ] = None,
+) -> None:
+    """Create your config.yaml (capital per book, data source, fee) and the app home folders."""
+    import yaml
+
+    from vnstratlab import init_wizard as wiz
+
+    paths = get_paths()
+    config_file = paths.config_file
+    if config_file.exists() and not force:
+        typer.echo(
+            f"error: {config_file} already exists. Re-run with --force to replace it "
+            "(a backup copy is kept).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    existing: dict[str, Any] = {}
+    if config_file.exists():
+        try:
+            loaded = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+            _init_fail([f"{config_file}: cannot read existing file ({exc})"])
+        if loaded is not None and not isinstance(loaded, dict):
+            _init_fail([f"{config_file}: top level must be a mapping"])
+        existing = loaded or {}
+
+    wiz.ensure_home_dirs(paths)
+    defaults = wiz.packaged_defaults()
+
+    def current(path: tuple[str, ...]) -> Any:
+        found = wiz.get_path(existing, path)
+        return found if found is not None else wiz.get_path(defaults, path)
+
+    capital: dict[str, int | None] = {}
+    given = {"short": capital_short, "medium": capital_medium, "long": capital_long}
+    problems: list[str] = []
+    for book in wiz.BOOKS:
+        value = given[book]
+        if yes:
+            if value is not None and (problem := wiz.check_capital(value)):
+                problems.append(f"books.{book}.capital_vnd: {problem}")
+            capital[book] = value
+        elif value is not None:  # flag given in interactive mode: use it, no prompt
+            capital[book] = value
+        else:
+            capital[book] = _ask_checked(
+                f"Capital for the {book} book (VND)",
+                current(("books", book, "capital_vnd")),
+                int,
+                wiz.check_capital,
+            )
+    if source is not None and (problem := wiz.check_source(source)):
+        if yes:
+            problems.append(f"data.source: {problem}")
+        else:
+            typer.echo(f"  invalid --source: {problem}")
+            source = None
+    if brokerage_fee is not None and (problem := wiz.check_fee(brokerage_fee)):
+        if yes:
+            problems.append(f"costs.brokerage_fee_pct: {problem}")
+        else:
+            typer.echo(f"  invalid --brokerage-fee: {problem}")
+            brokerage_fee = None
+    if problems:
+        _init_fail(problems)
+
+    if not yes:
+        if source is None:
+            source = str(
+                _ask_checked(
+                    "Data source (yahoo or synthetic)",
+                    current(("data", "source")),
+                    str,
+                    wiz.check_source,
+                )
+            )
+        if brokerage_fee is None:
+            typer.echo("  Brokerage fee is a [VERIFY] value: check it with your broker.")
+            brokerage_fee = _ask_checked(
+                "Brokerage fee (fraction)",
+                current(("costs", "brokerage_fee_pct")),
+                float,
+                wiz.check_fee,
+            )
+    if source == "yahoo":
+        from vnstratlab.data.pipeline import terms_notice
+
+        typer.echo(terms_notice(get_source("yahoo", wiz.packaged_config())))
+        if not yes and not typer.confirm("Use Yahoo Finance under these terms?"):
+            source = "synthetic"
+
+    overrides = wiz.build_overrides(
+        existing, capital=capital, source=source, brokerage_fee=brokerage_fee, defaults=defaults
+    )
+    if problems := wiz.validate_overrides(overrides):
+        _init_fail(problems)
+
+    now = utc_now()
+    stamp = now.strftime("%Y%m%dT%H%M%S") if config_file.exists() else None
+    wiz.write_config(config_file, wiz.render_config(overrides, now.date()), backup_stamp=stamp)
+
+    chosen = source or current(("data", "source"))
+    typer.echo(f"Wrote {config_file}")
+    typer.echo("Telegram report is optional: see .env.example and docs/configuration.md.")
+    typer.echo("Next steps:\n  vnstratlab doctor\n  vnstratlab demo")
+    if chosen == "yahoo":
+        typer.echo("  vnstratlab ingest")
 
 
 def _parse_date(value: str | None, option: str) -> date | None:

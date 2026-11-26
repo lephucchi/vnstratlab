@@ -57,7 +57,6 @@ def test_version() -> None:
     ("args", "card"),
     [
         (["demo"], "P1-T32"),
-        (["init"], "P1-T35"),
         (["backtest", "--strategy", "S02_breakout20"], "P1-T20"),
         (["lab", "--horizon", "short"], "P1-T22"),
         (["meta-backtest", "--horizon", "long"], "P1-T23"),

@@ -7,6 +7,10 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **`vnstratlab init` (P1-T35):** interactive (or `--yes` with flags) wizard that creates the home
+  folders and a minimal `config.yaml` (capital per book, data source, brokerage fee), validated with
+  the config loader, written atomically; `--force` keeps a `.bak-*` copy and your other keys. It
+  never handles secrets.
 - **Strategies S14, S15 and S18 (P1-T19):** S14 low volatility (buy the 4 lowest `std_60d`), S15
   sector trend filter (1/N of the cross-section when the group return over 12 or 6 months is > 0,
   else cash) and S18 Hierarchical Risk Parity (250-session `ret_1d`, single linkage, recursive
