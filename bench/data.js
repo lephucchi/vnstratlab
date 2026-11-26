@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795693936169,
+  "lastUpdate": 1795698069494,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1787,6 +1787,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0003644867637483981",
             "extra": "mean: 13.306666266667358 msec\nrounds: 15"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "de0e0046930465bf1283b4299ec658b47747d2ec",
+          "message": "fix(lab): walk-forward runs every registered trial, summary per current versions (P1-T20b) (#87)\n\nCloses #85. Trials come from the registry (rebuilt, code hash checked; not runnable ones reported in CLI and in the backtest task summary), summary filtered to current feature/engine versions, card text aligned, asof_guard test, CAGR convention documented, shared bars. Follow-up of P1-T20 G2 round 1; light (manager).",
+          "timestamp": "2026-11-26T20:00:33+07:00",
+          "tree_id": "8b93c17eb08e635e08bd7e1cc734e1f0569c0077",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/de0e0046930465bf1283b4299ec658b47747d2ec"
+        },
+        "date": 1795698068966,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 3.228970280021536,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014551598464859138",
+            "extra": "mean: 309.6962539999997 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 97.97025977782602,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00031766793698533095",
+            "extra": "mean: 10.207179222222843 msec\nrounds: 18"
           }
         ]
       }
