@@ -20,9 +20,8 @@ from __future__ import annotations
 import logging
 import tempfile
 import time
-from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -33,7 +32,7 @@ import pandas as pd
 from vnstratlab.calendar import TradingCalendar, decision_days
 from vnstratlab.config.loader import load_config
 from vnstratlab.config.models import AppConfig
-from vnstratlab.data.pipeline import ingest, load_execution_frame, rebuild
+from vnstratlab.data.pipeline import ExecutionFrame, ingest, load_execution_frame, rebuild
 from vnstratlab.data.protocol import TickTable, universe_tickers
 from vnstratlab.data.sources.synthetic import SyntheticSource
 from vnstratlab.data.store import MarketStore
@@ -146,19 +145,6 @@ def demo_config() -> AppConfig:
     return cfg.model_copy(update={"data": cfg.data.model_copy(update={"source": SOURCE})})
 
 
-def _prepare_store(cfg: AppConfig, home: Path, end: date) -> date:
-    """Ingest, rebuild and build features in ``home``; returns the first ingested session."""
-    paths = get_paths(home)
-    data_start = cfg.data.synthetic.start
-    report = ingest(cfg, paths, SyntheticSource(cfg), data_start, end)
-    if report.status not in ("ok", "ok_with_warnings"):
-        raise DemoError(f"ingest finished with status {report.status}: {report.failed}")
-    with MarketStore(paths.market_db_for("synthetic"), "synthetic") as store:
-        rebuild(store, SOURCE, TickTable.from_config(cfg))
-        build_features(store, SOURCE, universe_tickers(cfg))
-    return data_start
-
-
 def _targets(
     strategy: Strategy,
     horizon: Horizon,
@@ -186,69 +172,90 @@ def _targets(
     return targets
 
 
-@contextmanager
-def _quiet_logs() -> Iterator[None]:
-    """Hold back vnstratlab's warnings (one circuit-breaker line per blocked decision) so the
-    table is readable; errors still show."""
-    logger = logging.getLogger("vnstratlab")
-    previous = logger.level
-    logger.setLevel(logging.ERROR)
-    try:
-        yield
-    finally:
-        logger.setLevel(previous)
+@dataclass
+class DemoState:
+    """Mutable state passed from one demo stage to the next (the stages are the runner's tasks)."""
+
+    start: date
+    end: date
+    home: Path  # temporary app home holding the synthetic store (never the user's home)
+    cfg: AppConfig
+    out_dir: Path | None = None  # an extra copy destination (``vnstratlab demo --out``)
+    artifact_dir: Path | None = None  # where the report stage writes summary.csv and equity/
+    started: float = field(default_factory=time.perf_counter)
+    data_start: date | None = None
+    prepared: _Prepared | None = None
+    plans: list[tuple[Strategy, Horizon, dict[date, pd.Series]]] = field(default_factory=list)
+    rows: list[DemoRow] = field(default_factory=list)
+    report: DemoReport | None = None
 
 
-def run_demo(
-    out_dir: Path | None = None,
+@dataclass(frozen=True)
+class _Prepared:
+    frame: ExecutionFrame
+    calendar: TradingCalendar
+    feature_version: str
+
+
+def new_state(
+    home: Path,
     start: date = DEMO_START,
     end: date = DEMO_END,
     *,
-    progress: Callable[[str], None] | None = None,
-) -> DemoReport:
-    """Run the demo on ``[start, end]`` and return one row per enabled packaged trial.
-
-    With ``out_dir`` also write ``summary.csv`` and ``equity/<trial_id>.csv`` there (the directory
-    must not exist or be empty; it is checked before anything runs). Raises ``DemoError`` (or the
-    underlying error) when a stage fails; nothing is swallowed.
-    """
+    out_dir: Path | None = None,
+    artifact_dir: Path | None = None,
+) -> DemoState:
+    """A fresh state; the config is the packaged defaults with the synthetic source."""
     if end < start:
         raise DemoError(f"window end {end} is before start {start}")
-    if out_dir is not None:
-        check_out_dir(out_dir)
-    with _quiet_logs():
-        return _run(out_dir, start, end, progress)
+    return DemoState(start, end, home, demo_config(), out_dir=out_dir, artifact_dir=artifact_dir)
 
 
-def _run(
-    out_dir: Path | None, start: date, end: date, progress: Callable[[str], None] | None
-) -> DemoReport:
-    note = progress or (lambda _msg: None)
-    started = time.perf_counter()
-    cfg = demo_config()
+def stage_ingest(st: DemoState) -> dict[str, Any]:
+    """Ingest the synthetic market into the temporary home."""
+    st.data_start = st.cfg.data.synthetic.start
+    report = ingest(st.cfg, get_paths(st.home), SyntheticSource(st.cfg), st.data_start, st.end)
+    if report.status not in ("ok", "ok_with_warnings"):
+        raise DemoError(f"ingest finished with status {report.status}: {report.failed}")
+    return {"rows_in": report.rows_in, "rows_written": report.rows_written, "status": report.status}
+
+
+def stage_rebuild(st: DemoState) -> dict[str, Any]:
+    with MarketStore(get_paths(st.home).market_db_for("synthetic"), "synthetic") as store:
+        rep = rebuild(store, SOURCE, TickTable.from_config(st.cfg))
+    return {"price_rows": rep.price_rows, "adjusted_rows": rep.adjusted_rows}
+
+
+def stage_features(st: DemoState) -> dict[str, Any]:
+    with MarketStore(get_paths(st.home).market_db_for("synthetic"), "synthetic") as store:
+        rep = build_features(store, SOURCE, universe_tickers(st.cfg))
+    return {"rows": rep.rows, "feature_version": rep.feature_version}
+
+
+def stage_strategies(st: DemoState) -> dict[str, Any]:
+    """Load the features and compute every enabled trial's target weights (no simulation yet)."""
+    if st.data_start is None:
+        raise DemoError("the ingest stage has not run")
+    log = logging.getLogger("vnstratlab.demo")
+    cfg = st.cfg
     strategies = load_strategies(cfg)
-    tickers = universe_tickers(cfg)
-    with tempfile.TemporaryDirectory(prefix="vnstratlab-demo-") as tmp:
-        home = Path(tmp)
-        note("ingest, rebuild and features on the synthetic market")
-        data_start = _prepare_store(cfg, home, end)
-        paths = get_paths(home)
-        with MarketStore(paths.market_db_for("synthetic"), "synthetic", read_only=True) as store:
-            features = load_features(store, data_start, end)
-            frame = load_execution_frame(store, tickers, start, end, SOURCE)
+    paths = get_paths(st.home)
+    with MarketStore(paths.market_db_for("synthetic"), "synthetic", read_only=True) as store:
+        features = load_features(store, st.data_start, st.end)
+        frame = load_execution_frame(store, universe_tickers(cfg), st.start, st.end, SOURCE)
     if features.empty:
         raise DemoError("no features were built: nothing to simulate")
     features = features.sort_values("date", kind="stable").reset_index(drop=True)
     feature_dates = pd.to_datetime(features["date"]).to_numpy(dtype="datetime64[ns]")
     session_dates = np.unique(feature_dates)
-    feature_version = str(features["feature_version"].iloc[0])
     calendar = TradingCalendar.from_config(cfg)
     sessions = {pd.Timestamp(d).date() for d in frame.prices["date"]}
-    risk = RiskLayer(cfg.risk)
-    rows: list[DemoRow] = []
+    version = str(features["feature_version"].iloc[0])
+    st.prepared = _Prepared(frame, calendar, version)
+    st.plans = []
     for strategy in strategies:
         for horizon in strategy.horizons:
-            note(f"{strategy.id} {horizon}")
+            log.info("targets %s %s", strategy.id, horizon)
             targets = _targets(
                 strategy,
                 horizon,
@@ -257,51 +264,108 @@ def _run(
                 session_dates,
                 calendar,
                 sessions,
-                start,
-                end,
+                st.start,
+                st.end,
             )
-            capital = float(getattr(cfg.books, horizon).capital_vnd)
-            params = make_params(cfg, "executable", capital, lots=True, odd_lots=True)
-            result = run_simulation(
-                frame.prices,
-                frame.actions,
-                targets,
-                calendar,
-                params,
-                risk=risk,
-                cooldown_sessions=COOLDOWN_SESSIONS[horizon],
+            st.plans.append((strategy, horizon, targets))
+    return {"trials": len(st.plans)}
+
+
+def stage_simulate(st: DemoState, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
+    """Run the simulator (executable mode, risk layer) for each planned trial."""
+    note = progress or (lambda _msg: None)
+    prep, cfg = st.prepared, st.cfg
+    if prep is None:
+        raise DemoError("the strategies stage has not run")
+    risk = RiskLayer(cfg.risk)
+    st.rows = []
+    for strategy, horizon, targets in st.plans:
+        note(f"{strategy.id} {horizon}")
+        capital = float(getattr(cfg.books, horizon).capital_vnd)
+        params = make_params(cfg, "executable", capital, lots=True, odd_lots=True)
+        result = run_simulation(
+            prep.frame.prices,
+            prep.frame.actions,
+            targets,
+            prep.calendar,
+            params,
+            risk=risk,
+            cooldown_sessions=COOLDOWN_SESSIONS[horizon],
+        )
+        spec = make_trial_spec(strategy, horizon, prep.feature_version, ENGINE_VERSION)
+        st.rows.append(
+            DemoRow(
+                trial_id=spec.trial_id,
+                strategy_id=strategy.id,
+                params=_short_params(strategy.params),
+                horizon=horizon,
+                benchmark=strategy.id == BENCHMARK_ID,
+                cagr=cagr(result.returns),
+                vol=ann_vol(result.returns),
+                sharpe=sharpe(result.returns),
+                max_dd=max_drawdown(result.returns),
+                turnover=avg_turnover(result.turnover),
+                trades=len(result.trades),
+                digest=result.digest(),
+                equity=result.equity[["date", "equity"]].reset_index(drop=True),
             )
-            spec = make_trial_spec(strategy, horizon, feature_version, ENGINE_VERSION)
-            rows.append(
-                DemoRow(
-                    trial_id=spec.trial_id,
-                    strategy_id=strategy.id,
-                    params=_short_params(strategy.params),
-                    horizon=horizon,
-                    benchmark=strategy.id == BENCHMARK_ID,
-                    cagr=cagr(result.returns),
-                    vol=ann_vol(result.returns),
-                    sharpe=sharpe(result.returns),
-                    max_dd=max_drawdown(result.returns),
-                    turnover=avg_turnover(result.turnover),
-                    trades=len(result.trades),
-                    digest=result.digest(),
-                    equity=result.equity[["date", "equity"]].reset_index(drop=True),
-                )
-            )
-    rows.sort(key=lambda r: (_HORIZON_ORDER[r.horizon], r.label, r.trial_id))
-    report = DemoReport(
+        )
+    return {"trials": len(st.rows)}
+
+
+def stage_report(st: DemoState) -> dict[str, Any]:
+    """Sort the rows, build the report and write the files (artifact dir and ``--out``)."""
+    if st.data_start is None:
+        raise DemoError("the ingest stage has not run")
+    rows = sorted(st.rows, key=lambda r: (_HORIZON_ORDER[r.horizon], r.label, r.trial_id))
+    st.report = DemoReport(
         rows=tuple(rows),
-        skipped=_skipped(cfg),
-        start=start,
-        end=end,
-        data_start=data_start,
-        seconds=time.perf_counter() - started,
-        out_dir=out_dir,
+        skipped=_skipped(st.cfg),
+        start=st.start,
+        end=st.end,
+        data_start=st.data_start,
+        seconds=time.perf_counter() - st.started,
+        out_dir=st.out_dir,
     )
+    for target in (st.artifact_dir, st.out_dir):
+        if target is not None:
+            write_outputs(st.report, target)
+    return {"trials": len(rows), "skipped": len(st.report.skipped)}
+
+
+def run_demo(
+    out_dir: Path | None = None,
+    start: date = DEMO_START,
+    end: date = DEMO_END,
+    *,
+    progress: Callable[[str], None] | None = None,
+    record_home: Path | None = None,
+) -> DemoReport:
+    """Run the demo on ``[start, end]`` and return one row per enabled packaged trial.
+
+    It runs as the ``demo`` pipeline of ``vnstratlab.runs``. With ``record_home`` the run (status,
+    logs, files) is recorded under that app home; without it, in a temporary one. With ``out_dir``
+    also write ``summary.csv`` and ``equity/<trial_id>.csv`` there (the directory must not exist
+    or be empty; it is checked before anything runs). Raises ``DemoError`` (or the underlying
+    error) when a stage fails; nothing is swallowed.
+    """
+    from vnstratlab.runs import run_pipeline
+
+    if end < start:
+        raise DemoError(f"window end {end} is before start {start}")
     if out_dir is not None:
-        write_outputs(report, out_dir)
-    return report
+        check_out_dir(out_dir)
+    params = {"start": start, "end": end, "out_dir": out_dir}
+    if record_home is not None:
+        result = run_pipeline(record_home, "demo", params, progress=progress)
+    else:
+        with tempfile.TemporaryDirectory(prefix="vnstratlab-demo-run-") as tmp:
+            result = run_pipeline(Path(tmp), "demo", params, progress=progress)
+    result.raise_for_failure()
+    demo_state = result.state["demo"]
+    assert isinstance(demo_state, DemoState)  # noqa: S101
+    assert demo_state.report is not None  # noqa: S101
+    return demo_state.report
 
 
 def write_outputs(report: DemoReport, out_dir: Path) -> None:

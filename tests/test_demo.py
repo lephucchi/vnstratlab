@@ -216,6 +216,7 @@ def test_window_must_not_be_reversed() -> None:
 
 
 def test_cli_demo_quiet_exits_zero(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
     monkeypatch.setattr(demo_module, "demo_config", lambda: small_config(with_blocked=True))
     real = demo_module.run_demo
 

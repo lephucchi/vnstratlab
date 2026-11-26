@@ -11,6 +11,7 @@ import importlib.util
 import json
 import platform
 import sys
+from collections.abc import Callable
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
@@ -163,6 +164,7 @@ def demo(
 ) -> None:
     """Run the whole pipeline offline on synthetic data (temporary files, no trials registered)."""
     from vnstratlab.demo import DemoError, format_report, run_demo
+    from vnstratlab.runs import BusyError
 
     _tolerant_output()
 
@@ -171,8 +173,8 @@ def demo(
             typer.echo(f"... {message}", err=True)
 
     try:
-        report = run_demo(out, progress=progress)
-    except DemoError as exc:
+        report = run_demo(out, progress=progress, record_home=get_paths().home)
+    except (DemoError, BusyError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from None
     typer.echo(format_report(report, quiet=quiet))
@@ -369,6 +371,21 @@ def _echo_ingest_report(report: IngestReport) -> None:
         typer.echo(f"raw   {report.raw_path}")
 
 
+def _tracked(pipeline_id: str, label_vi: str, dry_run: bool, body: Callable[[], None]) -> None:
+    """Run a command body as a recorded run in the foreground (same output; it shows up in
+    `vnstratlab runs list`). A dry run writes nothing, so it is not recorded."""
+    if dry_run:
+        body()
+        return
+    from vnstratlab.runs import BusyError, run_inline
+
+    try:
+        run_inline(get_paths().home, pipeline_id, label_vi, body)
+    except BusyError:
+        typer.echo("error: another run is in progress", err=True)
+        raise typer.Exit(code=1) from None
+
+
 def _is_interactive() -> bool:
     return sys.stdin.isatty()
 
@@ -430,6 +447,21 @@ def ingest(
     ] = False,
 ) -> None:
     """Download or refresh market data into the local data directory."""
+    _tracked(
+        "ingest",
+        "Tải dữ liệu",
+        dry_run,
+        lambda: _ingest_run(source, from_date, to_date, dry_run, accept_source_terms),
+    )
+
+
+def _ingest_run(
+    source: str | None,
+    from_date: str | None,
+    to_date: str | None,
+    dry_run: bool,
+    accept_source_terms: bool,
+) -> None:
     from vnstratlab.data.pipeline import VN_TZ, default_start
     from vnstratlab.data.pipeline import ingest as ingest_data
     from vnstratlab.data.protocol import SourceError, source_names
@@ -578,6 +610,24 @@ def _echo_gap_list(gaps: list[Gap]) -> None:
             typer.echo(f"  [{severity}] {gap.id}  {gap.title} / {gap.title_vi}")
 
 
+def build_data_status(paths: AppPaths, register: GapRegister | None = None) -> dict[str, Any]:
+    """The facts of `vnstratlab data status --json` (also served by `/api/data/status`)."""
+    register = register or load_gaps()
+    stores = [
+        _store_status(paths.market_db_for(kind), kind)
+        for kind in ("real", "synthetic")
+        if paths.market_db_for(kind).is_file()
+    ]
+    return {
+        "home": str(paths.home),
+        "stores": stores,
+        "gaps": {
+            "counts": register.open_counts(),
+            "open": [_gap_dict(g) for g in register.with_status("open")],
+        },
+    }
+
+
 @data_app.command("status")
 def data_status(
     as_json: Annotated[bool, typer.Option("--json", help="Print everything as JSON.")] = False,
@@ -586,21 +636,10 @@ def data_status(
     _tolerant_output()
     paths = get_paths()
     register = _load_register_or_exit()
-    stores = [
-        _store_status(paths.market_db_for(kind), kind)
-        for kind in ("real", "synthetic")
-        if paths.market_db_for(kind).is_file()
-    ]
+    payload = build_data_status(paths, register)
+    stores = payload["stores"]
     open_gaps = register.with_status("open")
     if as_json:
-        payload = {
-            "home": str(paths.home),
-            "stores": stores,
-            "gaps": {
-                "counts": register.open_counts(),
-                "open": [_gap_dict(g) for g in open_gaps],
-            },
-        }
         typer.echo(json.dumps(payload, indent=2, ensure_ascii=True))
         return
     typer.echo(f"home {paths.home}")
@@ -622,6 +661,10 @@ def data_rebuild(
     dry_run: DryRun = False,
 ) -> None:
     """Rebuild adjusted prices and the execution series from the stored data (offline)."""
+    _tracked("rebuild", "Dựng lại chuỗi giá", dry_run, lambda: _data_rebuild_run(source, dry_run))
+
+
+def _data_rebuild_run(source: str | None, dry_run: bool) -> None:
     from vnstratlab.data.pipeline import rebuild
     from vnstratlab.data.protocol import SourceError, TickTable
     from vnstratlab.data.store import MarketStore, kind_of_source
@@ -705,6 +748,10 @@ def features_build(
     dry_run: DryRun = False,
 ) -> None:
     """Compute features_daily from the rebuilt adjusted and execution series (offline)."""
+    _tracked("features", "Tính đặc trưng", dry_run, lambda: _features_build_run(source, dry_run))
+
+
+def _features_build_run(source: str | None, dry_run: bool) -> None:
     from vnstratlab.data.protocol import SourceError, universe_tickers
     from vnstratlab.data.store import MarketStore, kind_of_source
     from vnstratlab.features.build import build_features
@@ -946,13 +993,79 @@ def daily(dry_run: DryRun = False) -> None:
     _not_implemented("P1-T26")
 
 
+runs_app = typer.Typer(help="History of pipeline runs (tasks, status, logs).")
+app.add_typer(runs_app, name="runs")
+
+
+def _fmt_seconds(value: object) -> str:
+    return f"{float(value):.1f}s" if isinstance(value, int | float) else "-"
+
+
+@runs_app.command("list")
+def runs_list(
+    limit: Annotated[int, typer.Option("--limit", help="How many runs to show.")] = 20,
+) -> None:
+    """List the latest runs, newest first."""
+    from vnstratlab.runs import RunStore
+
+    _tolerant_output()
+    runs = RunStore(get_paths().home).list(max(1, limit))
+    if not runs:
+        typer.echo("no runs yet. Try: vnstratlab demo")
+    for run in runs:
+        typer.echo(
+            f"{run['run_id']}  {run['status']:<8} {_fmt_seconds(run['duration_s']):>8}  "
+            f"{run['pipeline']}"
+        )
+
+
+@runs_app.command("show")
+def runs_show(run_id: Annotated[str, typer.Argument(help="A run id from `runs list`.")]) -> None:
+    """Show one run: its tasks, status and duration."""
+    from vnstratlab.runs import RunStore
+
+    _tolerant_output()
+    store = RunStore(get_paths().home)
+    run = store.get(run_id)
+    if run is None:
+        typer.echo(f"error: no run {run_id!r} (see `vnstratlab runs list`)", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"{run['run_id']}  {run['status']}  {_fmt_seconds(run['duration_s'])}")
+    if run.get("reason"):
+        typer.echo(f"reason: {run['reason']}")
+    for task in run["tasks"]:
+        typer.echo(f"  {task['id']:<12} {task['status']:<8} {_fmt_seconds(task['duration_s']):>8}")
+        if task.get("error"):
+            typer.echo(f"    error: {task['error']}")
+    typer.echo(f"logs {store.run_dir(run_id)}")
+
+
 @app.command()
 def serve(
-    host: Annotated[str, typer.Option(help="Bind address. Keep 127.0.0.1.")] = "127.0.0.1",
-    port: Annotated[int, typer.Option()] = 8000,
+    host: Annotated[str, typer.Option(help="Bind address (loopback only).")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Port.")] = 8000,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not open the browser.")] = False,
 ) -> None:
-    """Start the local dashboard and the built-in scheduler."""
-    _not_implemented("P1-T27")
+    """Start the local Console (API and UI) on this machine only."""
+    from vnstratlab.app.server import is_loopback
+
+    if not is_loopback(host):
+        typer.echo(
+            f"error: refusing to bind {host!r}: only loopback (127.0.0.1) is allowed", err=True
+        )
+        raise typer.Exit(code=1)
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from vnstratlab.app.server import create_app
+
+    url = f"http://{'[::1]' if ':' in host else host}:{port}/"
+    typer.echo(f"vnstratlab Console on {url} (Ctrl+C to stop)")
+    if not no_open:
+        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+    uvicorn.run(create_app(), host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":  # pragma: no cover

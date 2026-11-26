@@ -532,7 +532,7 @@ def test_cli_unknown_source_exits_2_and_lists_sources(
     result = runner.invoke(app, ["ingest", "--source", "nope"])
     assert result.exit_code == 2
     assert "synthetic" in result.output
-    assert not (tmp_path / "home").exists()
+    assert not (tmp_path / "home" / "data").exists()  # the failed run is only recorded in logs/
 
 
 def test_cli_rejects_bad_dates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

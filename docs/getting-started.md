@@ -118,6 +118,27 @@ Prices are split-adjusted and Yahoo history starts at different dates per ticker
 [data-gaps.md](data-gaps.md). Data is written to `market.duckdb` in your data directory and is
 never part of the repository.
 
+### Runs, and the local Console: `vnstratlab serve`
+
+`demo`, `ingest`, `data rebuild` and `features build` are recorded as **runs**: a small chain of
+tasks, each with a status and a log, stored in `<app home>/logs/runs/<run_id>/` (the last 50 are
+kept). Look at them with:
+
+```bash
+vnstratlab runs list
+vnstratlab runs show <run_id>
+```
+
+```bash
+vnstratlab serve              # http://127.0.0.1:8000, opens your browser
+vnstratlab serve --port 8100 --no-open
+```
+
+`serve` starts the local Console API and page. It listens on this machine only: any `--host` that
+is not loopback is refused. One run at a time; starting the Yahoo `refresh` from the web asks you
+to confirm the source terms first. The API is JSON under `/api` (`/api/pipelines`, `/api/runs`,
+`/api/data/status`, `/api/results/<run_id>`); it has no endpoint that places orders.
+
 ## 4. Daily use (planned for v0.3)
 
 ```bash
