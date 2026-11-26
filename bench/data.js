@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795689362352,
+  "lastUpdate": 1795691286428,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1635,6 +1635,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00022357398339305015",
             "extra": "mean: 12.301792750001539 msec\nrounds: 16"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7131ad3e8f1ae878d70b43dba93b87997e060ea6",
+          "message": "feat(po): product demo data for the PO dashboard (X-po-demo) (#75)\n\nSynthetic demo run and Console screenshots in the Pages build (continue-on-error, 5 min each, temp APP_HOME, no PO secrets in those steps); demo object only in the encrypted PO payload; guide-data.js copied to /po/guide. G2 light (manager).",
+          "timestamp": "2026-11-26T18:07:25+07:00",
+          "tree_id": "598ebff55f9368d49ac8be056e83fe4885c4b7f1",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/7131ad3e8f1ae878d70b43dba93b87997e060ea6"
+        },
+        "date": 1795691285902,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 1.9640521756221705,
+            "unit": "iter/sec",
+            "range": "stddev: 0.016082512022490378",
+            "extra": "mean: 509.1514433333325 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 53.55902200654223,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003643036979196605",
+            "extra": "mean: 18.670990666667702 msec\nrounds: 12"
           }
         ]
       }
