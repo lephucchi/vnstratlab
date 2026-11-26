@@ -30,7 +30,7 @@ from vnstratlab.app.api_config import json_error
 from vnstratlab.config.loader import ConfigError, load_config
 from vnstratlab.paths import AppPaths
 from vnstratlab.runs import BusyError, Pipeline, RunContext, RunManager, Task, create_run
-from vnstratlab.runs.core import execute_run
+from vnstratlab.runs.core import PARENT_ENV, execute_run
 
 CLI_TIMEOUT_S = 30 * 60
 TERMS_FLAG = "--accept-source-terms"
@@ -283,7 +283,12 @@ def make_pipeline(command: str, launcher: Launcher | None) -> Pipeline:
     def run(ctx: RunContext) -> Mapping[str, Any]:
         args: list[str] = list(ctx.params["argv"])
         real = launcher(args) if launcher else [sys.executable, "-m", PROGRAM, *args]
-        env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+        env = {
+            **os.environ,
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+            PARENT_ENV: ctx.run_dir.name,
+        }
         proc = subprocess.Popen(  # noqa: S603  (argv list, shell=False, vnstratlab only)
             real,
             shell=False,

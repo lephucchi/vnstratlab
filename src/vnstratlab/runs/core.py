@@ -33,6 +33,7 @@ STATUSES = ("queued", "running", "success", "failed", "skipped")
 TERMINAL = ("success", "failed")  # run statuses once it is over
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 LOG_DATE_FORMAT = "%H:%M:%S"
+PARENT_ENV = "VNSTRATLAB_RUN_PARENT"  # set by the Console terminal: the parent run records it
 RUN_ID_RE = re.compile(r"^\d{8}T\d{6}-[a-z0-9_]+-[0-9a-f]{4}$")
 _TASK_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
@@ -410,6 +411,19 @@ def _run_task(
     store.save(run)
 
 
+@contextlib.contextmanager
+def _recording_home(home: Path) -> Iterator[Path]:
+    """``home``, or a throwaway one when the Console terminal started this process: the parent
+    run records the command, so it must not make a second record (stdout is unchanged)."""
+    if not os.environ.get(PARENT_ENV):
+        yield home
+        return
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="vnstratlab-child-", ignore_cleanup_errors=True) as tmp:
+        yield Path(tmp)
+
+
 def run_pipeline(
     home: Path,
     pipeline_id: str,
@@ -421,8 +435,9 @@ def run_pipeline(
     from vnstratlab.runs.pipelines import get_pipeline
 
     pipeline = get_pipeline(pipeline_id)
-    run_id = create_run(home, pipeline, params)
-    return execute_run(home, pipeline, run_id, params, progress=progress)
+    with _recording_home(home) as where:
+        run_id = create_run(where, pipeline, params)
+        return execute_run(where, pipeline, run_id, params, progress=progress)
 
 
 def run_inline(home: Path, pipeline_id: str, label_vi: str, body: Callable[[], None]) -> None:
@@ -443,8 +458,9 @@ def run_inline(home: Path, pipeline_id: str, label_vi: str, body: Callable[[], N
             raise
 
     pipeline = Pipeline(pipeline_id, label_vi, (Task(pipeline_id, label_vi, task_fn),))
-    run_id = create_run(home, pipeline, {})
-    result = execute_run(home, pipeline, run_id)
+    with _recording_home(home) as where:
+        run_id = create_run(where, pipeline, {})
+        result = execute_run(where, pipeline, run_id)
     result.raise_for_failure()
     if clean_exits:
         raise clean_exits[0]
