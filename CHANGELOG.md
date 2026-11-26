@@ -7,6 +7,13 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- **Backtest trials from the registry (P1-T20b):** `backtest --all` / `--strategy` run the
+  registered trials of the current feature and engine version, rebuilt from id, params and
+  horizon with the code hash checked, not the config; trials that cannot be rebuilt are listed
+  as not runnable (CLI and `BacktestResult.not_runnable`); unregistered config trials are an
+  error unless `--register`. The summary and `GET /api/backtest/summary` show only the current
+  versions (`?all_versions=1` for all). The shared simulator bars are built once per run. The
+  CAGR period-count convention is documented.
 - **Demo follow-ups (X-65):** the risk layer logs a blocked decision at DEBUG (the engine already
   warns once when the circuit breaker turns on or off, so a demo run has a handful of warnings
   instead of over a thousand); the demo warning line is pure ASCII (Windows consoles); the demo
