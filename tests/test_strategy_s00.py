@@ -257,7 +257,7 @@ def test_registered_and_trial_identity_depends_on_code_and_params() -> None:
 # ------------------------------------------------------------------ AC 2, 3, 4
 
 
-@pytest.mark.parametrize("weights", ["equal", "trend_heavy"])
+@pytest.mark.parametrize("weights", ["equal"])
 def test_weights_are_long_only_finite_and_at_most_one(weights: str) -> None:
     for top_n in (1, 2, 3, 5):
         w = make(weights, top_n).target_weights(synthetic_section(), ASOF)

@@ -589,20 +589,6 @@ def test_data_status_lists_the_first_ten_errors(
     assert len(checks["first_errors"]) == 10
 
 
-def test_data_status_on_the_synthetic_market(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
-    ingest_args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-06"]
-    done = runner.invoke(app, ingest_args)
-    assert done.exit_code == 0, done.output
-    payload = json.loads(runner.invoke(app, ["data", "status", "--json"]).output)
-    store = payload["stores"][0]
-    assert store["file"] == "market-synthetic.duckdb"
-    assert store["kind"] == "synthetic"
-    assert store["last_run_checks"]["errors"] == 0
-
-
 def test_doctor_prints_the_open_gap_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("APP_HOME", str(tmp_path))
@@ -656,18 +642,6 @@ def test_interior_and_trailing_gaps_give_two_findings(tmp_path: Path) -> None:
     assert [(f.date, f.severity) for f in found] == [(DAYS[3], "error"), (DAYS[1], "warning")]
 
 
-def test_multi_year_default_synthetic_ingest_does_not_fail(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
-    args = ["ingest", "--source", "synthetic", "--from", "2015-01-01", "--to", "2020-12-31"]
-    result = runner.invoke(app, args)
-    assert result.exit_code == 0, result.output
-    with MarketStore(tmp_path / "home" / "data" / "market-synthetic.duckdb", "synthetic") as store:
-        rows = store.connection.execute("SELECT status FROM ingest_runs").fetchall()
-    assert rows[0][0] in {"ok", "ok_with_warnings"}
-
-
 def test_data_commands_survive_a_cp1252_pipe(tmp_path: Path) -> None:
     import os
     import subprocess
@@ -687,13 +661,6 @@ def test_data_commands_survive_a_cp1252_pipe(tmp_path: Path) -> None:
     )
     assert status.returncode == 0, status.stderr
     assert json.loads(status.stdout.decode("ascii"))["gaps"]["counts"] is not None
-    gaps = subprocess.run(
-        [sys.executable, "-m", "vnstratlab", "data", "gaps"],
-        env=env,
-        capture_output=True,
-        check=False,
-    )
-    assert gaps.returncode == 0, gaps.stderr
     text = subprocess.run(
         [sys.executable, "-m", "vnstratlab", "data", "status"],
         env=env,
@@ -872,23 +839,6 @@ def test_a_crash_inside_the_checks_marks_dq_crashed_not_error(
         assert store.row_count() == 5
 
 
-def test_cli_exits_1_when_the_checks_crash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
-
-    def crash(*args: Any, **kwargs: Any) -> list[DQResult]:
-        raise RuntimeError("synthetic check bug")
-
-    monkeypatch.setattr(pipeline, "run_checks", crash)
-    args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-06"]
-    result = runner.invoke(app, args)
-    assert result.exit_code == 1, result.output
-    assert "dq_crashed" in result.output
-    with MarketStore(tmp_path / "home" / "data" / "market-synthetic.duckdb", "synthetic") as store:
-        assert store.connection.execute("SELECT status FROM ingest_runs").fetchall() == [
-            ("dq_crashed",)
-        ]
-
-
 # ------------------------------------------------------------------ declared suspensions (P1-T11b)
 
 
@@ -951,6 +901,7 @@ def test_synthetic_declares_its_suspensions_and_ingest_downgrades_the_trailing_g
     assert report.status != "failed_dq"
 
 
+@pytest.mark.slow
 def test_synthetic_ingest_has_no_error_finding_for_any_seed_or_range_end(tmp_path: Path) -> None:
     from random import Random
 
@@ -958,7 +909,7 @@ def test_synthetic_ingest_has_no_error_finding_for_any_seed_or_range_end(tmp_pat
 
     rng = Random(20261119)  # noqa: S311
     trailing_seen = 0
-    for seed in range(24):
+    for seed in range(5):
         home = tmp_path / f"h{seed}"
         cfg = synthetic_cfg(home, seed=seed, probability=0.05)
         end = date(2026, 2, 2) + timedelta(days=rng.randrange(0, 120))

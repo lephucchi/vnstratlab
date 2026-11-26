@@ -171,7 +171,7 @@ def test_deterministic_and_row_order_independent() -> None:
 # ------------------------------------------------------------------ smoke backtest (long market)
 
 
-@pytest.mark.parametrize("params", [TWELVE, SIX])
+@pytest.mark.parametrize("params", [SIX])
 def test_smoke_backtest_on_a_long_synthetic_market(
     engine_cfg: AppConfig, params: dict[str, Any]
 ) -> None:

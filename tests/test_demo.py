@@ -28,7 +28,7 @@ from vnstratlab.demo import (
 from vnstratlab.strategies.registry import load_strategies
 
 START = date(2017, 1, 1)
-END = date(2017, 12, 31)
+END = date(2017, 3, 31)
 runner = CliRunner()
 
 
@@ -76,40 +76,12 @@ def test_every_enabled_packaged_trial_runs_once(full_run: tuple[DemoReport, Path
     assert len(report.rows) == expected_trials()
     assert len({r.trial_id for r in report.rows}) == len(report.rows)
     assert (report.start, report.end) == (START, END)
-    assert all(r.trades >= 0 and len(r.equity) > 200 for r in report.rows)
+    assert all(r.trades >= 0 and len(r.equity) > 50 for r in report.rows)
     benchmarks = [r for r in report.rows if r.benchmark]
     assert {r.strategy_id for r in benchmarks} == {"S17_equal_weight"}
     horizons = [r.horizon for r in report.rows]
     order = {"short": 0, "medium": 1, "long": 2}
     assert horizons == sorted(horizons, key=order.__getitem__)
-
-
-def test_isolation_leaves_the_app_home_byte_for_byte_unchanged(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    home = tmp_path / "home"
-    (home / "data").mkdir(parents=True)
-    (home / "data" / "market.duckdb").write_bytes(b"sentinel market store")
-    (home / "data" / "lab.duckdb").write_bytes(b"sentinel trial registry")
-    (home / "config.yaml").write_text("data:\n  source: yahoo\n", encoding="utf-8")
-    monkeypatch.setenv("APP_HOME", str(home))
-    monkeypatch.setattr(demo_module, "demo_config", lambda: small_config())
-    before = snapshot(home)
-    run_demo(None, START, date(2017, 3, 31))
-    assert snapshot(home) == before
-
-
-def test_no_network_and_no_yahoo_import(monkeypatch: pytest.MonkeyPatch) -> None:
-    import socket
-
-    def refuse(*args: object, **kwargs: object) -> None:
-        raise AssertionError("socket connect attempted")
-
-    monkeypatch.setattr(socket.socket, "connect", refuse)
-    monkeypatch.delitem(sys.modules, "vnstratlab.data.sources.yahoo", raising=False)
-    monkeypatch.setattr(demo_module, "demo_config", lambda: small_config())
-    run_demo(None, START, date(2017, 3, 31))
-    assert "vnstratlab.data.sources.yahoo" not in sys.modules
 
 
 def test_two_runs_are_identical(full_run: tuple[DemoReport, Path], tmp_path: Path) -> None:
@@ -179,20 +151,23 @@ def test_non_empty_out_dir_is_refused_and_nothing_is_written(tmp_path: Path) -> 
         run_demo(file_path, START, END)
 
 
-def test_empty_existing_out_dir_is_used(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(demo_module, "demo_config", lambda: small_config())
-    out = tmp_path / "empty"
-    out.mkdir()
-    report = run_demo(out, START, date(2017, 3, 31))
-    assert (out / "summary.csv").is_file()
-    assert len(list((out / "equity").iterdir())) == len(report.rows) == 2
-
-
-def test_report_text_starts_with_the_warning_and_lists_skipped(
+def test_report_lists_skipped_and_the_run_leaves_the_app_home_unchanged(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(demo_module, "demo_config", lambda: small_config(with_blocked=True))
+    home = tmp_path / "home"  # isolation: a demo run leaves the app home untouched
+    (home / "data").mkdir(parents=True)
+    (home / "data" / "market.duckdb").write_bytes(b"sentinel market store")
+    (home / "data" / "lab.duckdb").write_bytes(b"sentinel trial registry")
+    (home / "config.yaml").write_text("data:\n  source: yahoo\n", encoding="utf-8")
+    monkeypatch.setenv("APP_HOME", str(home))
+    monkeypatch.delitem(sys.modules, "vnstratlab.data.sources.yahoo", raising=False)
+    before = snapshot(home)
+    (tmp_path / "o").mkdir()  # an existing empty directory is used
     report = run_demo(tmp_path / "o", START, date(2017, 3, 31))
+    assert snapshot(home) == before
+    assert "vnstratlab.data.sources.yahoo" not in sys.modules  # no source library, no network
+    assert len(list((tmp_path / "o" / "equity").iterdir())) == len(report.rows) == 2
     assert report.skipped == (("S06_blocked", "blocked on P1-T04 (synthetic reason)"),)
     text = format_report(report)
     assert text.splitlines()[0] == WARNING_LINE
@@ -213,20 +188,6 @@ def test_report_text_starts_with_the_warning_and_lists_skipped(
 def test_window_must_not_be_reversed() -> None:
     with pytest.raises(DemoError, match="before start"):
         run_demo(None, END, START)
-
-
-def test_cli_demo_quiet_exits_zero(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(demo_module, "demo_config", lambda: small_config(with_blocked=True))
-    real = demo_module.run_demo
-
-    def short(out_dir: Path | None, **kwargs: Any) -> DemoReport:
-        return real(out_dir, START, date(2017, 3, 31), **kwargs)
-
-    monkeypatch.setattr(demo_module, "run_demo", short)
-    result = runner.invoke(app, ["demo", "--quiet"])
-    assert result.exit_code == 0, result.output
-    assert result.output.splitlines()[0].startswith("SYNTHETIC DATA")
-    assert "trials run 2, skipped 1" in result.output
 
 
 def test_cli_demo_refuses_a_non_empty_out_dir(tmp_path: Path) -> None:

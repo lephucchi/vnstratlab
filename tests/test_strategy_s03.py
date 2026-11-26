@@ -209,7 +209,7 @@ def test_deterministic_and_row_order_independent(params: dict[str, Any]) -> None
         assert make(params, max_n=2).target_weights(shuffled, ASOF).equals(first)
 
 
-@pytest.mark.parametrize("params", [FAST, SLOW])
+@pytest.mark.parametrize("params", [FAST])
 def test_smoke_backtest_on_the_synthetic_market(
     engine_cfg: AppConfig, params: dict[str, Any]
 ) -> None:

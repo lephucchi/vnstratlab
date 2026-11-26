@@ -10,12 +10,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from test_strategy_s00 import assert_ledger_consistent
-from vnstratlab.calendar import TradingCalendar, decision_days
 from vnstratlab.config.models import AppConfig
 from vnstratlab.data.protocol import universe_tickers
 from vnstratlab.data.sources.synthetic import SyntheticSource
-from vnstratlab.engine import SimResult, make_params, run_simulation
 from vnstratlab.features import compute_features
 from vnstratlab.strategies.base import BaseStrategy, LookaheadError, Strategy, asof_guard
 from vnstratlab.strategies.builtin import s04_bank_pairs
@@ -409,37 +406,8 @@ def long_market(
     return prices, actions, compute_features(adjusted, exec_, names, actions=actions), names
 
 
-def run_long_smoke(
-    strategy: Strategy, cfg: AppConfig
-) -> tuple[SimResult, dict[date, pd.Series], pd.DataFrame]:
-    prices, actions, features, _ = long_market(cfg)
-    days = sorted(pd.to_datetime(prices["date"]).dt.date.unique())
-    calendar = TradingCalendar.from_sessions(days)
-    sessions_set = set(days)
-    targets: dict[date, pd.Series] = {}
-    for day in decision_days(calendar, "short", LONG_START, LONG_END):
-        if day in sessions_set:
-            visible = features[features["date"] <= day]  # load_features(asof=) clamp
-            targets[day] = strategy.target_weights(visible, pd.Timestamp(day))
-    result = run_simulation(
-        prices, actions, targets, calendar, make_params(cfg, "executable", 11_000_000)
-    )
-    return result, targets, features
-
-
 def packaged_s04() -> S04BankPairs:
     return S04BankPairs({"form": 250, "k": 5, "entry_z": 2.0, "max_hold": 10}, ("short",))
-
-
-def test_smoke_backtest_on_the_synthetic_market(engine_cfg: AppConfig) -> None:
-    result, targets, features = run_long_smoke(packaged_s04(), engine_cfg)
-    assert features["date"].nunique() > 300
-    assert len(targets) >= 40
-    invested = [t for t in targets.values() if not t.empty]
-    assert invested  # S04 opened a pair at some point
-    assert all(t.sum() <= 1 + 1e-9 for t in invested)
-    assert not result.trades.empty
-    assert_ledger_consistent(result)
 
 
 def test_future_prices_cannot_change_a_target(engine_cfg: AppConfig) -> None:

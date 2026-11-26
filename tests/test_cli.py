@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -95,7 +96,7 @@ def test_doctor_never_prints_secret_values(
     assert "set" in result.output
 
 
-@pytest.mark.parametrize("args", [["--help"], ["--version"], ["data", "--help"]])
+@pytest.mark.parametrize("args", [["--help"], ["data", "--help"]])
 def test_help_and_version_do_not_import_the_heavy_libraries(args: list[str]) -> None:
     import subprocess
     import sys
@@ -117,6 +118,36 @@ def test_help_and_version_do_not_import_the_heavy_libraries(args: list[str]) -> 
     assert done.stdout.strip().endswith("HEAVY="), done.stdout
 
 
+@pytest.fixture(scope="module")
+def ingested_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One synthetic ingest, built once per module and copied into each test's home."""
+    home = tmp_path_factory.mktemp("ingested") / "home"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("APP_HOME", str(home))
+        args = ["ingest", "--source", "synthetic", "--from", "2026-01-05", "--to", "2026-04-30"]
+        assert runner.invoke(app, args).exit_code == 0
+    return home
+
+
+@pytest.fixture(scope="module")
+def features_template(ingested_template: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The ingested home after `data rebuild` and `features build`, built once per module."""
+    home = tmp_path_factory.mktemp("features") / "home"
+    shutil.copytree(ingested_template, home)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("APP_HOME", str(home))
+        assert runner.invoke(app, ["data", "rebuild", "--source", "synthetic"]).exit_code == 0
+        assert runner.invoke(app, ["features", "build", "--source", "synthetic"]).exit_code == 0
+    return home
+
+
+def synthetic_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, template: Path) -> Path:
+    home = tmp_path / "home"
+    shutil.copytree(template, home)
+    monkeypatch.setenv("APP_HOME", str(home))
+    return home
+
+
 def test_data_rebuild_without_a_store_fails_and_names_the_fix(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -127,12 +158,15 @@ def test_data_rebuild_without_a_store_fails_and_names_the_fix(
 
 
 def test_data_rebuild_reports_counts_and_is_repeatable(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ingested_template: Path
 ) -> None:
-    home = tmp_path / "home"
-    monkeypatch.setenv("APP_HOME", str(home))
-    args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-13"]
-    assert runner.invoke(app, args).exit_code == 0
+    home = synthetic_home(monkeypatch, tmp_path, ingested_template)
+    dry = runner.invoke(app, ["data", "rebuild", "--source", "synthetic", "--dry-run"])
+    assert dry.exit_code == 0, dry.output
+    assert "would rebuild synthetic" in dry.output
+    assert "dry run: nothing was written" in dry.output
+    with MarketStore(home / "data" / "market-synthetic.duckdb", "synthetic", read_only=True) as s:
+        assert s.derived_sources() == []
     first = runner.invoke(app, ["data", "rebuild", "--source", "synthetic"])
     assert first.exit_code == 0, first.output
     # synthetic rows are raw-like: the execution series is the stored rows unchanged
@@ -150,32 +184,6 @@ def test_data_rebuild_reports_counts_and_is_repeatable(
         frame = load_execution_frame(s, ["ACB"], date(2026, 3, 2), date(2026, 3, 13))
     assert stored > 0
     assert set(frame.prices["price_basis"]) == {"synthetic"}
-
-
-def test_data_rebuild_of_a_source_without_a_store_exits_1(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    home = tmp_path / "home"
-    monkeypatch.setenv("APP_HOME", str(home))
-    args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-04"]
-    assert runner.invoke(app, args).exit_code == 0
-    result = runner.invoke(app, ["data", "rebuild", "--source", "yahoo"])  # no real store
-    assert result.exit_code == 1
-
-
-def test_data_rebuild_dry_run_prints_the_report_and_writes_nothing(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    home = tmp_path / "home"
-    monkeypatch.setenv("APP_HOME", str(home))
-    args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-06"]
-    assert runner.invoke(app, args).exit_code == 0
-    result = runner.invoke(app, ["data", "rebuild", "--source", "synthetic", "--dry-run"])
-    assert result.exit_code == 0, result.output
-    assert "would rebuild synthetic" in result.output
-    assert "dry run: nothing was written" in result.output
-    with MarketStore(home / "data" / "market-synthetic.duckdb", "synthetic", read_only=True) as s:
-        assert s.derived_sources() == []
 
 
 def test_data_rebuild_prints_counts_per_exclusion_kind(
@@ -232,34 +240,20 @@ def test_data_rebuild_prints_counts_per_exclusion_kind(
 # ------------------------------------------------------------------ features build (P1-T10)
 
 
-def synthetic_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    home = tmp_path / "home"
-    monkeypatch.setenv("APP_HOME", str(home))
-    args = ["ingest", "--source", "synthetic", "--from", "2026-01-05", "--to", "2026-04-30"]
-    assert runner.invoke(app, args).exit_code == 0
-    return home
-
-
 def synthetic_db(home: Path) -> Path:
     return home / "data" / "market-synthetic.duckdb"
 
 
-def test_features_build_before_a_rebuild_stops_and_names_the_fix(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    synthetic_home(monkeypatch, tmp_path)
-    for extra in ([], ["--dry-run"]):
-        result = runner.invoke(app, ["features", "build", "--source", "synthetic", *extra])
-        assert result.exit_code == 1
-        assert "vnstratlab data rebuild" in result.output
-
-
-def test_features_build_refuses_a_store_rebuilt_by_an_older_method(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_features_build_refuses_before_a_rebuild_and_after_an_older_method(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ingested_template: Path
 ) -> None:
     import duckdb
 
-    home = synthetic_home(monkeypatch, tmp_path)
+    home = synthetic_home(monkeypatch, tmp_path, ingested_template)
+    for extra in ([], ["--dry-run"]):  # no rebuild yet
+        result = runner.invoke(app, ["features", "build", "--source", "synthetic", *extra])
+        assert result.exit_code == 1
+        assert "vnstratlab data rebuild" in result.output
     assert runner.invoke(app, ["data", "rebuild", "--source", "synthetic"]).exit_code == 0
     con = duckdb.connect(str(synthetic_db(home)))
     con.execute("UPDATE prices_adjusted SET adj_version = 'ratio-v1:old'")
@@ -280,9 +274,9 @@ def test_features_build_without_a_store_exits_1(
 
 
 def test_features_build_dry_run_writes_nothing_and_build_is_idempotent(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ingested_template: Path
 ) -> None:
-    home = synthetic_home(monkeypatch, tmp_path)
+    home = synthetic_home(monkeypatch, tmp_path, ingested_template)
     assert runner.invoke(app, ["data", "rebuild", "--source", "synthetic"]).exit_code == 0
     dry = runner.invoke(app, ["features", "build", "--source", "synthetic", "--dry-run"])
     assert dry.exit_code == 0, dry.output
@@ -358,11 +352,11 @@ STRATEGIES_YAML = """strategies:
 """
 
 
-def lab_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, yaml_text: str) -> Path:
+def lab_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, template: Path, yaml_text: str
+) -> Path:
     """Synthetic store with features built, plus a user config with the given text."""
-    home = synthetic_home(monkeypatch, tmp_path)
-    assert runner.invoke(app, ["data", "rebuild", "--source", "synthetic"]).exit_code == 0
-    assert runner.invoke(app, ["features", "build", "--source", "synthetic"]).exit_code == 0
+    home = synthetic_home(monkeypatch, tmp_path, template)
     (home / "config.yaml").write_text(yaml_text, encoding="utf-8")
     return home
 
@@ -411,9 +405,12 @@ def test_lab_register_with_no_strategies_says_so_and_needs_no_store(
 
 
 def test_lab_register_dry_run_writes_nothing_then_register_and_trials(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_strategies: None
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    local_strategies: None,
+    features_template: Path,
 ) -> None:
-    home = lab_home(monkeypatch, tmp_path, STRATEGIES_YAML)
+    home = lab_home(monkeypatch, tmp_path, features_template, STRATEGIES_YAML)
     dry = runner.invoke(app, ["lab", "register", "--source", "synthetic", "--dry-run"])
     assert dry.exit_code == 0, plain(dry)
     assert "would register 5 new trial(s) of 5" in plain(dry)  # (2 params x 2 horizons) + 1
@@ -447,9 +444,12 @@ def test_lab_register_dry_run_writes_nothing_then_register_and_trials(
 
 
 def test_lab_register_new_param_set_adds_one_trial(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_strategies: None
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    local_strategies: None,
+    features_template: Path,
 ) -> None:
-    home = lab_home(monkeypatch, tmp_path, STRATEGIES_YAML)
+    home = lab_home(monkeypatch, tmp_path, features_template, STRATEGIES_YAML)
     assert runner.invoke(app, ["lab", "register", "--source", "synthetic"]).exit_code == 0
     extended = STRATEGIES_YAML.replace("{top: 1}, {top: 2}", "{top: 1}, {top: 2}, {top: 3}")
     (home / "config.yaml").write_text(extended, encoding="utf-8")
@@ -459,10 +459,16 @@ def test_lab_register_new_param_set_adds_one_trial(
 
 
 def test_lab_register_rejects_a_bad_strategies_config(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_strategies: None
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    local_strategies: None,
+    features_template: Path,
 ) -> None:
     home = lab_home(
-        monkeypatch, tmp_path, "strategies:\n  S99_nope: {horizons: [short], params: [{}]}\n"
+        monkeypatch,
+        tmp_path,
+        features_template,
+        "strategies:\n  S99_nope: {horizons: [short], params: [{}]}\n",
     )
     result = runner.invoke(app, ["lab", "register", "--source", "synthetic"])
     assert result.exit_code == 1
@@ -472,7 +478,10 @@ def test_lab_register_rejects_a_bad_strategies_config(
 
 
 def test_lab_register_needs_a_store_with_features(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_strategies: None
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    local_strategies: None,
+    ingested_template: Path,
 ) -> None:
     home = tmp_path / "home"
     monkeypatch.setenv("APP_HOME", str(home))
@@ -482,8 +491,7 @@ def test_lab_register_needs_a_store_with_features(
     assert no_store.exit_code == 1
     assert "ingest" in plain(no_store)
 
-    args = ["ingest", "--source", "synthetic", "--from", "2026-01-05", "--to", "2026-02-27"]
-    assert runner.invoke(app, args).exit_code == 0
+    shutil.copytree(ingested_template / "data", home / "data")
     no_features = runner.invoke(app, ["lab", "register", "--source", "synthetic"])
     assert no_features.exit_code == 1
     assert "features build" in plain(no_features)
@@ -491,9 +499,12 @@ def test_lab_register_needs_a_store_with_features(
 
 
 def test_lab_commands_report_an_unusable_lab_db_cleanly(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, local_strategies: None
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    local_strategies: None,
+    features_template: Path,
 ) -> None:
-    home = lab_home(monkeypatch, tmp_path, STRATEGIES_YAML)
+    home = lab_home(monkeypatch, tmp_path, features_template, STRATEGIES_YAML)
     lab_db(home).parent.mkdir(parents=True, exist_ok=True)
     lab_db(home).write_text("this is not a duckdb file", encoding="utf-8")
     for args in (["lab", "trials"], ["lab", "register", "--source", "synthetic"]):
@@ -504,11 +515,11 @@ def test_lab_commands_report_an_unusable_lab_db_cleanly(
 
 
 def test_lab_register_dry_run_lists_the_packaged_strategies(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, features_template: Path
 ) -> None:
     # P1-T14..T19: S00 2 + S17 3 (1 param set x 3 horizons) + S01 2 + S02 1 + S03 2 + S04 1
     # + S05 1 + S08 2 + S09 1 + S14 1 + S15 2 + S18 1 = 19 trials
-    home = lab_home(monkeypatch, tmp_path, "lab: {}\n")
+    home = lab_home(monkeypatch, tmp_path, features_template, "lab: {}\n")
     dry = runner.invoke(app, ["lab", "register", "--source", "synthetic", "--dry-run"])
     assert dry.exit_code == 0, plain(dry)
     text = plain(dry)

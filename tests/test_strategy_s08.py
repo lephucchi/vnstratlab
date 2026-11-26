@@ -223,7 +223,7 @@ def run_long_smoke(
     return result, targets, len(days)
 
 
-@pytest.mark.parametrize("params", [SIX, TWELVE])
+@pytest.mark.parametrize("params", [SIX])
 def test_smoke_backtest_on_a_long_synthetic_market(
     engine_cfg: AppConfig, params: dict[str, Any]
 ) -> None:

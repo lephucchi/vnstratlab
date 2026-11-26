@@ -154,7 +154,7 @@ def test_deterministic_and_row_order_independent() -> None:
         assert again.equals(first)  # same values and the same order
 
 
-@pytest.mark.parametrize("n", [2, 3])
+@pytest.mark.parametrize("n", [3])
 def test_smoke_backtest_on_the_synthetic_market(engine_cfg: AppConfig, n: int) -> None:
     result, targets = run_smoke(make(n), engine_cfg)
     assert len(targets) >= 20

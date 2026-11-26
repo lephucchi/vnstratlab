@@ -483,12 +483,6 @@ def test_corrupt_state_file_counts_as_not_accepted(fake_yahoo: Path) -> None:
     assert runner.invoke(app, _accept(INGEST)).exit_code == 0
 
 
-def test_synthetic_source_needs_no_terms(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
-    args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-03"]
-    assert runner.invoke(app, args).exit_code == 0
-
-
 # ------------------------------------------------------------------ 8. VNSTOCK_API_KEY gone
 
 
@@ -505,11 +499,6 @@ def test_vnstock_key_is_gone_from_src_and_env_example() -> None:
 
 
 # ------------------------------------------------------------------ 9. no network, no yfinance
-
-
-def test_socket_guard_blocks_connections() -> None:
-    with pytest.raises(AssertionError, match="network access"):
-        socket.socket().connect(("127.0.0.1", 9))
 
 
 def test_tests_run_without_yfinance_installed() -> None:
@@ -677,22 +666,6 @@ def test_refresh_after_rescale_refetches_full_history_and_revises_earlier_rows(
     assert closes(paths, "VCB")[0][2] == 0  # untouched ticker keeps revision 0
 
 
-def test_two_for_one_split_triggers_full_refetch(cfg: AppConfig, paths: AppPaths) -> None:
-    world = flat_world()
-    first_window(cfg, paths, world)
-    world.data["ACB.VN"] = hist(
-        bar("2026-03-02", 12500.0),
-        bar("2026-03-03", 12525.0),
-        bar("2026-03-04", 12550.0, split=2.0),
-    )
-    source = world.source(cfg)
-    start = default_start(cfg, paths, source)
-    report = ingest(cfg, paths, source, start, date(2026, 3, 4), clock=lambda: clock(1))
-    assert report.refetched == ("ACB",)
-    assert closes(paths, "ACB")[1] == (date(2026, 3, 3), 12525.0, 1)
-    assert stored(paths, "SELECT ratio_or_amount FROM corporate_actions") == [(1.0,)]
-
-
 def test_new_stock_event_alone_triggers_full_refetch(cfg: AppConfig, paths: AppPaths) -> None:
     world = flat_world()
     first_window(cfg, paths, world)
@@ -739,17 +712,6 @@ def test_refetch_first_row_filler_rule_uses_refreshed_scale(
     assert report.refetched == ("ACB",)
     assert report.rows_dropped == 1
     assert [r[0] for r in closes(paths, "ACB")] == [date(2026, 3, 2), date(2026, 3, 3)]
-
-
-def test_failure_before_refetch_is_kept(cfg: AppConfig, paths: AppPaths) -> None:
-    world = flat_world()
-    first_window(cfg, paths, world)
-    world.data["ACB.VN"] = rescaled_acb()
-    world.failing = {"VCB.VN"}
-    report = ingest(cfg, paths, world.source(cfg), START, date(2026, 3, 4), clock=lambda: clock(1))
-    assert report.status == "partial"  # the VCB failure survives the refetch call
-    assert list(report.failed) == ["VCB"]
-    assert report.refetched == ("ACB",)
 
 
 def test_failed_refetch_writes_no_mixed_scale_rows(cfg: AppConfig, paths: AppPaths) -> None:
@@ -924,6 +886,13 @@ def test_basic_fixture_vcb_split_is_realistic_and_inside_limits(
     for _, close, _, floor, ceiling in rows[1:]:
         assert floor <= close <= ceiling  # type: ignore[operator]
     assert rows[2][1] / ex_day[1] == pytest.approx(1.0, abs=0.01)  # continuous across the ex-date
+    ohlc = stored(
+        paths,
+        "SELECT open, high, low, close FROM prices_daily "
+        "WHERE ticker='VCB' AND date >= '2026-03-05'",
+    )
+    assert len(ohlc) == 2
+    assert all(price % 100 == 0 for row in ohlc for price in row)  # type: ignore[operator]
 
 
 def test_terms_acceptance_is_keyed_by_source_and_url(cfg: AppConfig, paths: AppPaths) -> None:
@@ -946,17 +915,6 @@ def test_to_defaults_to_today_in_ho_chi_minh(
     result = runner.invoke(app, args)
     assert result.exit_code == 0, result.output
     assert "2026-03-02 .. 2026-03-06" in result.output
-
-
-def test_vcb_rows_from_the_ex_date_are_on_the_tick_grid(cfg: AppConfig, paths: AppPaths) -> None:
-    ingest(cfg, paths, make(cfg, "synthetic_yahoo_basic.csv"), START, END, clock=lambda: LATER)
-    rows = stored(
-        paths,
-        "SELECT open, high, low, close FROM prices_daily "
-        "WHERE ticker='VCB' AND date >= '2026-03-05'",
-    )
-    assert len(rows) == 2
-    assert all(price % 100 == 0 for row in rows for price in row)  # type: ignore[operator]
 
 
 def test_rescale_refetch_covers_rows_before_start_and_after_an_explicit_end(

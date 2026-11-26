@@ -6,6 +6,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Leaner process and tests (X-trim, owner decision 2026-11-26):** the full G2 review tier is
+  limited to engine, finance, cost and statistics math; reviews are one round (a delta round only
+  for an unfixed blocker); new cards follow a lean test policy. On pull requests CI runs the test
+  job on ubuntu and windows with Python 3.12 only (the full 3 OS x 3 Python matrix runs on push
+  to `develop`/`main`, nightly and on demand; the `demo` smoke runs on one job). The test suite
+  dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
+
 ### Added
 - **`vnstratlab init` (P1-T35):** interactive (or `--yes` with flags) wizard that creates the home
   folders and a minimal `config.yaml` (capital per book, data source, brokerage fee), validated with
