@@ -346,7 +346,13 @@ not truly out-of-sample for them. Lab reports always split performance at
   on the registration day counts as historical).
 - **Summary:** per trial, mode and segment (historical / forward): periods, CAGR, volatility,
   Sharpe, max drawdown, mean turnover of traded periods; `lab.metrics` formulas with 52 periods a
-  year for short and 12 for medium and long.
+  year for short and 12 for medium and long. CAGR counts one period per stored decision period:
+  a decision day skipped because it is not a session still counts as one period, so a series
+  with gaps is annualised as if it had none.
+- **Trials:** `backtest --all` / `--strategy` run the registry records of the current
+  `feature_version` and `ENGINE_VERSION` (not the config), rebuilt from id, params and horizon
+  with the code hash checked; a record that cannot be rebuilt is reported as not runnable, never
+  skipped silently. The summary shows only trials of the current versions.
 - **Fitted components:** none yet. `fit_cutoff(sessions, d, label_sessions, embargo)` is the hook
   for S07 / S16 (P1-T31): the last session whose label is known on `d`, minus the embargo.
 - **Source label:** `synthetic` results are labelled `SYNTHETIC DATA`; others carry the Yahoo /

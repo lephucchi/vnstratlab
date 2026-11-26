@@ -807,10 +807,18 @@ class BacktestMode(StrEnum):
 @app.command()
 def backtest(
     strategy: Annotated[
-        str | None, typer.Option("--strategy", help="Strategy id: all its registered trials.")
+        str | None,
+        typer.Option(
+            "--strategy",
+            help="Strategy id: all its registered trials of the current feature/engine version.",
+        ),
     ] = None,
     all_: Annotated[
-        bool, typer.Option("--all", help="Every enabled strategy in the config.")
+        bool,
+        typer.Option(
+            "--all",
+            help="Every registered trial of the current feature/engine version (not the config).",
+        ),
     ] = False,
     source: Annotated[
         str | None, typer.Option("--source", help="Data source; default data.source in config.")
@@ -819,10 +827,18 @@ def backtest(
         BacktestMode.both
     ),
     register: Annotated[
-        bool, typer.Option("--register", help="Register the trials first (like `lab register`).")
+        bool,
+        typer.Option(
+            "--register",
+            help="Register the config trials first (like `lab register`); without it a config "
+            "trial that is not registered is an error.",
+        ),
     ] = False,
 ) -> None:
-    """Walk-forward backtest of registered trials: out-of-sample returns into lab.duckdb."""
+    """Walk-forward backtest of registered trials: out-of-sample returns into lab.duckdb.
+
+    Trials that cannot be rebuilt from the current code are listed as not runnable.
+    """
     from vnstratlab.data.protocol import SourceError
     from vnstratlab.lab.trials import UnregisteredTrialError
     from vnstratlab.lab.walkforward import WalkForwardError, format_summary
@@ -855,8 +871,11 @@ def backtest(
             f"trials now in the registry include them"
         )
     typer.echo(format_summary(summary, outcome.source))
+    for item in outcome.not_runnable:
+        typer.echo(f"not runnable: trial {item.trial_id}: {item.reason}")
     typer.echo(
-        f"trials run {len(outcome.trials)}, rows written {outcome.rows_written} "
+        f"trials run {len(outcome.trials)}, not runnable {len(outcome.not_runnable)}, "
+        f"rows written {outcome.rows_written} "
         f"(feature version {outcome.feature_version}); stored in lab.duckdb, table oos_returns"
     )
 

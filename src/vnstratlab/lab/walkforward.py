@@ -8,6 +8,10 @@ next open (engine rule). The return stored for ``period_end = d'`` (the next dec
 compounded return from the close of ``d`` to the close of ``d'``; the sessions before the first
 decision day and after the last one belong to no complete period and are dropped.
 
+CAGR convention: ``periods`` is the number of stored periods, one per decision day after the first.
+A decision day skipped because it is not a session still counts as one period of the horizon's
+``PERIODS_PER_YEAR``: a series with gaps is annualised as if it had none.
+
 No lookahead, by construction:
 
 - the strategy input is a slice of ``features_daily``, which holds past-looking features only; a
@@ -17,8 +21,11 @@ No lookahead, by construction:
 - the result for a period never depends on data after its end (tests re-run on a truncated
   window and compare).
 
-A trial runs only if it is in ``trial_registry`` (``ensure_trial``); ``run_backtest`` registers
-the config trials first only when asked (``register=True``).
+The trials come from the registry, not the config: ``run_backtest`` lists the registered trials of
+the current feature version and ``ENGINE_VERSION``, rebuilds each strategy from its stored id,
+params and horizon, and checks the code hash and trial id against the current module. A trial that
+cannot be rebuilt is reported in ``BacktestResult.not_runnable`` with a reason, never skipped
+silently. Config trials that are not registered are an error unless ``register=True``.
 
 Fitted components (S07, S16; P1-T31) are not implemented here. ``fit_cutoff`` is the documented
 hook: a model fitted for decision day ``d`` may use only sessions up to ``fit_cutoff`` (purge =
@@ -31,11 +38,14 @@ period). Constants below are runner choices, not config defaults.
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from typing import Any
 
+import duckdb
 import numpy as np
 import pandas as pd
 
@@ -46,16 +56,28 @@ from vnstratlab.data.protocol import universe_tickers
 from vnstratlab.data.store import MarketStore, kind_of_source
 from vnstratlab.demo import COOLDOWN_SESSIONS, decision_targets
 from vnstratlab.engine import ENGINE_VERSION, make_params, run_simulation
-from vnstratlab.engine.loop import SimResult, period_returns, period_turnover
+from vnstratlab.engine.loop import SimResult, build_bars, period_returns, period_turnover
 from vnstratlab.features.build import load_features
 from vnstratlab.features.groups import YEAR_WINDOW
 from vnstratlab.lab import metrics
 from vnstratlab.lab.store import MODES, LabStore
-from vnstratlab.lab.trials import TrialRecord, TrialRegistry, ensure_trial, store_feature_version
+from vnstratlab.lab.trials import (
+    TrialError,
+    TrialRecord,
+    TrialRegistry,
+    ensure_trial,
+    store_feature_version,
+)
 from vnstratlab.paths import AppPaths
 from vnstratlab.risk import RiskLayer
-from vnstratlab.strategies.base import Horizon, Strategy
-from vnstratlab.strategies.registry import TrialSpec, load_strategies, make_trial_spec
+from vnstratlab.strategies.base import HORIZONS, Horizon, Strategy
+from vnstratlab.strategies.registry import (
+    TrialSpec,
+    get_strategy_class,
+    load_strategies,
+    make_trial_spec,
+    strategy_code_hash,
+)
 
 WARMUP_SESSIONS = YEAR_WINDOW  # the longest feature window: the first decision day follows it
 PERIODS_PER_YEAR: dict[str, int] = {"short": 52, "medium": 12, "long": 12}
@@ -237,10 +259,13 @@ def _simulate(
     horizon: Horizon,
     mode: str,
     targets: Mapping[date, pd.Series],
+    bars: Any = None,
 ) -> SimResult:
     prices, actions = inputs.frame.prices, inputs.frame.actions
     if mode == "ideal":
-        return run_simulation(prices, actions, targets, inputs.calendar, make_params(cfg, "ideal"))
+        return run_simulation(
+            prices, actions, targets, inputs.calendar, make_params(cfg, "ideal"), bars=bars
+        )
     capital = float(getattr(cfg.books, horizon).capital_vnd)
     params = make_params(cfg, "executable", capital, lots=True, odd_lots=True)
     return run_simulation(
@@ -251,6 +276,7 @@ def _simulate(
         params,
         risk=RiskLayer(cfg.risk),
         cooldown_sessions=COOLDOWN_SESSIONS[horizon],
+        bars=bars,
     )
 
 
@@ -261,10 +287,12 @@ def run_trial(
     strategy: Strategy,
     horizon: Horizon,
     modes: Sequence[str] = MODES,
+    bars: Any = None,
 ) -> TrialRun:
     """Walk one registered trial forward; ``UnregisteredTrialError`` if it is not registered.
 
-    The check happens before any strategy code runs.
+    The check happens before any strategy code runs. ``bars`` is an optional ``build_bars`` result
+    for ``inputs.frame.prices`` shared by every trial of a run.
     """
     unknown = [m for m in modes if m not in MODES]
     if unknown:
@@ -284,7 +312,7 @@ def run_trial(
     )
     days = list(targets)
     periods = {
-        mode: _periods(_simulate(inputs, cfg, horizon, mode, targets), days) for mode in modes
+        mode: _periods(_simulate(inputs, cfg, horizon, mode, targets, bars), days) for mode in modes
     }
     return TrialRun(spec, record, periods)
 
@@ -412,6 +440,14 @@ def format_summary(summary: pd.DataFrame, source: str) -> str:
 
 
 @dataclass(frozen=True)
+class NotRunnable:
+    """A registered trial that cannot be rebuilt from the current code (reported, not run)."""
+
+    trial_id: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class BacktestResult:
     source: str
     label: str
@@ -420,22 +456,43 @@ class BacktestResult:
     registered_now: tuple[str, ...]  # trial ids registered by this call (``register=True``)
     rows_written: int
     feature_version: str
+    not_runnable: tuple[NotRunnable, ...] = ()
 
 
-def select_strategies(cfg: AppConfig, strategy_id: str | None) -> list[Strategy]:
-    """Enabled config strategies; with ``strategy_id`` only its parameter sets."""
-    strategies = load_strategies(cfg)
-    if strategy_id is not None:
-        chosen = [s for s in strategies if s.id == strategy_id]
-        if not chosen:
-            raise WalkForwardError(
-                f"strategy {strategy_id!r} is not enabled in the config; "
-                f"available: {', '.join(sorted({s.id for s in strategies})) or 'none'}"
-            )
-        return chosen
-    if not strategies:
-        raise WalkForwardError("no enabled strategies in config: nothing to backtest")
-    return strategies
+def config_pairs(cfg: AppConfig, strategy_id: str | None) -> list[tuple[Strategy, Horizon]]:
+    """(strategy, horizon) of the enabled config strategies; with ``strategy_id`` only its sets."""
+    return [
+        (s, h)
+        for s in load_strategies(cfg)
+        if strategy_id is None or s.id == strategy_id
+        for h in s.horizons
+    ]
+
+
+def rebuild_trial(record: TrialRecord) -> tuple[Strategy, Horizon] | str:
+    """The strategy of a registered trial rebuilt from the current code, or the reason it cannot
+    be: unknown id, invalid params, or a code hash / trial id that no longer matches."""
+    try:
+        cls = get_strategy_class(record.strategy_id)
+    except KeyError:
+        return f"unknown strategy id {record.strategy_id!r}"
+    horizon = next((h for h in HORIZONS if h == record.horizon), None)
+    if horizon is None:
+        return f"unknown horizon {record.horizon!r}"
+    try:
+        strategy = cls(json.loads(record.params_json), (horizon,))
+    except (ValueError, TypeError, KeyError) as exc:
+        return f"invalid params {record.params_json}: {exc}"
+    try:
+        code = strategy_code_hash(cls)
+    except ValueError as exc:
+        return f"code hash unavailable: {exc}"
+    if code != record.strategy_code_hash:
+        return "strategy code changed since registration (hash mismatch)"
+    spec = make_trial_spec(strategy, horizon, record.feature_version, record.engine_version, code)
+    if spec.trial_id != record.trial_id:
+        return "trial id does not match the rebuilt strategy"
+    return strategy, horizon
 
 
 def run_backtest(
@@ -452,37 +509,61 @@ def run_backtest(
     progress: Callable[[str], None] | None = None,
     now: datetime | None = None,
 ) -> BacktestResult:
-    """Walk every selected trial forward on the store of ``source`` and store the OOS returns.
+    """Walk every registered trial of the current versions forward; store the OOS returns.
 
-    Every trial is checked against the registry before any of them runs (so an unregistered trial
-    stops the whole call with ``UnregisteredTrialError``); with ``register=True`` the missing ones
-    are registered first. Re-running replaces the trial's rows for the same source and modes.
+    The trials are the registry records of the store's ``feature_version`` and ``ENGINE_VERSION``
+    (all of them, or those of ``strategy_id``), not the config. Config trials that are not
+    registered stop the whole call with ``UnregisteredTrialError`` before anything runs, unless
+    ``register=True`` registers them first. A registered trial that cannot be rebuilt is returned
+    in ``not_runnable``. Re-running replaces the trial's rows for the same source and modes.
     """
     note = progress or (lambda _msg: None)
-    strategies = select_strategies(cfg, strategy_id)
     db_path = paths.market_db_for(kind_of_source(source))
     if not db_path.is_file():
         raise WalkForwardError(f"no store at {db_path}: run `vnstratlab ingest` first")
     with MarketStore(db_path, kind_of_source(source), read_only=True) as market:
         inputs = load_inputs(market, cfg, source, start, end)
     version = inputs.feature_version
+    config = config_pairs(cfg, strategy_id)
     registered_now: list[str] = []
-    pairs = [(s, h) for s in strategies for h in s.horizons]
+    not_runnable: list[NotRunnable] = []
     with LabStore(paths.lab_db) as lab:
         if register:
-            for strategy, horizon in pairs:
+            for strategy, horizon in config:
                 spec = make_trial_spec(strategy, horizon, version, ENGINE_VERSION)
                 if lab.register(spec, "config").created:
                     registered_now.append(spec.trial_id)
             if registered_now:
                 note(f"registered {len(registered_now)} new trial(s) before running")
-        for strategy, horizon in pairs:  # fail before any trial runs
+        for strategy, horizon in config:  # fail before any trial runs
             ensure_trial(lab, strategy, horizon, version)
+        records = [
+            r
+            for r in lab.list()
+            if r.feature_version == version
+            and r.engine_version == ENGINE_VERSION
+            and (strategy_id is None or r.strategy_id == strategy_id)
+        ]
+        if not records:
+            what = f"strategy {strategy_id!r}" if strategy_id else "any strategy"
+            raise WalkForwardError(
+                f"no registered trial of {what} for feature version {version} and engine "
+                f"{ENGINE_VERSION}: register with `vnstratlab lab register` or --register"
+            )
+        runnable: list[tuple[Strategy, Horizon]] = []
+        for record in records:
+            rebuilt = rebuild_trial(record)
+            if isinstance(rebuilt, str):
+                not_runnable.append(NotRunnable(record.trial_id, rebuilt))
+                note(f"not runnable {record.trial_id} ({record.strategy_id}): {rebuilt}")
+            else:
+                runnable.append(rebuilt)
+        bars = build_bars(inputs.frame.prices)  # same prices for every trial: build once
         written = 0
         ran: list[str] = []
-        for strategy, horizon in pairs:
+        for strategy, horizon in runnable:
             note(f"{strategy.id} {horizon}")
-            run = run_trial(inputs, lab, cfg, strategy, horizon, modes)
+            run = run_trial(inputs, lab, cfg, strategy, horizon, modes, bars)
             registered_date = run.record.registered_at.astimezone(VN_TZ).date()
             for mode, frame in run.periods.items():
                 written += lab.replace_oos(
@@ -506,7 +587,20 @@ def run_backtest(
         tuple(registered_now),
         written,
         version,
+        tuple(not_runnable),
     )
+
+
+def current_feature_version(paths: AppPaths, source: str) -> str | None:
+    """The feature version of the source's market store, or None if it has none."""
+    db_path = paths.market_db_for(kind_of_source(source))
+    if not db_path.is_file():
+        return None
+    try:
+        with MarketStore(db_path, kind_of_source(source), read_only=True) as market:
+            return store_feature_version(market)
+    except (TrialError, duckdb.Error):
+        return None
 
 
 def load_summary(
@@ -514,12 +608,28 @@ def load_summary(
     source: str,
     trial_ids: Sequence[str] | None = None,
     modes: Sequence[str] | None = None,
+    *,
+    all_versions: bool = False,
 ) -> pd.DataFrame:
-    """The summary of the stored rows of ``source`` (read-only; empty if nothing is stored)."""
+    """The summary of the stored rows of ``source`` (read-only; empty if nothing is stored).
+
+    Only trials of the current ``feature_version`` (of the source's store, when it has one) and
+    ``ENGINE_VERSION`` are summarised; rows of older versions stay stored and are shown only with
+    ``all_versions=True``.
+    """
     if not paths.lab_db.is_file():
         return pd.DataFrame(columns=list(SUMMARY_COLUMNS))
+    version = None if all_versions else current_feature_version(paths, source)
     with LabStore(paths.lab_db, read_only=True) as lab:
         oos = lab.oos_returns(source=source)
+        if not all_versions:
+            current = {
+                r.trial_id
+                for r in lab.list()
+                if r.engine_version == ENGINE_VERSION
+                and (version is None or r.feature_version == version)
+            }
+            oos = oos[oos["trial_id"].isin(current)]
         if trial_ids is not None:
             oos = oos[oos["trial_id"].isin(list(trial_ids))]
         if modes is not None:

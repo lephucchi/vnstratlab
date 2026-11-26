@@ -39,7 +39,7 @@ due: 2026-12-01
    table `oos_returns(trial_id, horizon, mode, period_end, ret, turnover, source,
    feature_version, engine_version, run_id, computed_at)`, primary key
    `(trial_id, mode, period_end, source)`. Re-running replaces that trial's rows for that
-   source (idempotent). Tag each row `in_sample_by_design = period_end <
+   source (idempotent). Tag each row `in_sample_by_design = period_end <= Vietnam date of
    registered_at` (engine.md §12 table).
 5. **Source.** Default = the configured data source and its store (real data on the owner's
    machine); `--source synthetic` uses the synthetic store. Synthetic results are labelled

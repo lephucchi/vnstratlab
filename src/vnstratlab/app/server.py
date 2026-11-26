@@ -224,7 +224,7 @@ def create_app(
         }
 
     @app.get("/api/backtest/summary", response_model=None)
-    def backtest_summary(source: str | None = None) -> Any:
+    def backtest_summary(source: str | None = None, all_versions: bool = False) -> Any:
         import duckdb
 
         from vnstratlab.lab.walkforward import (
@@ -241,7 +241,7 @@ def create_app(
             except ConfigError as exc:
                 return _error(422, "config_invalid", problems=list(exc.problems))
         try:
-            frame = load_summary(paths, name)
+            frame = load_summary(paths, name, all_versions=all_versions)
         except duckdb.Error as exc:  # the lab store is being written (a backtest is running)
             return _error(409, "lab_store_busy", message=str(exc))
         rows = frame.astype(object).where(frame.notna(), None).to_dict("records")
