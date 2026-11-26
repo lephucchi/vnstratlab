@@ -38,6 +38,29 @@ from typing import Any
 
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 CARD_STATUSES = ("todo", "in-progress", "in-review", "changes-requested", "blocked", "done")
+# A plan card replaced by other cards: kept out of the board and the totals, listed apart.
+SUPERSEDED = "superseded"
+
+
+def normalise_status(value: str) -> str:
+    """Card status from front matter: "In review" / "in_review" -> "in-review"; unknown -> todo."""
+    status = re.sub(r"[\s_]+", "-", value.strip().lower())
+    return status if status in (*CARD_STATUSES, SUPERSEDED) else "todo"
+
+
+def card_number(card_id: str) -> tuple[str, int] | None:
+    """("P1", 14) for "P1-T14"; None for suffixed ids such as "P1-T06b"."""
+    m = re.fullmatch(r"(P\d)-T(\d+)", card_id)
+    return (m.group(1), int(m.group(2))) if m else None
+
+
+def covered_by_range(range_id: str, ids: set[str]) -> bool:
+    """True when a plan range row such as "P1-T14…P1-T19" has a card file for any member."""
+    first, sep, last = range_id.partition("…")
+    lo, hi = card_number(first), card_number(last) if sep else None
+    if lo is None or hi is None or lo[0] != hi[0]:
+        return False
+    return any(f"{lo[0]}-T{n:02d}" in ids for n in range(lo[1], hi[1] + 1))
 
 
 def now_iso() -> str:
@@ -169,13 +192,12 @@ def card_files(repo: Path) -> dict[str, dict[str, Any]]:
     def add(text: str, origin: str) -> None:
         meta, _ = parse_front_matter(text)
         if meta.get("id"):
-            status = meta.get("status", "todo")
             found[meta["id"]] = {
                 "id": meta["id"],
                 "title": meta.get("title", ""),
                 "milestone": meta.get("milestone", ""),
                 "release": meta.get("release", ""),
-                "status": status if status in CARD_STATUSES else "todo",
+                "status": normalise_status(meta.get("status", "todo")),
                 "branch": meta.get("branch") or None,
                 "due": parse_due(meta.get("due", "")),
                 "source": origin,
@@ -473,6 +495,8 @@ def build(
             if c["id"] not in known
         ]
     overrides = card_files(repo)
+    member_ids = set(overrides)
+    cards = [c for c in cards if "…" not in c["id"] or not covered_by_range(c["id"], member_ids)]
     by_id = {c["id"]: c for c in cards}
     for cid, card in overrides.items():
         if cid in by_id:
@@ -488,6 +512,9 @@ def build(
     for row in progress:  # anything merged per the progress log is done
         if row["card"] in by_id:
             by_id[row["card"]]["status"] = "done"
+
+    superseded = [c for c in cards if c["status"] == SUPERSEDED]
+    cards = [c for c in cards if c["status"] != SUPERSEDED]
 
     adrs = parse_adrs(repo / "docs" / "adr")
     gh = github_data()
@@ -514,6 +541,7 @@ def build(
         "repository": os.environ.get("GITHUB_REPOSITORY", "lephucchi/vnstratlab"),
         "counts": counts,
         "cards": cards,
+        "superseded": [{"id": c["id"], "title": c["title"]} for c in superseded],
         "progress": progress,
         "adrs": adrs,
         "waiting_for_owner": waiting,

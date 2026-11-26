@@ -202,3 +202,66 @@ def test_build_po_data_has_gaps_and_due(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert captured["cards"][0]["due"] == "2026-11-21"
     status = json.loads((tmp_path / "out" / "data" / "status.json").read_text(encoding="utf-8"))
     assert "gaps" not in status  # public status.json carries measured facts only
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("in review", "in-review"),
+        ("In Progress", "in-progress"),
+        ("changes_requested", "changes-requested"),
+        ("done", "done"),
+        ("superseded", "superseded"),
+        ("someday", "todo"),
+        ("", "todo"),
+    ],
+)
+def test_normalise_status(raw: str, expected: str) -> None:
+    assert bs.normalise_status(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("range_id", "ids", "expected"),
+    [
+        ("P1-T14…P1-T19", {"P1-T15"}, True),
+        ("P1-T14…P1-T19", {"P1-T13", "P1-T20", "P1-T16b"}, False),
+        ("P1-T14…P1-T19", set(), False),
+        ("P1-T14", {"P1-T14"}, False),
+    ],
+)
+def test_covered_by_range(range_id: str, ids: set[str], expected: bool) -> None:
+    assert bs.covered_by_range(range_id, ids) is expected
+
+
+def test_build_drops_covered_range_and_superseded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    cards = repo / "docs" / "cards"
+    cards.mkdir(parents=True)
+    (repo / "docs" / "plan").mkdir()
+    (repo / "docs" / "plan" / "plan.md").write_text(
+        "## 4. Phase 1 — Core\n### M1.1 — Data\n**P1-T03 — Old source**\n"
+        "**P1-T14 … P1-T16 — Strategies**\n**P1-T20 … P1-T21 — Lab**\n",
+        encoding="utf-8",
+    )
+    (cards / "P1-T03-a.md").write_text(
+        "---\nid: P1-T03\ntitle: Old source\nstatus: superseded\n---\n", encoding="utf-8"
+    )
+    (cards / "P1-T15-b.md").write_text(
+        "---\nid: P1-T15\ntitle: S\nstatus: in review\n---\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        bs, "publish_po", lambda plaintext, po_dir: captured.update(json.loads(plaintext))
+    )
+    bs.build(repo, tmp_path / "out", None, None, None)
+    ids = {c["id"]: c["status"] for c in captured["cards"]}
+    assert "P1-T14…P1-T16" not in ids  # a member has its own card
+    assert "P1-T20…P1-T21" in ids  # no member card yet
+    assert "P1-T03" not in ids
+    assert captured["superseded"] == [{"id": "P1-T03", "title": "Old source"}]
+    assert ids["P1-T15"] == "in-review"
+    status = json.loads((tmp_path / "out" / "data" / "status.json").read_text(encoding="utf-8"))
+    assert status["cards_total"] == len(captured["cards"])
