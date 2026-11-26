@@ -58,8 +58,8 @@ See the [roadmap](docs/roadmap.md) for what lands in each release.
 
 | Release | Scope |
 |---|---|
-| v0.1 | Data ingestion, simulator with HOSE rules, first strategies, `backtest`, offline `demo` |
-| v0.2 | Statistical lab: DSR, PBO, SPA, MCS, weights, meta-backtest, stress tests, reports |
+| v0.1 | Data ingestion, simulator with HOSE rules, first strategies, offline `demo` |
+| v0.2 | Walk-forward `backtest`, statistical lab: DSR, PBO, SPA, MCS, weights, meta-backtest, stress tests, reports |
 | v0.3 | Paper books, local dashboard, built-in scheduler, optional Telegram report |
 | v0.4 | News collection and LLM scoring, evaluated with a pre-registered test (ADR-002) |
 | v0.5+ | Portfolio optimisation: shrinkage mean-variance, HRP, risk parity, Black-Litterman with lab views, lot-aware |

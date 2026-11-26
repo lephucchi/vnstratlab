@@ -50,8 +50,8 @@ Pre-alpha. Repo hiện mới có khung dự án (task card **P1-T01**). Xem [l�
 
 | Bản | Nội dung |
 |---|---|
-| v0.1 | Tải dữ liệu, bộ mô phỏng theo luật HOSE, các chiến lược đầu tiên, `backtest`, `demo` offline |
-| v0.2 | Lab thống kê: DSR, PBO, SPA, MCS, trọng số, meta-backtest, stress test, báo cáo |
+| v0.1 | Tải dữ liệu, bộ mô phỏng theo luật HOSE, các chiến lược đầu tiên, `demo` offline |
+| v0.2 | `backtest` walk-forward, lab thống kê: DSR, PBO, SPA, MCS, trọng số, meta-backtest, stress test, báo cáo |
 | v0.3 | Danh mục giả lập (paper book), dashboard chạy trên máy, lịch chạy tự động, báo cáo Telegram (tùy chọn) |
 | v0.4 | Thu thập và chấm điểm tin tức bằng LLM, đánh giá bằng kiểm định đăng ký trước (ADR-002) |
 | v0.5+ | Tối ưu danh mục: mean-variance có shrinkage, HRP, risk parity, Black-Litterman dùng tín hiệu của lab, có tính lô |
