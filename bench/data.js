@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795700191794,
+  "lastUpdate": 1795701156323,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1939,6 +1939,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00031168944030954016",
             "extra": "mean: 18.053207909087053 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fadf1f2a1d98e0423715b50a8eba8a29094c46ae",
+          "message": "fix(engine): circuit breaker re-arms on shadow equity with hysteresis; demo benchmark without risk layer (X-breaker) (#90)\n\nCloses #84. Owner decisions 2026-11-26 (G3 R1, R2, re-arm hysteresis). G2 full round 1: R1 engine code approved; label major fixed (manager verified hand numbers). ENGINE_VERSION engine-v2.",
+          "timestamp": "2026-11-26T20:51:54+07:00",
+          "tree_id": "c4eba91f1b62099e0c18534dc910f5cce1c97b69",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/fadf1f2a1d98e0423715b50a8eba8a29094c46ae"
+        },
+        "date": 1795701155667,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 2.662156604226713,
+            "unit": "iter/sec",
+            "range": "stddev: 0.014421778066833696",
+            "extra": "mean: 375.63530200000156 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 73.2614083351861,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00024108209901675215",
+            "extra": "mean: 13.649751250000453 msec\nrounds: 16"
           }
         ]
       }
