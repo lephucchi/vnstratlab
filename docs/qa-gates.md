@@ -16,7 +16,7 @@ Defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) and
 | Lint | `ruff check .` | Any finding |
 | Format | `ruff format --check .` | Any unformatted file |
 | Types | `mypy` (strict) | Any error |
-| Tests | `pytest` on Windows, macOS, Linux × Python 3.11, 3.12, 3.13 | Any failure, or coverage < 80% |
+| Tests | `pytest`: on pull requests Linux and Windows, Python 3.12; on push to `develop`/`main`, nightly and manual runs the full Windows, macOS, Linux × Python 3.11, 3.12, 3.13 matrix (2026-11-26) | Any failure, or coverage < 80% |
 | Guardrails | `pytest tests/test_guardrails.py` | Order-placement code, invalid packaged config |
 | Secret scan | gitleaks | Any secret in the diff or history |
 | PR title | Conventional Commits check | Title does not match |
@@ -28,16 +28,17 @@ Defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) and
 The reviewer works in a fresh context, reads the task card and the diff, then posts a review
 with one verdict: **approve**, **request changes** or **block**.
 
-### Review tiers (owner decision, 2026-11-21)
+### Review tiers (owner decisions 2026-11-21, narrowed 2026-11-26)
 
 The manager picks the tier when it delegates the review and states it in the review request.
 
 | Tier | Applies to | Who | Scope |
 |---|---|---|---|
-| **light** | Docs only, ADR text, PO/site/tools, CI config, tests-only changes, dependency bumps | Manager (no reviewer agent) | G1 green; the **Safety and scope** items below; no behaviour change outside the card |
-| **full** | Anything under `src/` that touches prices, corporate actions, execution, costs, risk, features, strategies, lab statistics, or point-in-time logic | QA Reviewer (Opus, fresh context) | The whole checklist |
+| **light** | Everything that is not full: docs, ADR text, PO/site/tools, CLI and wizards, CI config, tests-only changes, dependency bumps, features and strategies that do not change engine or statistics math | Manager (no reviewer agent) | G1 green; the **Safety and scope** items below; no behaviour change outside the card |
+| **full** | Engine, finance, cost or statistics math only: simulator, risk, price adjustment, metrics, lab statistics | QA Reviewer (Opus, fresh context) | The whole checklist |
 
-When unsure, use **full**. A light-tier PR that turns out to change behaviour is re-tiered.
+Since 2026-11-26 (owner decision: move faster) the full tier is limited to the list above. A
+light-tier PR that turns out to change that math is re-tiered.
 
 ### Review rounds
 
@@ -46,14 +47,14 @@ When unsure, use **full**. A light-tier PR that turns out to change behaviour is
   last reviewed SHA, reads only `git diff <last-reviewed-sha>..HEAD`, and checks that each
   finding is fixed and that the fix does not break anything nearby. It does not re-review the
   whole PR.
-- **At most 2 rounds.** Only **blocker** and **major** findings cause another round. **minor**
-  findings and nits are listed in the review and moved to a follow-up issue by the manager;
-  they do not hold the merge. If a major finding is still open after round 2, the owner decides
-  (fix in a follow-up card or hold the PR).
+- **One round** (owner decision, 2026-11-26). Findings other than an unfixed **blocker** are
+  listed in the review and moved to a follow-up issue by the manager; they do not hold the
+  merge. A second (delta) round happens only for a blocker that is still unfixed. If it is
+  still open after that, the owner decides (fix in a follow-up card or hold the PR).
 
 ### Real-data dry run (data-cleaning PRs)
 
-Before merging a full-tier PR that changes how stored prices are cleaned, adjusted or excluded
+Only when data-cleaning logic changes (since 2026-11-26). Before merging a PR that changes how stored prices are cleaned, adjusted or excluded
 (`data/adjust.py`, quality checks, pipeline rebuild), the manager runs
 `vnstratlab data rebuild --dry-run` with the branch code (worktree + `PYTHONPATH`) on the
 owner's local store and compares the counts (`prices_exec` rows, exclusions by kind and ticker)
@@ -63,7 +64,7 @@ committed or posted; only counts go into the PR. (Added 2026-11-21 after #36 cut
 
 ### Tests during review
 
-CI (G1) already runs the full suite on 3 OS × 3 Python. When G1 is green on the head SHA under
+CI (G1) already runs the full suite on every pull request. When G1 is green on the head SHA under
 review, the reviewer does **not** re-run the full suite. It runs only the tests for the changed
 modules plus its own probes (`pytest tests/test_<module>.py -q --no-cov`). It runs the full
 suite only when CI has not finished or is red. Reviewer probes that expose a bug go into the
@@ -104,7 +105,7 @@ findings with exact numbers, so the worker can add them as tests.
 | Verdict | Meaning | Next |
 |---|---|---|
 | approve | No blocker or major finding open (minor items go to a follow-up issue) | Manager merges |
-| request changes | Open blocker or major findings | Worker fixes on the same branch; G1 + G2 delta round (max 2 rounds) |
+| request changes | Open blocker or major findings | Worker fixes on the same branch; G1 + G2 delta round (only for an unfixed blocker) |
 | block | Violates a ground rule (order placement, lookahead by design, secret leak, frozen-param edit) | PR closed or rescoped by the manager; owner informed |
 
 ---

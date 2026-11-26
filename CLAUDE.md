@@ -33,10 +33,10 @@ The main session acts as the **Manager** described in [docs/workflow.md](docs/wo
 2. Delegate one card to the `worker` subagent with the card text and file list.
 3. When the PR is ready and CI is green, pick the G2 tier ([qa-gates.md](docs/qa-gates.md#review-tiers-owner-decision-2026-11-21)):
    **light** (docs, tools, CI, tests-only) → review it yourself against the Safety and scope
-   items; **full** (finance/engine/data logic) → delegate to the `qa-reviewer` subagent (fresh
-   context; give it the card, branch, PR number and round, not the worker's summary). Round 2+
-   is a delta review: pass the previous findings and the last reviewed SHA. Max 2 rounds; minor
-   findings become a follow-up issue.
+   items; **full** (engine, finance, cost or statistics math only) → delegate to the `qa-reviewer` subagent (fresh
+   context; give it the card, branch, PR number and round, not the worker's summary). Max 1
+   round (2026-11-26); minor findings become a follow-up issue. A delta round 2 (previous
+   findings and last reviewed SHA) only for an unfixed blocker.
 4. On approve: confirm CI is green on the head SHA (`gh pr checks`; do not re-run the full suite
    locally), squash-merge into `develop`, append to `docs/reports/progress.md`.
 5. When a milestone is complete: create `release/vX.Y.0`, delegate gate G3 to the
