@@ -510,7 +510,7 @@ export function mockApi(path, init) {
     if (m("stocks/compare")) {
       const tks = (q.get("tickers") || "").split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
       if (!tks.length || tks.length > 4 || tks.some((t) => !stock().has(t))) return R(422, { error: "invalid_tickers", message: "Chọn từ 1 đến 4 mã trong vũ trụ" });
-      return R(200, stock().compare(tks));
+      return R(200, stock().compare(tks.filter((t) => storedAnalysis(t)), tks.filter((t) => !storedAnalysis(t))));
     }
     if ((x = m("stocks/*/analysis"))) {
       const tk = x[0].toUpperCase();

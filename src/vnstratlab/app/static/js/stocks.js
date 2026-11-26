@@ -117,7 +117,11 @@ async function renderCompare(holder, tickers, token) {
   if (token.stale) return;
   if (!res.ok) return holder.replaceChildren(errorBox(res.status === 404 ? "Máy chủ chưa có /api/stocks/compare." : "Không tải được so sánh."));
   const items = compareItems(res.body);
+  const missing = (res.body && res.body.missing) || [];
   const label = dataLabel(res.body);
+  if (!items.length) {
+    return holder.replaceChildren(h("section", { class: "card" }, emptyState("Chưa có phân tích để so sánh", `Cần chạy “Phân tích” cho: ${missing.join(", ") || tickers.join(", ")}.`)));
+  }
   // normalised price chart (= 100 at the start of the window) from the existing local prices endpoint
   const series = await Promise.all(items.map((it) => api(`/data/prices/${encodeURIComponent(it.ticker)}`)));
   if (token.stale) return;
@@ -162,8 +166,9 @@ async function renderCompare(holder, tickers, token) {
     )
   );
   holder.replaceChildren(
+    missing.length ? h("div", { class: "notice warn" }, `Chưa có phân tích cho ${missing.join(", ")}: chọn từng mã rồi bấm “Phân tích”.`) : null,
     h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, "So sánh giá (chuẩn hóa = 100)"), h("span", { class: "chip soft" }, label)), chart.el, legend),
-    h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, "Số liệu và khuyến nghị cạnh nhau")), table, h("div", { class: "notice" }, "Chỉ khuyến nghị tham khảo — bạn tự quyết định và tự đặt lệnh."), ...items.map((it) => cliLine(`vnstratlab stock ${it.ticker}`)))
+    h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, "Số liệu và khuyến nghị cạnh nhau")), table, h("div", { class: "notice" }, (res.body && res.body.disclaimer_vi) || "Chỉ khuyến nghị tham khảo — bạn tự quyết định và tự đặt lệnh."), ...items.map((it) => cliLine(`vnstratlab stock ${it.ticker}`)))
   );
 }
 

@@ -85,7 +85,6 @@
 .act-MUA .act, .act.act-MUA { background: var(--fg); color: var(--bg); }
 .act.act-GIỮ { background: transparent; }
 .act.act-KHÔNG { border-color: var(--line-2); color: var(--muted); }
-.act.act-BÁN { border-style: dashed; }
 .act.act-MUA .dot { box-shadow: 0 0 0 1.5px var(--bg); }
 .summary { margin: 14px 0 12px; font-size: 14.5px; }
 @media (max-width: 960px) { .rec-cols { grid-template-columns: 1fr; } }

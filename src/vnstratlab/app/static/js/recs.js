@@ -42,12 +42,19 @@ export function banner(rec) {
   );
 }
 
+/** lot_qty = shares in round lots (multiple of lot_size); ``lots`` = number of round lots; odd_qty = odd-lot shares. */
+export function lotText(t, lotSize) {
+  const size = t.lot_size || lotSize || 100;
+  const lots = t.lots ?? Math.floor((t.lot_qty || 0) / size);
+  return `${fmtVnd(lots)} lô${lots ? ` (= ${fmtVnd(t.lot_qty)} cp)` : ""}${t.odd_qty ? ` + ${fmtVnd(t.odd_qty)} cp lẻ` : ""}`;
+}
+
 function kv(k, v) {
   return h("div", null, h("dt", null, k), h("dd", null, v));
 }
 
 function targetCard(t, rec) {
-  const lots = `${fmtVnd(t.lot_qty)} lô${t.odd_qty ? ` + ${fmtVnd(t.odd_qty)} lẻ` : ""}`;
+  const lots = lotText(t);
   const zone = t.entry_zone ? `${fmtVnd(t.entry_zone.low)} – ${fmtVnd(t.entry_zone.high)}` : "—";
   const of = (rec.strategies || []).length;
   const card = h(
@@ -82,7 +89,7 @@ function evidence(rec) {
   const dsr = ev.dsr_by_strategy || null;
   const pass = new Set(ev.gate1_pass || []);
   const rows = dsr ? Object.entries(dsr) : [];
-  const head = h("div", { class: "ev-head" }, h("b", null, "Bằng chứng"), h("span", { class: "muted small" }, ` Đã đếm ${ev.trials_counted ?? "—"} trial (mọi lần thử đều được tính vào ngưỡng Deflated Sharpe).`));
+  const head = h("div", { class: "ev-head" }, h("b", null, "Bằng chứng"), h("span", { class: "muted small" }, ` Đã đếm ${ev.trials_counted ?? "—"} trial (mọi lần thử đều được tính vào ngưỡng Deflated Sharpe)${ev.trials_contributing != null ? `; ${ev.trials_contributing} trial tham gia khuyến nghị này` : ""}.`));
   if (!rows.length) return h("div", { class: "rec-ev" }, head, h("p", { class: "muted small" }, "Chưa có chỉ số DSR / cổng 1 cho các chiến lược này."));
   return h(
     "div",
@@ -104,11 +111,12 @@ function horizonPanel(rec) {
     `Sổ ${HORIZON_LABEL[rec.horizon].toLowerCase()} · vốn ${fmtVnd(rec.book_capital_vnd)} đ · ${targets.length} mã · tiền mặt ${fmtPct(rec.cash_weight, 0)}`
   );
   const strategies = h("p", { class: "muted small" }, `Chiến lược đang bật: ${(rec.strategies || []).map((s) => s.strategy_id).join(", ") || "chưa có"}. ${rec.note_vi || ""}`);
+  const warns = (rec.warnings || []).map((w) => h("div", { class: "notice warn" }, w));
   if (!targets.length) {
-    return h("div", null, info, emptyState("Chưa có mã nào được đề xuất", "Cần dữ liệu và đặc trưng mới nhất: làm mới dữ liệu rồi tính đặc trưng.", cliLine("vnstratlab features build")), evidence(rec));
+    return h("div", null, info, warns, emptyState("Chưa có mã nào được đề xuất", "Cần dữ liệu và đặc trưng mới nhất: làm mới dữ liệu rồi tính đặc trưng.", cliLine("vnstratlab features build")), evidence(rec));
   }
   const cash = h("article", { class: "rec-card cash" }, h("div", { class: "rec-top" }, h("span", { class: "rec-tk" }, "Tiền mặt"), h("span", { class: "rec-w mono" }, fmtPct(rec.cash_weight, 1))), wbar(rec.cash_weight, 0.5), h("p", { class: "muted small" }, "Phần vốn chưa phân bổ do giới hạn số vị thế và tỷ trọng tối đa mỗi mã."));
-  return h("div", null, info, strategies, h("div", { class: "rec-grid" }, targets.map((t) => targetCard(t, rec)), cash), evidence(rec));
+  return h("div", null, info, strategies, warns, h("div", { class: "rec-grid" }, targets.map((t) => targetCard(t, rec)), cash), evidence(rec));
 }
 
 /** Full panel for Kết quả. Returns a section element. */

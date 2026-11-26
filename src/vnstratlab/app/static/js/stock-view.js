@@ -1,12 +1,12 @@
 // Rendering of one stock's analysis (GET /api/stocks/{ticker}/analysis). Pure view code: textContent only.
 import { lineChart, toMs } from "./charts.js";
-import { HORIZON_LABEL, HORIZONS, consensusChip, dataLabel, wbar } from "./recs.js";
+import { HORIZON_LABEL, HORIZONS, consensusChip, dataLabel, lotText, wbar } from "./recs.js";
 import { cliLine, hcRow, hoverCard, segmented, table } from "./ui.js";
 import { fmtDate, fmtInt, fmtNumVi, fmtPct, fmtTime, fmtVnd, fmtVndShort, h } from "./util.js";
 
 const CHANGE_KEYS = [["1W", "1T"], ["1M", "1Th"], ["3M", "3Th"], ["6M", "6Th"], ["1Y", "1N"], ["YTD", "YTD"]];
-const ACTION_NOTE = { MUA: "đang trong danh mục mục tiêu", "GIỮ": "còn được chọn nhưng chưa vào danh mục", KHÔNG: "chưa có chiến lược chọn", BÁN: "vừa bị loại khỏi lựa chọn" };
-const ACTION_DOT = { MUA: "st-success", "GIỮ": "st-warn", KHÔNG: "st-skipped", BÁN: "st-failed" };
+const ACTION_NOTE = { MUA: "đang trong danh mục mục tiêu", "GIỮ": "có chiến lược giữ, danh mục kết hợp không có: chưa nên mua thêm", KHÔNG: "chưa có chiến lược chọn" };
+const ACTION_DOT = { MUA: "st-success", "GIỮ": "st-warn", KHÔNG: "st-skipped" };
 const RANGES = [["1T", 30], ["3T", 91], ["6T", 182], ["1N", 365], ["all", 0]];
 const RANGE_LABEL = { "1T": "1T", "3T": "3T", "6T": "6T", "1N": "1N", all: "Tất cả" };
 
@@ -38,6 +38,7 @@ function header(a, onRerun) {
     ),
     changeChips(p.change),
     a.label ? h("div", { class: "banner-synth", role: "note" }, a.label) : null,
+    ...(a.warnings || []).map((w) => h("div", { class: "notice warn" }, w)),
     h("p", { class: "muted small mono" }, `Lần chạy ${a.run_id || "—"} · tạo lúc ${fmtTime(a.generated_at)}`),
     cliLine(`vnstratlab stock ${a.ticker}`)
   );
@@ -100,7 +101,7 @@ function chartCard(a) {
       barFmt: (v) => fmtInt(v),
       area: true,
     });
-    note.textContent = `${marks.length} điểm vào/ra của các chiến lược${state.marks === "all" ? "" : ` khung ${HORIZON_LABEL[state.marks].toLowerCase()}`}. ▲ = chiến lược bắt đầu giữ mã, ▽ = thôi giữ.`;
+    note.textContent = `${c.basis ? `Giá ${c.basis === "adjusted" ? "đã điều chỉnh" : c.basis}. ` : ""}${marks.length} điểm vào/ra của các chiến lược${state.marks === "all" ? "" : ` khung ${HORIZON_LABEL[state.marks].toLowerCase()}`}. ▲ = chiến lược bắt đầu giữ mã, ▽ = thôi giữ.`;
   }
   const range = segmented(RANGES.map((r) => [r[0], RANGE_LABEL[r[0]]]), state.range, (v) => ((state.range = v), draw()), "Khoảng thời gian");
   const marks = segmented([...HORIZONS.map((hz) => [hz, HORIZON_LABEL[hz]]), ["all", "Mọi khung"]], state.marks, (v) => ((state.marks = v), draw()), "Điểm vào/ra theo khung");
@@ -152,8 +153,8 @@ function signalsCard(a) {
             HORIZON_LABEL[s.horizon] || s.horizon,
             s.holds ? h("span", { class: "chip solid" }, "Giữ") : h("span", { class: "chip" }, "Không"),
             s.holds ? fmtPct(s.weight, 0) : "—",
-            s.rank ? `${s.rank}/${s.of}` : "—",
-            h("span", { class: "mono small" }, `${s.signal ? s.signal.name : ""} = ${fmtSignal(s.signal && s.signal.name, s.signal && s.signal.value)}`),
+            s.rank != null && s.of != null ? `${s.rank}/${s.of}` : "—",
+            h("span", { class: "mono small" }, s.signal && s.signal.name ? `${s.signal.name} = ${fmtSignal(s.signal.name, s.signal.value)}` : "—"),
             h("span", { class: "reason" }, s.reason_vi || ""),
             h("div", { class: "hist" }, wbar(hist.selected_share || 0, 1), h("span", { class: "muted small" }, `${fmtPct(hist.selected_share, 0)} / ${hist.n_decisions ?? "—"} kỳ`), h("span", { class: "muted small" }, hist.last_selected ? `gần nhất ${fmtDate(hist.last_selected)}` : "chưa từng chọn"))
           ];
@@ -163,7 +164,8 @@ function signalsCard(a) {
     );
   }
   draw();
-  return h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, "Tín hiệu chiến lược"), segmented([["", "Mọi khung"], ...HORIZONS.map((hz) => [hz, HORIZON_LABEL[hz]])], "", (v) => ((state.hz = v), draw()), "Lọc theo khung")), holder);
+  const excluded = (a.excluded_strategies || []).map((x) => h("div", { class: "notice warn" }, `${x.strategy_id}${x.horizon ? ` (${HORIZON_LABEL[x.horizon] || x.horizon})` : ""}: ${x.note_vi || "không tính cho mã này"}`));
+  return h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, "Tín hiệu chiến lược"), segmented([["", "Mọi khung"], ...HORIZONS.map((hz) => [hz, HORIZON_LABEL[hz]])], "", (v) => ((state.hz = v), draw()), "Lọc theo khung")), holder, excluded);
 }
 
 // ---------- features ----------
@@ -171,6 +173,9 @@ const PCT_NAME = /(^|_)(ret|mom|vol(?!ume)|dist|dd|trend|pct|vs_)/;
 function fmtFeature(f) {
   const v = f.value;
   if (v === null || v === undefined) return "—";
+  if (f.unit === "pct") return fmtPct(v, 1);
+  if (f.unit === "vnd") return fmtVndShort(v);
+  if (f.unit === "ratio" || f.unit === "raw") return fmtNumVi(v, 2);
   if (/adv|value|vnd/.test(f.name)) return fmtVndShort(v);
   if (PCT_NAME.test(f.name) && Math.abs(v) < 20) return fmtPct(v, 1);
   return fmtNumVi(v, 2);
@@ -205,7 +210,7 @@ function backtestCard(a) {
     "section",
     { class: "card" },
     h("div", { class: "card-head" }, h("h2", null, "Backtest"), h("span", { class: "chip soft" }, dataLabel(a))),
-    h("p", { class: "muted small" }, "So sánh mua và giữ với phần đóng góp của từng chiến lược trong những kỳ nó đang giữ mã này. Đây là đối chiếu lịch sử, không phải dự báo."),
+    h("p", { class: "muted small" }, bt.note_vi || "So sánh mua và giữ với phần đóng góp của từng chiến lược trong những kỳ nó đang giữ mã này. Đây là đối chiếu lịch sử, không phải dự báo."),
     h("div", { class: "kpis stat-grid" }, stat("Mua & giữ · CAGR", fmtPct(bh.cagr, 1, true)), stat("Biến động", fmtPct(bh.vol, 1)), stat("Sharpe", fmtNumVi(bh.sharpe, 2)), stat("Sụt giảm tối đa", fmtPct(bh.max_dd, 1))),
     table(
       ["Chiến lược", "Khung", "Số kỳ giữ", "Đóng góp", "Tỷ lệ kỳ lãi", "Giữ TB (kỳ)"],
@@ -238,7 +243,7 @@ function riskCard(a) {
           HORIZON_LABEL[hz],
           fmtVndShort(b.capital_vnd),
           fmtPct(b.weight, 0),
-          `${fmtVnd(b.lot_qty)} lô${b.odd_qty ? ` + ${fmtVnd(b.odd_qty)} lẻ` : ""}`,
+          lotText(b, (a.price || {}).lot_size),
           `${fmtVnd(b.notional_vnd)} đ`,
           b.stop_price ? `${fmtVnd(b.stop_price)} (${fmtPct(b.stop_pct, 1)})` : "—",
           `${fmtVnd(b.risk_vnd)} đ`,

@@ -134,7 +134,7 @@ export function createStockMock({ TICKERS, DATES, PRICES, capitalFor, trialsTota
     const notional = qty * last;
     const cost = Math.round(lotQty * lot * last * (COST.fee + COST.slip_round) + oddQty * last * (COST.fee + COST.slip_odd));
     return {
-      last_close: last, lot_size: lot, lot_qty: lotQty, odd_qty: oddQty, notional_vnd: notional,
+      last_close: last, lot_size: lot, lot_qty: lotQty * lot, lots: lotQty, odd_qty: oddQty, notional_vnd: notional,
       entry_zone: { low: last, high: Math.min(ceiling, roundTick(last * (1 + COST.slip_round))) }, ceiling, floor,
       atr14, stop_price: stop, stop_pct: stop / last - 1, est_cost_vnd: cost, risk_vnd: Math.round(qty * (last - stop)),
     };
@@ -164,8 +164,9 @@ export function createStockMock({ TICKERS, DATES, PRICES, capitalFor, trialsTota
       asof: DATES[L], source: "synthetic", synthetic: true, label: LABEL, status: "preview", note_vi: NOTE_VI,
       horizon, book_capital_vnd: capital,
       strategies: picks.map(({ d, selected }) => ({ strategy_id: d.id, params: d.params, trial_id: trialId(d), registered: true, weights: Object.fromEntries([...selected].map((tk) => [tk, 1 / d.top])) })),
+      warnings: horizon === "long" ? ["Khung dài hạn chỉ có 12 kỳ quyết định: chưa đủ để đánh giá độ ổn định."] : [],
       targets, cash_weight: Math.max(0, 1 - targets.reduce((a, t) => a + t.weight, 0)),
-      evidence: { trials_counted: trialsTotal(), dsr_by_strategy: dsr, gate1_pass: Object.keys(dsr).filter((k) => dsr[k] >= 0.95) },
+      evidence: { trials_counted: trialsTotal(), trials_contributing: defs.length, dsr_by_strategy: dsr, gate1_pass: Object.keys(dsr).filter((k) => dsr[k] >= 0.95) },
     };
   }
   const allRecommendations = () => ({ horizons: Object.fromEntries(HORIZONS.map((hz) => [hz, recommendation(hz)])) });
@@ -201,11 +202,6 @@ export function createStockMock({ TICKERS, DATES, PRICES, capitalFor, trialsTota
       const defs = SDEF.filter((d) => d.horizon === hz);
       const target = rec.targets.find((t) => t.ticker === tk);
       const holding = defs.filter((d) => pick(d, L).selected.has(tk)).length;
-      // "BÁN": it was selected by some strategy at the previous decision but by none now
-      const prev = defs.filter((d) => {
-        const ds = decisions(d);
-        return ds.length > 1 && ds[ds.length - 2].selected.has(tk);
-      }).length;
       let action = "KHÔNG";
       let reason = "Không chiến lược nào của khung này đang chọn mã.";
       if (target) {
@@ -213,10 +209,7 @@ export function createStockMock({ TICKERS, DATES, PRICES, capitalFor, trialsTota
         reason = `${target.consensus}/${defs.length} chiến lược đồng thuận; tỷ trọng đề xuất ${pctText(target.weight, 0)} sau lớp quản trị rủi ro.`;
       } else if (holding > 0) {
         action = "GIỮ";
-        reason = `${holding}/${defs.length} chiến lược còn chọn mã nhưng chưa vào danh mục mục tiêu (giới hạn số vị thế hoặc tỷ trọng).`;
-      } else if (prev > 0) {
-        action = "BÁN";
-        reason = `Phiên quyết định trước ${prev} chiến lược còn chọn mã, nay không còn chiến lược nào chọn.`;
+        reason = `${holding}/${defs.length} chiến lược đang giữ mã nhưng danh mục kết hợp sau lớp rủi ro không có mã này: chưa nên mua thêm.`;
       }
       by[hz] = { action, consensus: target ? target.consensus : holding, of: defs.length, weight: target ? target.weight : 0, reason_vi: reason };
     });
@@ -236,10 +229,11 @@ export function createStockMock({ TICKERS, DATES, PRICES, capitalFor, trialsTota
       ["volume_ratio", "Khối lượng / TB 20 phiên", "Thanh khoản", (m) => m.volRatio, "Trên 1 nghĩa là phiên gần nhất giao dịch sôi động hơn thường lệ."],
       ["adv20_value", "GTGD trung bình 20 phiên", "Thanh khoản", (m) => m.adv20, "Giá trị giao dịch trung bình mỗi phiên (VND): thước đo mức dễ mua bán."],
     ];
+    const UNIT = { ret_5d: "pct", ret_21d: "pct", mom_12_1: "pct", vol_20d: "pct", vol_60d: "pct", rsi14: "raw", close_vs_sma200: "pct", dist_high_52w: "pct", volume_ratio: "ratio", adv20_value: "vnd" };
     return defs.map(([name, label_vi, group, f, help_vi]) => {
       const all = TICKERS.map((t) => f(metricsAt(t, L)));
       const own = f(metricsAt(tk, L));
-      return { name, label_vi, group, value: own, pct_rank_universe: all.filter((x) => x <= own).length / all.length, help_vi };
+      return { name, label_vi, group, unit: UNIT[name], value: own, pct_rank_universe: all.filter((x) => x <= own).length / all.length, help_vi };
     });
   }
 
@@ -249,11 +243,16 @@ export function createStockMock({ TICKERS, DATES, PRICES, capitalFor, trialsTota
       const ds = decisions(d);
       const sel = ds.filter((x) => x.selected.has(tk));
       const rk = now.rank.get(tk);
+      const noSignal = d.id === "S04"; // like the real API: some strategies have no per-ticker rank or signal
       const holds = now.selected.has(tk);
       return {
         strategy_id: d.id, params: d.params, horizon: d.horizon, trial_id: trialId(d), holds, weight: holds ? 1 / d.top : 0,
-        rank: rk ? rk.rank : null, of: now.of, signal: { name: d.signal, value: rk ? rk.value : null, name_vi: d.name_vi },
-        reason_vi: rk
+        rank: rk && !noSignal ? rk.rank : null, of: noSignal ? null : now.of, signal: noSignal ? null : { name: d.signal, value: rk ? rk.value : null },
+        reason_vi: noSignal
+          ? holds
+            ? "Chiến lược giữ mã này nhưng không có xếp hạng theo từng mã."
+            : "Chiến lược không có xếp hạng theo từng mã; hiện không giữ mã này."
+          : rk
           ? holds
             ? `Xếp hạng ${rk.rank}/${now.of} theo ${d.signal} (${signalText(d, rk.value)}): ${d.why}; nằm trong top ${d.top} nên được chọn.`
             : `Xếp hạng ${rk.rank}/${now.of} theo ${d.signal} (${signalText(d, rk.value)}), ngoài top ${d.top} nên không được chọn.`
@@ -291,7 +290,7 @@ export function createStockMock({ TICKERS, DATES, PRICES, capitalFor, trialsTota
       if (cur) runs.push(cur);
       return { strategy_id: d.id, horizon: d.horizon, periods_held: held, contribution_return: contrib, hit_rate: held ? wins / held : null, avg_hold_periods: runs.length ? mean(runs) : null };
     });
-    return { buy_hold: { cagr: (seg[seg.length - 1] / seg[0]) ** (252 / seg.length) - 1, vol: sd(r) * Math.sqrt(252), sharpe: (mean(r) / sd(r)) * Math.sqrt(252), max_dd: dd }, by_strategy: by };
+    return { basis: "attribution", note_vi: "Đóng góp của mã trong từng chiến lược: tỷ trọng x lợi suất giữa hai ngày quyết định, chưa tính phí, lớp rủi ro và việc kết hợp chiến lược.", buy_hold: { cagr: (seg[seg.length - 1] / seg[0]) ** (252 / seg.length) - 1, vol: sd(r) * Math.sqrt(252), sharpe: (mean(r) / sd(r)) * Math.sqrt(252), max_dd: dd }, by_strategy: by };
   }
 
   function chart(tk) {
@@ -307,7 +306,7 @@ export function createStockMock({ TICKERS, DATES, PRICES, capitalFor, trialsTota
       });
     });
     markers.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    return { dates: DATES.slice(from), close: PRICES[tk].close.slice(from).map((p) => roundTick(p * 1000)), volume: PRICES[tk].volume.slice(from), markers };
+    return { basis: "adjusted", dates: DATES.slice(from), close: PRICES[tk].close.slice(from).map((p) => roundTick(p * 1000)), volume: PRICES[tk].volume.slice(from), markers };
   }
 
   function analysis(tk, { runId, generatedAt }) {
@@ -318,7 +317,7 @@ export function createStockMock({ TICKERS, DATES, PRICES, capitalFor, trialsTota
       const t = recommendation(hz).targets.find((x) => x.ticker === tk);
       const capital = capitalFor(hz);
       const s = sizing(tk, t ? t.weight : 0, capital);
-      book[hz] = { capital_vnd: capital, weight: t ? t.weight : 0, lot_qty: s.lot_qty, odd_qty: s.odd_qty, notional_vnd: s.notional_vnd, stop_price: s.stop_price, stop_pct: s.stop_pct, risk_vnd: s.risk_vnd, est_cost_vnd: s.est_cost_vnd };
+      book[hz] = { capital_vnd: capital, weight: t ? t.weight : 0, lot_qty: s.lot_qty, lots: s.lots, odd_qty: s.odd_qty, notional_vnd: s.notional_vnd, stop_price: s.stop_price, stop_pct: s.stop_pct, risk_vnd: s.risk_vnd, est_cost_vnd: s.est_cost_vnd };
     });
     const buys = HORIZONS.filter((hz) => rec.by_horizon[hz].action === "MUA");
     const HZ = { short: "ngắn hạn", medium: "trung hạn", long: "dài hạn" };
@@ -326,14 +325,14 @@ export function createStockMock({ TICKERS, DATES, PRICES, capitalFor, trialsTota
     const gaps = tk === "VPB" ? ["VPB-2026-10-30"] : [];
     return {
       ticker: tk, asof: DATES[L], source: "synthetic", synthetic: true, label: LABEL, run_id: runId, generated_at: generatedAt,
-      price, features: features(tk), strategies: strategyRows(tk), backtest: backtest(tk), risk: { book },
+      price, features: features(tk), strategies: strategyRows(tk), excluded_strategies: [{ strategy_id: "S06", horizon: "short", trial_id: null, registered: false, note_vi: "Bị chặn: chưa có nguồn dữ liệu miễn phí (GAP-04); không tính cho mã này." }], disclaimer_vi: DISCLAIMER_VI, backtest: backtest(tk), risk: { book },
       quality: { gaps, exec_exclusions: tk === "TCB" ? 1 : 0, dq_findings_1y: tk === "VPB" ? 2 : tk === "SHB" ? 1 : 0, corporate_actions: tk === "HDB" ? [{ date: "2026-06-12", type: "cổ tức cổ phiếu", ratio: "30%" }] : [] },
       recommendation: rec, chart: chart(tk),
     };
   }
 
-  function compare(tickers) {
-    return { asof: DATES[L], source: "synthetic", synthetic: true, label: LABEL, tickers: tickers.map((tk) => ({ ticker: tk, price: priceBlock(tk), recommendation: recommendationBlock(tk) })) };
+  function compare(tickers, missing = []) {
+    return { source: "synthetic", synthetic: true, label: LABEL, disclaimer_vi: DISCLAIMER_VI, missing, tickers: tickers.map((tk) => ({ ticker: tk, asof: DATES[L], run_id: `seed-stock-${tk}`, price: priceBlock(tk), recommendation: recommendationBlock(tk) })) };
   }
 
   return { allRecommendations, recommendation, stocksList, analysis, compare, has: (tk) => TICKERS.includes(tk) };
