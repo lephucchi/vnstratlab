@@ -303,7 +303,8 @@ def test_stock_analysis_params_and_endpoints(registered: Path) -> None:
     started = client.post("/api/stocks/ACB/analyze", json={"horizons": ["short"]}, headers=HEADERS)
     assert started.status_code == 202
     assert started.json()["cli"] == "vnstratlab stock ACB"
-    assert wait_done(client, started.json()["run_id"])["status"] == "success"
+    done = wait_done(client, started.json()["run_id"])
+    assert done["status"] == "success", done
     got = client.get("/api/stocks/ACB/analysis").json()
     assert got["ticker"] == "ACB"
     assert set(got["recommendation"]["by_horizon"]) == {"short"}
