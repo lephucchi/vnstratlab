@@ -80,7 +80,7 @@ and a summary table. The window is fixed (2016-01-01 .. 2020-12-31) whatever tod
 Output shape (numbers are illustrative):
 
 ```text
-SYNTHETIC DATA — results say nothing about the real market.
+SYNTHETIC DATA - results say nothing about the real market.
 trial                                   horizon   CAGR    vol  Sharpe   maxDD  turnover  trades
 S01_weekly_reversal n=2                 short    -1.4%   5.4%   -0.23  -10.3%     0.574     364
 S17_equal_weight (benchmark)            short     2.4%   6.0%    0.43   -8.9%     0.065     177

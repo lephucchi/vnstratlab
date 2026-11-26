@@ -166,6 +166,12 @@ All notable changes are documented here. The format follows
   `po/data.json` is no longer written.
 
 ### Fixed
+- **Demo follow-ups (X-65):** the risk layer logs a blocked decision at DEBUG (the engine already
+  warns once when the circuit breaker turns on or off, so a demo run has a handful of warnings
+  instead of over a thousand); the demo warning line is pure ASCII (Windows consoles); the demo
+  builds the per-session price bars once and shares them across trials (`bars=` on `Simulator`
+  and `run_simulation`), so it is faster. No simulation result changes (digests are equal; the
+  engine version is not bumped).
 - **Risk follow-ups (P1-T12b):** `Simulator.add_actions` now updates the ex-date ATR factors and
   recomputes the affected tickers' ATR series, so a late stock action gives the same ATR state
   from its apply session on as one known up front (past reads are not rewritten). Lots shrink to

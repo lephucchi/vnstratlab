@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 
 import numpy as np
@@ -222,3 +223,13 @@ def test_property_output_never_exceeds_request(engine_cfg: AppConfig) -> None:
             for t, value in out.weights.items():
                 held_w = held.get(t, 0.0) * prices[t] / equity
                 assert value <= held_w + 1e-9
+
+
+def test_blocked_decisions_log_at_debug_not_warning(
+    engine_cfg: AppConfig, caplog: pytest.LogCaptureFixture
+) -> None:
+    rl = layer(engine_cfg)
+    caplog.set_level(logging.DEBUG, logger="vnstratlab.risk.layer")
+    for _ in range(3):
+        assert apply(rl, w(AAA=0.1), equity=89_900_000).alert is True
+    assert [r.levelno for r in caplog.records] == [logging.DEBUG] * 3
