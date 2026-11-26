@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795698154468,
+  "lastUpdate": 1795699554917,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1863,6 +1863,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0004043630682126185",
             "extra": "mean: 10.030132388889415 msec\nrounds: 18"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "678b89c2b6ad21b7eaebb40b5b43bc5306ff26b9",
+          "message": "feat(app): Console v2 UI in the intro-site design system, with terminal, palette, config and strategy pages (#88)\n\nCloses #79. Monochrome site/PO design (Geist bundled with OFL, buffalo mascot, light/dark), overview, command palette, toasts, active-run tracker, cancel/rerun, log search, charts, config editor with diff, strategy param sets, dbt-style terminal with CLI shown for every action, tour. Checked against the real backend. G2 light (manager).",
+          "timestamp": "2026-11-26T20:25:20+07:00",
+          "tree_id": "de7b5464d16ef9478717ff96dc68040026ae445d",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/678b89c2b6ad21b7eaebb40b5b43bc5306ff26b9"
+        },
+        "date": 1795699554353,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 3.412316831994021,
+            "unit": "iter/sec",
+            "range": "stddev: 0.008864509462172496",
+            "extra": "mean: 293.0560229999628 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 104.6434287830178,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00024751651446759286",
+            "extra": "mean: 9.556261789486454 msec\nrounds: 19"
           }
         ]
       }
