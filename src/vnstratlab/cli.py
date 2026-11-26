@@ -1125,6 +1125,86 @@ def lab_register(
         typer.echo(f"trials now: {total}")
 
 
+@app.command()
+def recommend(
+    horizon: Annotated[
+        Horizon | None, typer.Option("--horizon", help="Only this horizon; default: all three.")
+    ] = None,
+    source: Annotated[
+        str | None, typer.Option("--source", help="Data source; default data.source in config.")
+    ] = None,
+) -> None:
+    """Current recommended stocks per horizon (preview, equal weight over registered trials).
+
+    Recommend-only: it never places orders. Only registered trials count.
+    """
+    import duckdb
+
+    from vnstratlab.data.protocol import SourceError
+    from vnstratlab.insight.recommend import (
+        InsightError,
+        all_recommendations,
+        format_recommendations,
+        recommendations,
+    )
+    from vnstratlab.strategies.registry import StrategyConfigError
+
+    _tolerant_output()
+    cfg = _load_cfg_or_exit()
+    name = source or cfg.data.source
+    try:
+        if horizon is not None:
+            bodies = [recommendations(cfg, get_paths(), name, horizon.value)]
+        else:
+            bodies = list(all_recommendations(cfg, get_paths(), name)["horizons"].values())
+    except (InsightError, SourceError, StrategyConfigError, duckdb.Error) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo("\n\n".join(format_recommendations(b) for b in bodies))
+
+
+@app.command()
+def stock(
+    ticker: Annotated[str, typer.Argument(help="Ticker in the local store, e.g. ACB.")],
+    source: Annotated[
+        str | None, typer.Option("--source", help="Data source; default data.source in config.")
+    ] = None,
+    horizon: Annotated[
+        Horizon | None, typer.Option("--horizon", help="Only this horizon; default: all three.")
+    ] = None,
+) -> None:
+    """Analyse one stock: numbers, each registered strategy's signal and a recommendation.
+
+    Recommend-only: it never places orders. The result is also what the Console shows.
+    """
+    from vnstratlab.data.protocol import SourceError
+    from vnstratlab.insight.recommend import InsightError
+    from vnstratlab.insight.stock import format_analysis
+    from vnstratlab.runs import BusyError, ParamError, run_pipeline
+
+    _tolerant_output()
+    cfg = _load_cfg_or_exit()
+    params = {
+        "ticker": ticker,
+        "source": source or cfg.data.source,
+        "horizons": [horizon.value] if horizon is not None else None,
+    }
+
+    def progress(message: str) -> None:
+        typer.echo(f"... {message}", err=True)
+
+    try:
+        result = run_pipeline(get_paths().home, "stock_analysis", params, progress=progress)
+        result.raise_for_failure()
+    except BusyError:
+        typer.echo("error: another run is in progress", err=True)
+        raise typer.Exit(code=1) from None
+    except (ParamError, InsightError, SourceError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(format_analysis(result.state["analysis"]))
+
+
 @app.command("meta-backtest")
 def meta_backtest(horizon: Annotated[Horizon, typer.Option("--horizon")]) -> None:
     """Backtest the lab itself against equal weight and 'pick last winner'."""

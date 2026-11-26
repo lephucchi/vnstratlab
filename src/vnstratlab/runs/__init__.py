@@ -4,6 +4,7 @@
 from vnstratlab.runs.core import (
     KEEP_RUNS,
     BusyError,
+    ParamError,
     Pipeline,
     RunContext,
     RunError,
@@ -23,6 +24,7 @@ __all__ = [
     "PIPELINES",
     "SOURCE_PIPELINES",
     "BusyError",
+    "ParamError",
     "Pipeline",
     "RunContext",
     "RunError",

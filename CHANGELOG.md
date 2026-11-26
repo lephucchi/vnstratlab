@@ -7,6 +7,15 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Recommendations preview and per-stock analysis (X-stock-api):** `vnstratlab recommend` and
+  `vnstratlab stock TICKER`; `vnstratlab.insight` (equal weight over the registered trials of a
+  horizon, then the risk layer once; lot, entry zone, ATR stop and cost from the engine rules;
+  per-stock numbers, features with universe rank, each strategy's signal and decision history,
+  a per-ticker attribution and a recommendation); the `stock_analysis` pipeline, the first one
+  that takes validated parameters (`RunManager.start(pipeline, params)`, `ParamError`); endpoints
+  `GET /api/recommendations[/all]`, `GET /api/stocks`, `POST /api/stocks/{ticker}/analyze`,
+  `GET /api/stocks/{ticker}/analysis`, `GET /api/stocks/compare`. Contract:
+  `docs/cards/stock-insight-api.md`.
 - **Lab statistics (P1-T21):** `vnstratlab.lab.stats` with per-period Sharpe, the Deflated
   Sharpe Ratio (plan Appendix C, non-excess kurtosis, N = every registered trial of the horizon)
   and PBO by CSCV; table `trial_stats` in `lab.duckdb`; `vnstratlab lab stats` with gate-1

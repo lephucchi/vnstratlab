@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from vnstratlab.app import api_cli, api_config, api_data, api_strategies
+from vnstratlab.app import api_cli, api_config, api_data, api_insight, api_strategies
 from vnstratlab.config.loader import ConfigError, load_config
 from vnstratlab.paths import get_paths
 from vnstratlab.runs import (
@@ -28,6 +28,7 @@ from vnstratlab.runs import (
     PIPELINES,
     SOURCE_PIPELINES,
     BusyError,
+    ParamError,
     RunError,
     RunManager,
 )
@@ -180,7 +181,7 @@ def create_app(
             stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
         )
 
-    def begin(pipeline_id: str, accept_terms: bool) -> Any:
+    def begin(pipeline_id: str, accept_terms: bool, params: Mapping[str, Any] | None = None) -> Any:
         from vnstratlab.data.pipeline import record_terms_acceptance, terms_accepted, terms_notice
         from vnstratlab.data.pipeline import utc_now as pipeline_now
         from vnstratlab.data.protocol import SourceError, get_source
@@ -208,9 +209,11 @@ def create_app(
         if adapter is not None and not terms_accepted(paths, adapter):
             record_terms_acceptance(paths, adapter, pipeline_now())
         try:
-            run_id = manager.start(pipeline_id)
+            run_id = manager.start(pipeline_id, params)
         except BusyError as exc:
             return _error(409, "busy", active_run_id=exc.active)
+        except ParamError as exc:
+            return _error(422, exc.code, message=str(exc))
         except RunError as exc:
             return _error(422, "run_error", message=str(exc))
         return JSONResponse(
@@ -247,7 +250,8 @@ def create_app(
             return cli_service.start(command, accept)
         if run.get("pipeline") not in PIPELINES:
             return _error(422, "not_rerunnable", run_id=run_id)
-        return begin(str(run["pipeline"]), accept)
+        again = run.get("params") if run["pipeline"] == "stock_analysis" else None
+        return begin(str(run["pipeline"]), accept, again)
 
     @app.get("/api/data/status")
     def data_status() -> dict[str, Any]:
@@ -366,5 +370,6 @@ def create_app(
     api_config.register(app, paths)
     api_strategies.register(app, paths)
     api_data.register(app, paths, manager)
+    api_insight.register(app, paths, manager)
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app

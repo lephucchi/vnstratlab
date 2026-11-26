@@ -46,6 +46,7 @@ PIPELINE_CLI = {
     "features": "vnstratlab features build",
     "backtest_all": "vnstratlab backtest --all",
     "refresh": "vnstratlab ingest && vnstratlab data rebuild && vnstratlab features build",
+    "stock_analysis": "vnstratlab stock <TICKER>",
 }
 
 Launcher = Callable[[list[str]], list[str]]
