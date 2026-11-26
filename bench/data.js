@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795701156323,
+  "lastUpdate": 1795702571805,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1977,6 +1977,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00024108209901675215",
             "extra": "mean: 13.649751250000453 msec\nrounds: 16"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5aff7c0910b7f1bb5af4b1177a64399738f77e06",
+          "message": "feat(insight): recommendations preview and per-stock analysis API, recommend and stock CLI (X-stock-api) (#98)\n\nCloses #93. Equal-weight preview across registered trials through the risk layer (until P1-T22), lot/stop/cost via existing engine code (hand-checked), per-stock analysis run with params, no lookahead test, disclaimer and data label on every response. G2 light (manager).",
+          "timestamp": "2026-11-26T21:15:33+07:00",
+          "tree_id": "b5e3dac7857a7b30afe33e333033af374b74cc5f",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/5aff7c0910b7f1bb5af4b1177a64399738f77e06"
+        },
+        "date": 1795702571487,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 2.637484977248216,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01222193736060338",
+            "extra": "mean: 379.14907900000117 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 64.7890192667603,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0002311901237569806",
+            "extra": "mean: 15.43471426666656 msec\nrounds: 15"
           }
         ]
       }
