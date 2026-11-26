@@ -15,6 +15,18 @@ All notable changes are documented here. The format follows
   dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
 
 ### Added
+- **Console v2 API (X-console-api):** `GET /api/overview`; run `cancel` (cooperative between tasks) and
+  `rerun`; config editing (`GET/PUT /api/config`, `validate`, `reset`) restricted to whitelisted
+  fields, validated with the real loader and written atomically with a `.bak-<stamp>` copy that keeps
+  your other keys; strategy parameter sets (`GET /api/strategies`, add, enable/disable, delete): a
+  new set is stored in your `config.yaml` as `strategies.<id>.user_params` and its trials are
+  registered first (append-only, so every trial is counted), packaged sets can only be switched
+  off with `disabled_params`; chart data from the local store (`/api/data/prices/<ticker>`,
+  `/api/data/quality`); a built-in terminal (`GET /api/cli/commands`, `POST /api/cli`) that runs only
+  `vnstratlab` subcommands as a run of pipeline `cli` (no shell, no `serve`, `init` needs `--yes`,
+  the source-terms gate applies, 30 minute limit, cancel kills the command); pipelines and started
+  runs show their equivalent `cli` command. Parameter schemas live in `strategies/schemas.py`, so
+  built-in trial ids are unchanged. Packaged defaults are untouched.
 - **PO dashboard product demo (X-po-demo):** the Pages build runs the offline `demo` pipeline into a temp `APP_HOME` and adds a `demo` object (run DAG with durations, last 40 log lines per task, summary table, downsampled equity for S17 and the top 3 trials) to the encrypted PO data only; `tools/build_status.py` takes `--demo-home`, and `status.json` never carries demo fields. The build also publishes the Console's `guide-data.js` under `/po/guide/` and four Playwright screenshots of the synthetic Console under `/po/shots/` (not the Data page). A demo or screenshot failure never fails the build (`demo: unavailable`).
 - **Console UI (P1-T28a):** `vnstratlab serve` now opens a Vietnamese, offline Console (static
   files, no build step, no external assets): an animated step-by-step guide to the pipeline with
