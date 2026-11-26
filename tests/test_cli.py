@@ -56,7 +56,6 @@ def test_version() -> None:
 @pytest.mark.parametrize(
     ("args", "card"),
     [
-        (["demo"], "P1-T32"),
         (["backtest", "--strategy", "S02_breakout20"], "P1-T20"),
         (["lab", "--horizon", "short"], "P1-T22"),
         (["meta-backtest", "--horizon", "long"], "P1-T23"),

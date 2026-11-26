@@ -57,6 +57,42 @@ It creates the home folders and writes only the values that differ from the defa
 `yahoo` prints the data terms notice (accepted for real by `ingest`). It never asks for secrets:
 the optional Telegram report is set up through `.env` ([configuration.md](configuration.md)).
 
+### The demo (offline, synthetic)
+
+```bash
+vnstratlab demo                  # about 45 s; no network, no setup
+vnstratlab demo --out demo-out   # also write summary.csv and equity/<trial_id>.csv
+vnstratlab demo --quiet          # warning and footer only (used by CI)
+```
+
+It goes through the whole Phase 1 pipeline on the synthetic market: ingest, rebuild, features,
+every enabled packaged trial, the simulator in executable mode (lots, odd lots, the risk layer)
+and a summary table. The window is fixed (2016-01-01 .. 2020-12-31) whatever today's date is.
+
+- **It is isolated.** It works in a temporary directory that is deleted at the end. Your app home
+  (market data, trial registry, config, accepted terms) is neither read nor written, and **no
+  trials are registered**: synthetic runs are not lab evidence.
+- **`--out DIR`** needs `DIR` to be empty or missing; otherwise the demo refuses and writes
+  nothing. Only `summary.csv` and `equity/*.csv` are written.
+- **Every result is fake.** The first line of the output says so, and so should anything you
+  copy from it.
+
+Output shape (numbers are illustrative):
+
+```text
+SYNTHETIC DATA — results say nothing about the real market.
+trial                                   horizon   CAGR    vol  Sharpe   maxDD  turnover  trades
+S01_weekly_reversal n=2                 short    -1.4%   5.4%   -0.23  -10.3%     0.574     364
+S17_equal_weight (benchmark)            short     2.4%   6.0%    0.43   -8.9%     0.065     177
+...
+data window 2016-01-01 .. 2020-12-31 (synthetic data from 2015-01-01, features warm)
+trials run 19, skipped 0
+run time 45.0 s
+no trials were registered (synthetic runs are not lab evidence)
+```
+
+Blocked strategies (`enabled: false` in the config) are listed as `skipped: <id>: <reason>`.
+
 ### Real prices from Yahoo Finance (interim source)
 
 Yahoo Finance is the interim price source ([ADR-007](adr/ADR-007-yahoo-interim-source.md)). It

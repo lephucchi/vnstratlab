@@ -11,6 +11,15 @@ All notable changes are documented here. The format follows
   folders and a minimal `config.yaml` (capital per book, data source, brokerage fee), validated with
   the config loader, written atomically; `--force` keeps a `.bak-*` copy and your other keys. It
   never handles secrets.
+
+- **`vnstratlab demo` (P1-T32):** one offline command that runs ingest, rebuild, features, every
+  enabled packaged trial (19 today) and the simulator with the risk layer on the synthetic
+  market (fixed window 2016-2020, about 45 s) and prints a summary table headed by a synthetic
+  data warning. It works in a temporary directory, never touches the app home or the trial
+  registry and registers no trials; `--out DIR` writes `summary.csv` and `equity/<trial_id>.csv`
+  into an empty directory, `--quiet` prints the warning and footer only. New pure module
+  `vnstratlab.lab.metrics` (total return, CAGR, volatility, Sharpe, max drawdown, average
+  turnover) for P1-T20 to reuse.
 - **Strategies S14, S15 and S18 (P1-T19):** S14 low volatility (buy the 4 lowest `std_60d`), S15
   sector trend filter (1/N of the cross-section when the group return over 12 or 6 months is > 0,
   else cash) and S18 Hierarchical Risk Parity (250-session `ret_1d`, single linkage, recursive

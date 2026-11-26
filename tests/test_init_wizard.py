@@ -153,15 +153,15 @@ def test_home_folders_created_and_existing_data_untouched(synthetic_home: Path) 
 def test_secrets_never_read_printed_or_written(
     synthetic_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok-SECRET-123")
-    monkeypatch.setenv("PO_PASSWORD", "pw-SECRET-456")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "CANARY" * 4)
+    monkeypatch.setenv("PO_PASSWORD", "canary" * 4)
     result = runner.invoke(app, ["init", "--yes", "--source", "yahoo"])
     assert result.exit_code == 0, result.output
     assert ".env.example" in result.output
     blobs = [result.output] + [
         p.read_text(errors="ignore") for p in synthetic_home.rglob("*") if p.is_file()
     ]
-    assert not any("SECRET" in blob for blob in blobs)
+    assert not any("CANARY" in blob.upper() for blob in blobs)
     assert not (synthetic_home / ".env").exists()
 
 
