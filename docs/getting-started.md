@@ -145,6 +145,28 @@ Synthetic runs are labelled `SYNTHETIC DATA`; real-data runs carry the Yahoo / s
 `backtest_all` pipeline in the Console, and `GET /api/backtest/summary?source=` returns the
 summary rows.
 
+### Which stocks now, and one stock in detail: `recommend` and `stock`
+
+Both are read-only on your stores, need the same prerequisites as `backtest` (a store with
+features, and **registered** trials) and never place orders:
+
+```bash
+vnstratlab recommend                      # the three horizons; add --horizon short|medium|long
+vnstratlab recommend --source synthetic   # offline
+vnstratlab stock ACB                      # numbers, each strategy's signal, a recommendation
+vnstratlab stock ACB --horizon medium --source synthetic
+```
+
+`recommend` is a **preview** until the lab selection (P1-T22) exists: the registered trials of a
+horizon get equal weight, then the risk layer applies once (ATR sizing, max weight, max
+positions). Each line shows the weight, how many strategies hold the stock (consensus), round
+lots and odd lot, an entry zone, the ATR stop and the estimated buying cost. An enabled strategy
+that is not registered is listed as skipped. `stock` is the `stock_analysis` pipeline (run
+`load`, `features`, `signals`, `backtest`, `report`): it keeps the latest analysis per stock, which
+the Console shows (`GET /api/recommendations`, `/api/stocks`, `/api/stocks/<TICKER>/analysis`).
+Every output carries the data label (`SYNTHETIC DATA` or the Yahoo / survivorship label) and the
+disclaimer: a reference only, you decide and you place any order yourself.
+
 ### Runs, and the local Console: `vnstratlab serve`
 
 `demo`, `ingest`, `data rebuild` and `features build` are recorded as **runs**: a small chain of

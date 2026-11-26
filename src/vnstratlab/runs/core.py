@@ -47,6 +47,14 @@ class RunError(RuntimeError):
     """A pipeline is unknown or malformed, or a run failed."""
 
 
+class ParamError(RunError):
+    """The parameters of a run are refused; ``code`` is the API error code."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 class BusyError(RunError):
     """Another run is in progress."""
 
@@ -85,11 +93,19 @@ class Task:
     upstream: tuple[str, ...] = ()
 
 
+ParamCheck = Callable[[Path, Mapping[str, Any]], dict[str, Any]]
+
+
 @dataclass(frozen=True)
 class Pipeline:
+    """``check`` (optional) validates and normalises the parameters of a run: a pipeline without it
+    accepts none from outside (the HTTP API and ``RunManager.start``); only ``stock_analysis`` has
+    one. Internal callers (the CLI commands, the test hook) hand their own params unchecked."""
+
     id: str
     label_vi: str
     tasks: tuple[Task, ...]
+    check: ParamCheck | None = None
 
     def __post_init__(self) -> None:
         ids = [t.id for t in self.tasks]
@@ -424,6 +440,16 @@ def _recording_home(home: Path) -> Iterator[Path]:
         yield Path(tmp)
 
 
+def checked_params(home: Path, pipeline: Pipeline, params: Mapping[str, Any]) -> dict[str, Any]:
+    """The validated params of a run started from outside. Raises ``ParamError``: a pipeline that
+    takes no params refuses any; one with a ``check`` must get valid ones."""
+    if pipeline.check is None:
+        if params:
+            raise ParamError("params_not_accepted", f"pipeline {pipeline.id} takes no parameters")
+        return {}
+    return pipeline.check(home, params)
+
+
 def run_pipeline(
     home: Path,
     pipeline_id: str,
@@ -435,6 +461,8 @@ def run_pipeline(
     from vnstratlab.runs.pipelines import get_pipeline
 
     pipeline = get_pipeline(pipeline_id)
+    if pipeline.check is not None:
+        params = pipeline.check(home, params or {})
     with _recording_home(home) as where:
         run_id = create_run(where, pipeline, params)
         return execute_run(where, pipeline, run_id, params, progress=progress)
@@ -478,11 +506,16 @@ class RunManager:
     def active_run_id(self) -> str | None:
         return next(iter(_active), None)
 
-    def start(self, pipeline_id: str) -> str:
+    def start(self, pipeline_id: str, params: Mapping[str, Any] | None = None) -> str:
+        """Start a pipeline. ``params`` (from the API) are validated: only a pipeline with a
+        ``check`` accepts them, and one with a ``check`` requires them (``ParamError``)."""
         from vnstratlab.runs.pipelines import get_pipeline
 
         pipeline = get_pipeline(pipeline_id)
-        params = self._params.get(pipeline_id, {})
+        if params is not None or pipeline.check is not None:
+            params = checked_params(self.home, pipeline, params or {})
+        else:
+            params = self._params.get(pipeline_id, {})
         run_id = create_run(self.home, pipeline, params)
         thread = threading.Thread(
             target=self._run, args=(pipeline, run_id, params), name=f"run-{run_id}", daemon=True

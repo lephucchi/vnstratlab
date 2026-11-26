@@ -8,6 +8,10 @@
   registered trials, results in ``lab.duckdb``) -> lab_stats (DSR and PBO, table ``trial_stats``)
   -> report. Parameters: ``source``, ``strategy``,
   ``modes``, ``register``, ``start``, ``end``; all optional.
+- ``stock_analysis``: load -> features -> signals -> backtest -> report for one ticker (card
+  X-stock-api, ``vnstratlab.insight.stock``). The only pipeline that takes parameters from the
+  API: ``ticker`` (must exist in the store), ``source`` and ``horizons`` (validated by
+  ``_check_stock``). Read-only on the market and lab stores.
 
 Heavy imports (pandas, duckdb) happen inside the task functions, so importing this module is cheap.
 """
@@ -16,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import re
 import tempfile
 from collections.abc import Mapping
 from datetime import date
@@ -24,11 +29,12 @@ from typing import TYPE_CHECKING, Any
 
 from vnstratlab.config.loader import load_config
 from vnstratlab.paths import get_paths
-from vnstratlab.runs.core import Pipeline, RunContext, RunError, Task
+from vnstratlab.runs.core import ParamError, Pipeline, RunContext, RunError, Task
 
 if TYPE_CHECKING:
     from vnstratlab.config.models import AppConfig
     from vnstratlab.demo import DemoState
+    from vnstratlab.insight.stock import StockState
 
 # Pipelines that read from the configured (real) source: the ones that may need its terms.
 SOURCE_PIPELINES = ("refresh", "ingest")
@@ -279,6 +285,112 @@ def _opt_date(value: object) -> date | None:
     return None if value is None else _as_date(value, date.min)
 
 
+# ------------------------------------------------------------------ stock analysis tasks
+
+# ``home`` is set by the check itself (the app home the request was validated against): a child
+# process started by the Console terminal records its run in a throwaway home, so the task must
+# not take its paths from ``ctx.home``.
+_STOCK_KEYS = frozenset({"ticker", "source", "horizons", "home"})
+
+
+def _check_stock(home: Path, params: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the parameters of ``stock_analysis``: a ticker that exists in the source's store."""
+    from vnstratlab.config.loader import ConfigError
+    from vnstratlab.data.store import MarketStore, kind_of_source
+    from vnstratlab.insight.recommend import InsightError
+    from vnstratlab.insight.stock import TICKER_RE, parse_horizons
+
+    extra = sorted(set(params) - _STOCK_KEYS)
+    if extra:
+        raise ParamError(
+            "bad_params", f"unknown parameter(s) {extra}; allowed {sorted(_STOCK_KEYS)}"
+        )
+    ticker = str(params.get("ticker") or "").strip().upper()
+    if not TICKER_RE.match(ticker):
+        raise ParamError("bad_ticker", f"bad ticker {ticker!r}")
+    try:
+        source = str(params.get("source") or load_config(home).data.source)
+    except ConfigError as exc:
+        raise ParamError("config_invalid", str(exc)) from None
+    if not re.match(r"^[A-Za-z0-9_-]{1,32}$", source):
+        raise ParamError("bad_source", f"bad source {source!r}")
+    raw = params.get("horizons")
+    if raw is not None and (
+        not isinstance(raw, list | tuple) or not all(isinstance(h, str) for h in raw)
+    ):
+        raise ParamError("bad_horizon", "horizons must be a list of short, medium or long")
+    try:
+        horizons = parse_horizons(list(raw) if raw else None)
+    except InsightError as exc:
+        raise ParamError(exc.code, str(exc)) from None
+    kind = kind_of_source(source)
+    db_path = get_paths(home).market_db_for(kind)
+    if not db_path.is_file():
+        raise ParamError("no_data", f"no store for source {source!r}: run the refresh pipeline")
+    with MarketStore(db_path, kind, read_only=True) as store:
+        found = (
+            store.has_table("prices_exec")
+            and store.connection.execute(
+                "SELECT 1 FROM prices_exec WHERE ticker = ? AND source = ? LIMIT 1",
+                [ticker, source],
+            ).fetchone()
+            is not None
+        )
+    if not found:
+        raise ParamError("unknown_ticker", f"{ticker} is not in the {source} store")
+    return {"ticker": ticker, "source": source, "horizons": list(horizons), "home": str(home)}
+
+
+def _stock(ctx: RunContext) -> StockState:
+    state: StockState = ctx.state["stock"]
+    return state
+
+
+def _stock_load(ctx: RunContext) -> Mapping[str, Any]:
+    from vnstratlab.insight import stock
+
+    home = Path(str(ctx.params["home"]))
+    ctx.state["stock"] = stock.StockState(
+        load_config(home),
+        get_paths(home),
+        str(ctx.params["source"]),
+        str(ctx.params["ticker"]),
+        stock.parse_horizons(list(ctx.params.get("horizons") or [])),
+        run_id=ctx.run_dir.name,
+    )
+    ctx.note(f"load {ctx.params['ticker']} from {ctx.params['source']}")
+    return stock.stage_load(_stock(ctx))
+
+
+def _stock_features(ctx: RunContext) -> Mapping[str, Any]:
+    from vnstratlab.insight import stock
+
+    return stock.stage_features(_stock(ctx))
+
+
+def _stock_signals(ctx: RunContext) -> Mapping[str, Any]:
+    from vnstratlab.insight import stock
+
+    return stock.stage_signals(_stock(ctx), ctx.note)
+
+
+def _stock_backtest(ctx: RunContext) -> Mapping[str, Any]:
+    from vnstratlab.insight import stock
+
+    return stock.stage_backtest(_stock(ctx))
+
+
+def _stock_report(ctx: RunContext) -> Mapping[str, Any]:
+    from vnstratlab.insight import stock
+
+    st = _stock(ctx)
+    summary = stock.stage_report(st)
+    stock.store_analysis(st.paths, ctx.run_dir, st.analysis)
+    ctx.state["analysis"] = st.analysis
+    ctx.note(f"analysis stored for {st.ticker}")
+    return summary
+
+
 # ------------------------------------------------------------------ registry
 
 _INGEST = Task("ingest", "Tải dữ liệu", _real_ingest)
@@ -318,10 +430,23 @@ def _build() -> dict[str, Pipeline]:
             Task("report", "Lập báo cáo", _bt_report, ("lab_stats",)),
         ),
     )
+    stock_analysis = Pipeline(
+        "stock_analysis",
+        "Phân tích một mã",
+        (
+            Task("load", "Nạp dữ liệu của mã", _stock_load),
+            Task("features", "Tính số liệu và đặc trưng", _stock_features, ("load",)),
+            Task("signals", "Tín hiệu của các chiến lược", _stock_signals, ("features",)),
+            Task("backtest", "Đóng góp lịch sử", _stock_backtest, ("signals",)),
+            Task("report", "Lập kết luận", _stock_report, ("backtest",)),
+        ),
+        check=_check_stock,
+    )
     return {
         "demo": demo,
         "refresh": refresh,
         "backtest_all": backtest_all,
+        "stock_analysis": stock_analysis,
         "ingest": Pipeline("ingest", "Tải dữ liệu", (Task("ingest", "Tải dữ liệu", _real_ingest),)),
         "rebuild": Pipeline(
             "rebuild", "Dựng lại chuỗi giá", (Task("rebuild", "Dựng lại chuỗi giá", _real_rebuild),)
