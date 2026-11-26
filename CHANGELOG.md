@@ -7,6 +7,12 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- **Demo follow-ups (X-65):** the risk layer logs a blocked decision at DEBUG (the engine already
+  warns once when the circuit breaker turns on or off, so a demo run has a handful of warnings
+  instead of over a thousand); the demo warning line is pure ASCII (Windows consoles); the demo
+  builds the per-session price bars once and shares them across trials (`bars=` on `Simulator`
+  and `run_simulation`), so it is faster. No simulation result changes (digests are equal; the
+  engine version is not bumped).
 - **Leaner process and tests (X-trim, owner decision 2026-11-26):** the full G2 review tier is
   limited to engine, finance, cost and statistics math; reviews are one round (a delta round only
   for an unfixed blocker); new cards follow a lean test policy. On pull requests CI runs the test
