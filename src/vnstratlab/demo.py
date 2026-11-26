@@ -37,6 +37,7 @@ from vnstratlab.data.protocol import TickTable, universe_tickers
 from vnstratlab.data.sources.synthetic import SyntheticSource
 from vnstratlab.data.store import MarketStore
 from vnstratlab.engine import ENGINE_VERSION, make_params, run_simulation
+from vnstratlab.engine.loop import build_bars
 from vnstratlab.features.build import build_features, load_features
 from vnstratlab.lab.metrics import ann_vol, avg_turnover, cagr, max_drawdown, sharpe
 from vnstratlab.paths import get_paths
@@ -48,7 +49,7 @@ DEMO_START = date(2016, 1, 1)
 DEMO_END = date(2020, 12, 31)
 COOLDOWN_SESSIONS: dict[str, int] = {"short": 5, "medium": 21, "long": 21}
 SOURCE = "synthetic"
-WARNING_LINE = "SYNTHETIC DATA — results say nothing about the real market."
+WARNING_LINE = "SYNTHETIC DATA - results say nothing about the real market."
 BENCHMARK_ID = "S17_equal_weight"
 SUMMARY_COLUMNS = (
     "trial_id",
@@ -279,6 +280,7 @@ def stage_simulate(st: DemoState, progress: Callable[[str], None] | None = None)
         raise DemoError("the strategies stage has not run")
     risk = RiskLayer(cfg.risk)
     st.rows = []
+    bars = build_bars(prep.frame.prices)  # same price frame for every trial: build once
     for strategy, horizon, targets in st.plans:
         note(f"{strategy.id} {horizon}")
         capital = float(getattr(cfg.books, horizon).capital_vnd)
@@ -291,6 +293,7 @@ def stage_simulate(st: DemoState, progress: Callable[[str], None] | None = None)
             params,
             risk=risk,
             cooldown_sessions=COOLDOWN_SESSIONS[horizon],
+            bars=bars,
         )
         spec = make_trial_spec(strategy, horizon, prep.feature_version, ENGINE_VERSION)
         st.rows.append(

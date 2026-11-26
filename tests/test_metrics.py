@@ -11,6 +11,7 @@ from vnstratlab.lab.metrics import (
     ann_vol,
     avg_turnover,
     cagr,
+    equity_curve,
     max_drawdown,
     sharpe,
     total_return,
@@ -66,3 +67,10 @@ def test_avg_turnover_counts_sessions_with_fills_only() -> None:
     assert avg_turnover(series(0.0, 0.2, 0.0, 0.4)) == pytest.approx(0.3)
     assert avg_turnover(series(0.0, 0.0)) == 0.0
     assert avg_turnover(series()) == 0.0
+
+
+def test_equity_curve_compounds_by_hand() -> None:
+    # (1+0.10)=1.10; x(1-0.10)=0.99; x(1+0.0)=0.99; x(1+0.50)=1.485
+    out = equity_curve(series(0.10, -0.10, 0.0, 0.50))
+    assert out.tolist() == pytest.approx([1.10, 0.99, 0.99, 1.485])
+    assert equity_curve(series()).empty
