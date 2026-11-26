@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795680871088,
+  "lastUpdate": 1795681882255,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1369,6 +1369,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0001673708742032977",
             "extra": "mean: 8.557066428571554 msec\nrounds: 14"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0d33c4ec2cc83e27dbd8803ff42a268863d6e221",
+          "message": "tools(po): normalise card status, hide superseded and covered ranges; cards for blocked items (#62)\n\nPO board: status normalisation, superseded and covered ranges hidden, cards for blocked items; progress line for #60.",
+          "timestamp": "2026-11-26T15:30:45+07:00",
+          "tree_id": "5c81b8f2f3dd07c29088e2c38e0033194cebd1f4",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/0d33c4ec2cc83e27dbd8803ff42a268863d6e221"
+        },
+        "date": 1795681881469,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 2.606302436491924,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01558363908233824",
+            "extra": "mean: 383.68532600000077 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 102.2116514553595,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001995515183769415",
+            "extra": "mean: 9.783620416667915 msec\nrounds: 12"
           }
         ]
       }
