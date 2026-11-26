@@ -57,7 +57,6 @@ def test_version() -> None:
 @pytest.mark.parametrize(
     ("args", "card"),
     [
-        (["backtest", "--strategy", "S02_breakout20"], "P1-T20"),
         (["lab", "--horizon", "short"], "P1-T22"),
         (["meta-backtest", "--horizon", "long"], "P1-T23"),
         (["stress", "--horizon", "medium"], "P1-T33"),
@@ -68,6 +67,13 @@ def test_stubs_fail_loudly_and_name_their_card(args: list[str], card: str) -> No
     result = runner.invoke(app, args)
     assert result.exit_code == 1
     assert card in result.output
+
+
+def test_backtest_is_real_and_needs_a_selector() -> None:
+    """P1-T20: no longer a stub; exactly one of --strategy / --all (full runs: test_walkforward)."""
+    result = runner.invoke(app, ["backtest"])
+    assert result.exit_code != 0
+    assert "P1-T20" not in result.output
 
 
 def test_ingest_rejects_bad_date() -> None:

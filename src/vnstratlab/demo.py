@@ -146,7 +146,7 @@ def demo_config() -> AppConfig:
     return cfg.model_copy(update={"data": cfg.data.model_copy(update={"source": SOURCE})})
 
 
-def _targets(
+def decision_targets(
     strategy: Strategy,
     horizon: Horizon,
     features: pd.DataFrame,
@@ -157,7 +157,11 @@ def _targets(
     start: date,
     end: date,
 ) -> dict[date, pd.Series]:
-    """Target weights on each decision day, from the feature rows dated on or before it."""
+    """Target weights on each decision day, from the feature rows dated on or before it.
+
+    Shared with the walk-forward runner (``vnstratlab.lab.walkforward``): the strategy gets the
+    last ``lookback_sessions`` sessions up to and including the decision day, never a later row.
+    """
     lookback = max(1, int(getattr(strategy, "lookback_sessions", 1)))
     targets: dict[date, pd.Series] = {}
     for day in decision_days(calendar, horizon, start, end):
@@ -257,7 +261,7 @@ def stage_strategies(st: DemoState) -> dict[str, Any]:
     for strategy in strategies:
         for horizon in strategy.horizons:
             log.info("targets %s %s", strategy.id, horizon)
-            targets = _targets(
+            targets = decision_targets(
                 strategy,
                 horizon,
                 features,
