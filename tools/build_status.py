@@ -16,7 +16,8 @@ pull requests, workflow runs). No e-mail addresses or secrets are written.
 
 Usage:
   python tools/build_status.py --repo . --out _site \
-      [--coverage coverage.json] [--junit junit.xml] [--bench bench/data.js]
+      [--coverage coverage.json] [--junit junit.xml] [--bench bench/data.js] \
+      [--demo-home <APP_HOME holding a synthetic demo run>]
 GITHUB_TOKEN / GITHUB_REPOSITORY are used for the API when present; without them the API
 sections are empty and marked unavailable.
 """
@@ -24,6 +25,7 @@ sections are empty and marked unavailable.
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import json
 import os
@@ -478,11 +480,133 @@ def github_data() -> dict[str, Any]:
     }
 
 
+# ------------------------------------------------------------------ demo run (PO data only)
+
+DEMO_LOG_LINES = 40
+DEMO_MAX_POINTS = 260
+DEMO_TOP_TRIALS = 3
+RUN_DIR_RE = re.compile(r"^\d{8}T\d{6}-demo-[0-9a-f]{4}$")
+
+
+def downsample(values: list[Any], limit: int = DEMO_MAX_POINTS) -> list[Any]:
+    """At most `limit` items, evenly spread, always keeping the first and the last."""
+    if len(values) <= limit:
+        return values
+    idx = sorted({round(i * (len(values) - 1) / (limit - 1)) for i in range(limit)})
+    return [values[i] for i in idx]
+
+
+def _is_benchmark(row: dict[str, str]) -> bool:
+    return row.get("trial", "").startswith("S17") or "(benchmark)" in row.get("trial", "")
+
+
+def _float(value: str) -> float | None:
+    try:
+        number = float(value)
+    except ValueError:
+        return None
+    return number if number == number else None  # NaN -> None
+
+
+def _read_equity(path: Path) -> dict[str, list[Any]]:
+    dates: list[str] = []
+    equity: list[float | None] = []
+    with path.open(encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            dates.append(row["date"][:10])
+            equity.append(_float(row["equity"]))
+    return {"dates": downsample(dates), "equity": downsample(equity)}
+
+
+def build_demo(home: Path | None) -> dict[str, Any]:
+    """The newest synthetic demo run under `<home>/logs/runs` as PO data.
+
+    `{"available": False, "reason": ...}` when it cannot be read. Everything here is synthetic
+    (the `demo` pipeline); it goes only into the encrypted PO payload.
+    """
+    try:
+        return _build_demo(home)
+    except (OSError, ValueError, KeyError, TypeError, csv.Error) as exc:
+        print(f"::warning::demo data not published ({type(exc).__name__}).")
+        return {"available": False, "reason": f"demo data could not be read ({type(exc).__name__})"}
+
+
+def _build_demo(home: Path | None) -> dict[str, Any]:
+    if home is None:
+        return {"available": False, "reason": "no demo run in this build"}
+    root = home / "logs" / "runs"
+    names = (
+        sorted(p.name for p in root.iterdir() if RUN_DIR_RE.match(p.name)) if root.is_dir() else []
+    )
+    if not names:
+        return {"available": False, "reason": "no demo run found"}
+    run_dir = root / names[-1]
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    tasks, edges = [], []
+    logs: dict[str, list[str]] = {}
+    for t in run["tasks"]:
+        tasks.append(
+            {
+                "id": t["id"],
+                "label_vi": t["label_vi"],
+                "status": t["status"],
+                "duration_s": t.get("duration_s"),
+                "summary": t.get("summary") or {},
+            }
+        )
+        edges += [{"from": u, "to": t["id"]} for u in t.get("upstream", [])]
+        log = run_dir / f"{t['id']}.log"
+        lines = (
+            log.read_text(encoding="utf-8", errors="replace").splitlines() if log.exists() else []
+        )
+        logs[t["id"]] = [ln.replace(str(home), "<home>") for ln in lines[-DEMO_LOG_LINES:]]
+
+    results: dict[str, Any] = {"columns": [], "rows": []}
+    equity: dict[str, Any] = {}
+    summary = run_dir / "demo" / "summary.csv"
+    if summary.is_file():
+        with summary.open(encoding="utf-8", newline="") as fh:
+            reader = csv.DictReader(fh)
+            raw = list(reader)
+            columns = list(reader.fieldnames or [])
+        text_cols = ("trial_id", "trial", "horizon")
+        rows = [{k: (v if k in text_cols else _float(v)) for k, v in r.items()} for r in raw]
+        results = {"columns": columns, "rows": rows}
+        bench = [r for r in raw if _is_benchmark(r)][:1]
+        ranked = sorted(
+            (r for r in raw if not _is_benchmark(r) and _float(r.get("Sharpe", "")) is not None),
+            key=lambda r: float(r["Sharpe"]),
+            reverse=True,
+        )
+        for r in bench + ranked[:DEMO_TOP_TRIALS]:
+            path = run_dir / "demo" / "equity" / f"{r['trial_id']}.csv"
+            if path.is_file():
+                equity[r["trial_id"]] = _read_equity(path)
+    return {
+        "available": True,
+        "synthetic": True,
+        "run_id": run["run_id"],
+        "generated_at": run.get("ended_at") or run.get("created_at"),
+        "status": run["status"],
+        "duration_s": run.get("duration_s"),
+        "tasks": tasks,
+        "edges": edges,
+        "logs": logs,
+        "results": results,
+        "equity": equity,
+    }
+
+
 # ------------------------------------------------------------------ assemble
 
 
 def build(
-    repo: Path, out: Path, coverage: Path | None, junit: Path | None, bench: Path | None
+    repo: Path,
+    out: Path,
+    coverage: Path | None,
+    junit: Path | None,
+    bench: Path | None,
+    demo_home: Path | None = None,
 ) -> None:
     plan_text = (repo / "docs" / "plan" / "plan.md").read_text(encoding="utf-8")
     cards = parse_plan(plan_text)
@@ -549,6 +673,7 @@ def build(
         "gaps": safe_gap_register(repo),
         "quality": {"tests": tests, "coverage": cov, "benchmarks": benches},
         "github": gh,
+        "demo": build_demo(demo_home),  # synthetic; PO data only, never in status.json
     }
     status = {
         "generated_at": generated,
@@ -596,8 +721,9 @@ def main() -> None:
     p.add_argument("--coverage", type=Path)
     p.add_argument("--junit", type=Path)
     p.add_argument("--bench", type=Path)
+    p.add_argument("--demo-home", type=Path, help="APP_HOME that holds a synthetic demo run")
     a = p.parse_args()
-    build(a.repo.resolve(), a.out, a.coverage, a.junit, a.bench)
+    build(a.repo.resolve(), a.out, a.coverage, a.junit, a.bench, a.demo_home)
 
 
 if __name__ == "__main__":

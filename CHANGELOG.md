@@ -15,6 +15,7 @@ All notable changes are documented here. The format follows
   dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
 
 ### Added
+- **PO dashboard product demo (X-po-demo):** the Pages build runs the offline `demo` pipeline into a temp `APP_HOME` and adds a `demo` object (run DAG with durations, last 40 log lines per task, summary table, downsampled equity for S17 and the top 3 trials) to the encrypted PO data only; `tools/build_status.py` takes `--demo-home`, and `status.json` never carries demo fields. The build also publishes the Console's `guide-data.js` under `/po/guide/` and four Playwright screenshots of the synthetic Console under `/po/shots/` (not the Data page). A demo or screenshot failure never fails the build (`demo: unavailable`).
 - **Console UI (P1-T28a):** `vnstratlab serve` now opens a Vietnamese, offline Console (static
   files, no build step, no external assets): an animated step-by-step guide to the pipeline with
   commands and watch-outs, a Runs page (start pipelines, grid of recent runs, live task DAG and
