@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795682249130,
+  "lastUpdate": 1795683238221,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1445,6 +1445,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002593017119385446",
             "extra": "mean: 12.048757727288002 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ac0cbd4f14cfe719d861d2cecf1ed1d2f6dbcd2c",
+          "message": "feat(init): vnstratlab init, interactive user config wizard (P1-T35) (#66)\n\nP1-T35: init wizard writes a minimal validated config.yaml (capital per book, data source, brokerage fee), atomic, --force keeps a .bak copy; never handles secrets. Closes #61. Replaces #64. G2 light (manager).",
+          "timestamp": "2026-11-26T15:53:22+07:00",
+          "tree_id": "5acb6a1e35d8e80e03c2fa51fad5845ffe82ba0c",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/ac0cbd4f14cfe719d861d2cecf1ed1d2f6dbcd2c"
+        },
+        "date": 1795683237605,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 3.1811480989986824,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01778464247438967",
+            "extra": "mean: 314.35191600000206 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 109.37976640976977,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00033154781782424037",
+            "extra": "mean: 9.142458727272253 msec\nrounds: 11"
           }
         ]
       }
