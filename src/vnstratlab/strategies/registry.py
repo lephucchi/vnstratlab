@@ -23,7 +23,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_ENTRY_KEYS = frozenset({"horizons", "params", "enabled", "reason"})
+_ENTRY_KEYS = frozenset(
+    {"horizons", "params", "enabled", "reason", "user_params", "disabled_params"}
+)
+_USER_SET_KEYS = frozenset({"params", "horizons", "enabled"})
 _REGISTRY: dict[str, type[BaseStrategy]] = {}
 
 C = TypeVar("C", bound=type[BaseStrategy])
@@ -238,6 +241,72 @@ def _entry_problems(
     return problems, tuple(horizons), param_sets
 
 
+def entry_param_sets(
+    strategy_id: str, entry: object
+) -> tuple[list[str], list[tuple[dict[str, Any], tuple[Horizon, ...], bool, str]]]:
+    """Every parameter set of a strategy entry in index order: the packaged ``params`` first, then
+    the user's ``user_params``. Returns ``(problems, [(params, horizons, enabled, origin)])``.
+
+    ``disabled_params`` lists packaged indices switched off; a user set carries its own
+    ``enabled`` and ``horizons`` (a subset of the entry's). Strategy-level ``enabled`` is not
+    applied here.
+    """
+    where = f"strategies.{strategy_id}"
+    problems, horizons, packaged = _entry_problems(strategy_id, entry)
+    if problems or not isinstance(entry, Mapping):
+        return problems, []
+    disabled_raw = entry.get("disabled_params", [])
+    disabled: set[int] = set()
+    if not isinstance(disabled_raw, list | tuple) or not all(
+        isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(packaged)
+        for i in disabled_raw
+    ):
+        problems.append(f"{where}.disabled_params: must be packaged parameter-set indices")
+    else:
+        disabled = set(disabled_raw)
+    sets: list[tuple[dict[str, Any], tuple[Horizon, ...], bool, str]] = [
+        (p, horizons, i not in disabled, "packaged") for i, p in enumerate(packaged)
+    ]
+    user_raw = entry.get("user_params", [])
+    if not isinstance(user_raw, list | tuple):
+        problems.append(f"{where}.user_params: must be a list")
+        return problems, sets
+    seen = {canonical_params_json(p) for p in packaged}
+    for i, item in enumerate(user_raw):
+        at = f"{where}.user_params[{i}]"
+        if not isinstance(item, Mapping) or set(item) - _USER_SET_KEYS or "params" not in item:
+            problems.append(f"{at}: must be a mapping with params, horizons and optional enabled")
+            continue
+        params = item["params"]
+        if not isinstance(params, Mapping) or not all(isinstance(k, str) for k in params):
+            problems.append(f"{at}.params: must be a mapping with string keys")
+            continue
+        user_h = item.get("horizons", list(horizons))
+        if (
+            not isinstance(user_h, list | tuple)
+            or not user_h
+            or any(h not in horizons for h in user_h)
+            or len(set(user_h)) != len(user_h)
+        ):
+            problems.append(f"{at}.horizons: must be a non-empty subset of {list(horizons)}")
+            continue
+        enabled = item.get("enabled", True)
+        if not isinstance(enabled, bool):
+            problems.append(f"{at}.enabled: must be true or false")
+            continue
+        try:
+            key = canonical_params_json(params)
+        except (TypeError, ValueError) as exc:
+            problems.append(f"{at}.params: {exc}")
+            continue
+        if key in seen:
+            problems.append(f"{at}.params: duplicate of an earlier parameter set")
+            continue
+        seen.add(key)
+        sets.append((dict(params), tuple(user_h), enabled, "user"))
+    return problems, sets
+
+
 def load_strategies(cfg: AppConfig) -> list[Strategy]:
     """One strategy instance per (enabled strategy, parameter set), in config order.
 
@@ -262,15 +331,21 @@ def load_strategies(cfg: AppConfig) -> list[Strategy]:
         except KeyError as exc:
             problems.append(f"strategies.{strategy_id}: {exc.args[0]}")
             continue
-        entry_problems, horizons, param_sets = _entry_problems(strategy_id, entry)
+        entry_problems, sets = entry_param_sets(strategy_id, entry)
         problems.extend(entry_problems)
         if entry_problems:
             continue
-        for i, params in enumerate(param_sets):
+        packaged_count = sum(1 for _p, _h, _e, origin in sets if origin == "packaged")
+        for i, (params, horizons, enabled, origin) in enumerate(sets):
+            if not enabled:
+                continue
             try:
                 instances.append(cls(params, horizons))
             except (ValueError, TypeError, KeyError) as exc:
-                problems.append(f"strategies.{strategy_id}.params[{i}]: {exc}")
+                label = (
+                    f"params[{i}]" if origin == "packaged" else f"user_params[{i - packaged_count}]"
+                )
+                problems.append(f"strategies.{strategy_id}.{label}: {exc}")
     if problems:
         raise StrategyConfigError(problems)
     return instances
