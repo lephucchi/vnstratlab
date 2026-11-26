@@ -233,7 +233,7 @@ const DQ = [
 
 // ---------------- results ----------------
 const TRIALS = [
-  ["S17", "S17 Equal weight (benchmark)", "all"], ["S01-a", "S01 Weekly reversal a", "short"], ["S01-b", "S01 Weekly reversal b", "short"], ["S02-a", "S02 Breakout 20d", "short"],
+  ["benchmark_S17_equal_weight_short", "S17 Equal weight (benchmark, no risk layer)", "short"], ["benchmark_S17_equal_weight_medium", "S17 Equal weight (benchmark, no risk layer)", "medium"], ["S17-a", "S17 Equal weight (packaged)", "all"], ["S01-a", "S01 Weekly reversal a", "short"], ["S01-b", "S01 Weekly reversal b", "short"], ["S02-a", "S02 Breakout 20d", "short"],
   ["S03-a", "S03 Oversold in uptrend", "short"], ["S05-a", "S05 Residual mean reversion", "short"], ["S08-a", "S08 Momentum 6-12m", "medium"], ["S08-b", "S08 Momentum 12-1", "medium"],
   ["S09-a", "S09 Medium-term reversal", "medium"], ["S14-a", "S14 Low volatility", "medium"], ["S15-a", "S15 Sector trend", "medium"], ["S18-a", "S18 HRP", "long"],
 ];
@@ -247,7 +247,7 @@ function resultsFor(runId) {
     let peak = v;
     let dd = 0;
     dates.forEach(() => {
-      v *= 1 + (r() - 0.488) * 0.016 + (k === 0 ? 0.0002 : 0);
+      v *= 1 + (r() - 0.488) * 0.016 + (id.startsWith("benchmark_") ? 0.0002 : 0);
       curve.push(Math.round(v));
       peak = Math.max(peak, v);
       dd = Math.min(dd, v / peak - 1);

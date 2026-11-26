@@ -12,9 +12,12 @@ const LOOKS = [
   { stroke: "var(--fg)" }, { stroke: "var(--fg-2)", dash: "7 3" }, { stroke: "var(--muted)" }, { stroke: "var(--fg)", dash: "2 3" },
   { stroke: "var(--faint)" }, { stroke: "var(--fg-2)", dash: "2 3" }, { stroke: "var(--muted)", dash: "7 3" }, { stroke: "var(--faint)", dash: "2 3" },
 ];
-const BENCH_LOOK = { stroke: "var(--fg)", dash: "9 4", width: 2.2 };
+const BENCH_DASH = ["9 4", "3 3", "9 3 2 3"];
 
-const isBenchmark = (row) => String(row.trial_id).startsWith("S17") || String(row.trial).includes("(benchmark)");
+// A benchmark row has a trial_id starting with "benchmark_" or "benchmark" in its label.
+// Packaged S17 trials are ordinary trials; they are only a fallback overlay when no benchmark rows exist.
+const isBenchmark = (row) => String(row.trial_id).startsWith("benchmark_") || /benchmark/i.test(String(row.trial));
+const isS17 = (row) => /^S17/.test(String(row.trial_id)) || /^S17/.test(String(row.trial));
 function fmtCell(col, v) {
   if (v === null || v === undefined) return "n/a";
   if (PERCENT.has(col)) return `${fmtNum(v * 100, 1)}%`;
@@ -31,9 +34,13 @@ function drawdown(values) {
 
 function view(rows, equity) {
   const ids = rows.map((r) => r.trial_id).filter((id) => equity[id]);
-  const bench = rows.find(isBenchmark);
-  const selected = new Set([...(bench && equity[bench.trial_id] ? [bench.trial_id] : []), ...ids.filter((i) => !bench || i !== bench.trial_id).slice(0, 2)]);
-  const look = (id) => (bench && id === bench.trial_id ? BENCH_LOOK : LOOKS[ids.indexOf(id) % LOOKS.length]);
+  const withCurve = rows.filter((r) => equity[r.trial_id]);
+  const found = withCurve.filter(isBenchmark);
+  const benches = found.length ? found : withCurve.filter(isS17).slice(0, 1);
+  const benchIds = benches.map((r) => r.trial_id);
+  const benchFor = (r) => benches.find((b) => b.horizon === r.horizon) || benches[0];
+  const selected = new Set([...benchIds, ...ids.filter((i) => !benchIds.includes(i)).slice(0, 2)]);
+  const look = (id) => (benchIds.includes(id) ? { stroke: "var(--fg)", dash: BENCH_DASH[benchIds.indexOf(id) % BENCH_DASH.length], width: 2.2 } : LOOKS[ids.indexOf(id) % LOOKS.length]);
   const label = Object.fromEntries(rows.map((r) => [r.trial_id, r.trial]));
   const state = { sortKey: null, dir: 1, horizon: "", q: "", norm: false };
 
@@ -67,14 +74,13 @@ function view(rows, equity) {
   }
 
   function compare(chosen) {
-    const b = bench && rows.find((r) => r.trial_id === bench.trial_id);
-    if (!b) return void cmpHolder.replaceChildren();
-    const others = chosen.filter((id) => id !== b.trial_id).map((id) => rows.find((r) => r.trial_id === id));
+    if (!benches.length) return void cmpHolder.replaceChildren();
+    const others = chosen.filter((id) => !benchIds.includes(id)).map((id) => rows.find((r) => r.trial_id === id));
     const d = (v, w, pct) => (v === null || w === null ? "n/a" : `${v - w >= 0 ? "+" : ""}${pct ? `${((v - w) * 100).toFixed(1)} đpt` : (v - w).toFixed(2)}`);
     cmpHolder.replaceChildren(
       others.length
-        ? h("div", { class: "table-wrap" }, h("table", { class: "tbl" }, h("thead", null, h("tr", null, ["Trial", "CAGR vs S17", "Sharpe vs S17", "Sụt giảm vs S17"].map((x, i) => h("th", { class: i ? "num" : null }, x)))), h("tbody", null, others.map((r) => h("tr", null, h("td", null, r.trial), h("td", { class: "num" }, d(r.CAGR, b.CAGR, true)), h("td", { class: "num" }, d(r.Sharpe, b.Sharpe, false)), h("td", { class: "num" }, d(r.maxDD, b.maxDD, true)))))))
-        : h("p", { class: "muted small" }, "Chọn thêm trial trong bảng để so với benchmark S17.")
+        ? h("div", { class: "table-wrap" }, h("table", { class: "tbl" }, h("thead", null, h("tr", null, ["Trial", "CAGR vs benchmark", "Sharpe vs benchmark", "Sụt giảm vs benchmark"].map((x, i) => h("th", { class: i ? "num" : null }, x)))), h("tbody", null, others.map((r) => h("tr", null, h("td", null, r.trial), h("td", { class: "num" }, d(r.CAGR, benchFor(r).CAGR, true)), h("td", { class: "num" }, d(r.Sharpe, benchFor(r).Sharpe, false)), h("td", { class: "num" }, d(r.maxDD, benchFor(r).maxDD, true)))))))
+        : h("p", { class: "muted small" }, "Chọn thêm trial trong bảng để so với benchmark.")
     );
   }
 
@@ -101,7 +107,7 @@ function view(rows, equity) {
       ...list.map((r) => {
         const has = !!equity[r.trial_id];
         const box = h("input", { type: "checkbox", checked: selected.has(r.trial_id), disabled: !has, "aria-label": `Hiện ${r.trial} trên biểu đồ`, onchange: () => ((box.checked ? selected.add(r.trial_id) : selected.delete(r.trial_id)), drawCharts()) });
-        return h("tr", { class: isBenchmark(r) ? "bench" : null }, h("td", null, box), SHOWN.map((c) => h("td", { class: c === "trial" || c === "horizon" ? "pad" : "num" }, fmtCell(c, r[c]), c === "trial" && isBenchmark(r) && !String(r.trial).includes("(benchmark)") ? h("span", { class: "chip dashed" }, "benchmark") : null)));
+        return h("tr", { class: isBenchmark(r) ? "bench" : null }, h("td", null, box), SHOWN.map((c) => h("td", { class: c === "trial" || c === "horizon" ? "pad" : "num" }, fmtCell(c, r[c]), c === "trial" && isBenchmark(r) && !/benchmark/i.test(String(r.trial)) ? h("span", { class: "chip dashed" }, "benchmark") : null)));
       })
     );
   }
@@ -117,7 +123,7 @@ function view(rows, equity) {
   return [
     h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, "Bảng tổng hợp"), h("span", { class: "small muted" }, "Tích ô đầu dòng để vẽ lên biểu đồ")), h("div", { class: "toolbar" }, h("div", { class: "grow" }, search), hzSeg), table),
     h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, "Đường vốn"), normSeg), chart.el, legend, h("h3", null, "Mức sụt giảm"), ddChart.el),
-    h("section", { class: "card" }, h("h2", null, "So với benchmark S17"), cmpHolder),
+    h("section", { class: "card" }, h("h2", null, "So với benchmark"), cmpHolder),
   ];
 }
 

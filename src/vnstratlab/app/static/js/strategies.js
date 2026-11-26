@@ -26,7 +26,7 @@ function paramField(sc) {
     if (sc.type === "int" || sc.type === "float") return input.value === "" ? NaN : Number(input.value);
     return input.value;
   };
-  const range = !sc.allowed && sc.min !== undefined ? ` (từ ${sc.min} đến ${sc.max})` : "";
+  const range = sc.allowed ? "" : sc.min !== undefined && sc.max !== undefined ? ` (từ ${sc.min} đến ${sc.max})` : sc.min !== undefined ? ` (từ ${sc.min})` : sc.max !== undefined ? ` (đến ${sc.max})` : "";
   const el = h("div", { class: "field" }, h("label", { class: "lbl", for: id }, sc.name, h("span", { class: "unit" }, `${sc.type}${range}`)), input, sc.help_vi ? h("div", { class: "hint" }, sc.help_vi) : null);
   return { el, name: sc.name, read, input };
 }
@@ -53,7 +53,7 @@ function addDialog(strat, onDone) {
             const v = params[f.name];
             const sc = strat.params_schema.find((s) => s.name === f.name);
             if (v === undefined || (typeof v === "number" && Number.isNaN(v))) local.push(`params.${f.name}: chưa hợp lệ`);
-            else if (typeof v === "number" && !sc.allowed && ((sc.min !== undefined && v < sc.min) || (sc.max !== undefined && v > sc.max))) local.push(`params.${f.name}: ngoài khoảng ${sc.min}–${sc.max}`);
+            else if (typeof v === "number" && !sc.allowed && ((sc.min !== undefined && v < sc.min) || (sc.max !== undefined && v > sc.max))) local.push(`params.${f.name}: ngoài khoảng ${sc.min ?? "-"}–${sc.max ?? "-"}`);
           });
           if (!horizons.length) local.push("horizons: chọn ít nhất một khung");
           errors.replaceChildren(...local.map((p) => h("li", null, p)));
