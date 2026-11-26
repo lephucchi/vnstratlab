@@ -45,6 +45,18 @@ vnstratlab ingest --source synthetic --from 2015-01-01   # offline synthetic dat
 vnstratlab backtest --strategy S02_breakout20
 ```
 
+### Create your config: `vnstratlab init`
+
+```bash
+vnstratlab init                  # asks capital per book, data source, brokerage fee
+vnstratlab init --yes --capital-short 20000000 --source synthetic   # no prompts
+vnstratlab init --force          # replace an existing config.yaml (a .bak-* copy is kept)
+```
+
+It creates the home folders and writes only the values that differ from the defaults. Choosing
+`yahoo` prints the data terms notice (accepted for real by `ingest`). It never asks for secrets:
+the optional Telegram report is set up through `.env` ([configuration.md](configuration.md)).
+
 ### The demo (offline, synthetic)
 
 ```bash
