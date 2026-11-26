@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795689064067,
+  "lastUpdate": 1795689362352,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1597,6 +1597,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00029091823880515115",
             "extra": "mean: 18.65349163636474 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c6a15c0495f24693dd7b49e6b960aa231746fa88",
+          "message": "chore: lean tests, smaller PR CI, one-round reviews (X-trim) (#73)\n\nOwner decision 2026-11-26: full G2 only for engine/finance/cost/statistics math, 1 round; lean test policy; PR CI ubuntu+windows py3.12, full matrix on push/nightly/dispatch; 28 redundant tests removed (pytest 227 s -> 135 s, coverage 97.3%); autouse temp APP_HOME in conftest so tests never write run records to the real home. G2 light (manager).",
+          "timestamp": "2026-11-26T17:35:20+07:00",
+          "tree_id": "180585798e56549760e3c95b1b5b82b449c7eeb9",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/c6a15c0495f24693dd7b49e6b960aa231746fa88"
+        },
+        "date": 1795689361506,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 2.6044293523049484,
+            "unit": "iter/sec",
+            "range": "stddev: 0.011474914765019344",
+            "extra": "mean: 383.96126933333363 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 81.28896497625315,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00022357398339305015",
+            "extra": "mean: 12.301792750001539 msec\nrounds: 16"
           }
         ]
       }
