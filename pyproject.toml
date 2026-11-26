@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vnstratlab"
-version = "0.1.0"
+version = "0.1.0rc1"
 description = "Strategy lab for Vietnamese stocks: honest backtests, statistically gated strategy selection, and portfolio recommendations. Recommend-only: it never places orders."
 readme = "README.md"
 requires-python = ">=3.11"
