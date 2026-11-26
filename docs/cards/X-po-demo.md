@@ -3,7 +3,7 @@ id: X-po-demo
 title: PO dashboard — product demo section (guide motion, demo run DAG/logs, results, Console screenshots)
 milestone: M1.4
 release: v0.1.0
-status: in-progress
+status: done
 branch: feat/X-po-demo
 due: 2026-11-30
 ---

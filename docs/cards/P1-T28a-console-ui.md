@@ -3,7 +3,7 @@ id: P1-T28a
 title: Console UI — animated guide, Airflow-like runs (DAG, grid, logs), data and results
 milestone: M1.4
 release: v0.1.0
-status: in-progress
+status: done
 branch: feat/P1-T28a-console-ui
 due: 2026-11-29
 ---
