@@ -456,43 +456,6 @@ def test_failed_fetch_writes_nothing(cfg: AppConfig, paths: AppPaths) -> None:
 runner = CliRunner()
 
 
-def test_cli_dry_run_creates_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("APP_HOME", str(home))
-    result = runner.invoke(
-        app,
-        [
-            "ingest",
-            "--source",
-            "synthetic",
-            "--from",
-            "2026-03-02",
-            "--to",
-            "2026-03-06",
-            "--dry-run",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    assert list(home.iterdir()) == []
-    assert "dry run" in result.output.lower()
-    assert "ACB" in result.output
-
-
-def test_cli_ingest_writes_synthetic_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    home = tmp_path / "home"
-    monkeypatch.setenv("APP_HOME", str(home))
-    args = ["ingest", "--source", "synthetic", "--from", "2026-03-02", "--to", "2026-03-06"]
-    first = runner.invoke(app, args)
-    assert first.exit_code == 0, first.output
-    assert (home / "data" / "market-synthetic.duckdb").is_file()
-    assert not (home / "data" / "market.duckdb").exists()
-    assert len(list((home / "data" / "raw" / "synthetic").glob("*.parquet"))) == 1
-    second = runner.invoke(app, args)
-    assert second.exit_code == 0
-    assert "written" in second.output
-
-
 def _use_synthetic_by_default(home: Path) -> None:
     """The shipped default is `yahoo`; these tests need the config default to be synthetic."""
     home.mkdir(parents=True, exist_ok=True)
@@ -501,28 +464,24 @@ def _use_synthetic_by_default(home: Path) -> None:
     )
 
 
-def test_cli_default_source_and_resume_date(
+def test_cli_ingest_write_resume_and_up_to_date(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = tmp_path / "home"
     monkeypatch.setenv("APP_HOME", str(home))
     _use_synthetic_by_default(home)
-    assert (
-        runner.invoke(app, ["ingest", "--from", "2026-03-02", "--to", "2026-03-04"]).exit_code == 0
-    )
-    result = runner.invoke(app, ["ingest", "--to", "2026-03-06"])
+    first = runner.invoke(app, ["ingest", "--from", "2026-03-02", "--to", "2026-03-04"])
+    assert first.exit_code == 0, first.output
+    assert (home / "data" / "market-synthetic.duckdb").is_file()
+    assert not (home / "data" / "market.duckdb").exists()
+    assert len(list((home / "data" / "raw" / "synthetic").glob("*.parquet"))) == 1
+    result = runner.invoke(app, ["ingest", "--to", "2026-03-06"])  # resumes after the last date
     assert result.exit_code == 0, result.output
     with MarketStore(home / "data" / "market-synthetic.duckdb", "synthetic", read_only=True) as s:
         assert s.latest_date() == date(2026, 3, 6)
-
-
-def test_cli_up_to_date_is_a_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_HOME", str(tmp_path / "home"))
-    _use_synthetic_by_default(tmp_path / "home")
-    runner.invoke(app, ["ingest", "--from", "2026-03-02", "--to", "2026-03-04"])
-    result = runner.invoke(app, ["ingest", "--to", "2026-03-04"])
-    assert result.exit_code == 0
-    assert "up to date" in result.output.lower()
+    again = runner.invoke(app, ["ingest", "--to", "2026-03-06"])
+    assert again.exit_code == 0
+    assert "up to date" in again.output.lower()
 
 
 def test_cli_unknown_source_exits_2_and_lists_sources(

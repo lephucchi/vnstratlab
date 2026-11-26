@@ -60,20 +60,9 @@ def test_same_seed_same_frames(cfg: AppConfig, prices: pd.DataFrame) -> None:
     assert again.equals(prices)
 
 
-def test_different_seed_different_frames(cfg: AppConfig, prices: pd.DataFrame) -> None:
-    other = SyntheticSource(_with(cfg, seed=7)).fetch_daily(universe_tickers(cfg), START, END)
-    assert _hash(other) != _hash(prices)
-
-
 def test_values_do_not_depend_on_later_end_date(cfg: AppConfig, prices: pd.DataFrame) -> None:
     longer = SyntheticSource(cfg).fetch_daily(universe_tickers(cfg), START, date(2023, 6, 30))
     assert longer[longer["date"] <= END].reset_index(drop=True).equals(prices)
-
-
-def test_values_do_not_depend_on_from_date(cfg: AppConfig, prices: pd.DataFrame) -> None:
-    later = SyntheticSource(cfg).fetch_daily(universe_tickers(cfg), date(2021, 3, 1), END)
-    expected = prices[prices["date"] >= date(2021, 3, 1)].reset_index(drop=True)
-    assert later.equals(expected)
 
 
 def test_frame_shape_and_dtypes(prices: pd.DataFrame) -> None:

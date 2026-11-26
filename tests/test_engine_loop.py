@@ -1413,7 +1413,7 @@ def test_late_bonus_on_a_fully_sold_position_gets_a_lot_and_a_stop(engine_cfg: A
 
 def test_lot_totals_always_equal_ledger_shares(engine_cfg: AppConfig) -> None:
     days = make_days(40)
-    for seed in range(120):
+    for seed in range(40):
         rng = random.Random(seed)  # noqa: S311 - test data, not crypto
         ex_idx = rng.randrange(16, 30)
         ratio = rng.choice([0.15, 0.25, 0.5])

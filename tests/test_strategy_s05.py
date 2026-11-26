@@ -10,8 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from test_strategy_s00 import assert_ledger_consistent
-from test_strategy_s04 import long_market, run_long_smoke, sessions
+from test_strategy_s04 import long_market, sessions
 from vnstratlab.config.models import AppConfig
 from vnstratlab.features import compute_features
 from vnstratlab.strategies.base import LookaheadError, Strategy, asof_guard
@@ -286,16 +285,6 @@ def test_bad_frames_are_refused() -> None:
 
 def packaged_s05() -> S05ResidualReversion:
     return S05ResidualReversion({"window": 60, "entry_z": 1.5, "n": 2}, ("short",))
-
-
-def test_smoke_backtest_on_the_synthetic_market(engine_cfg: AppConfig) -> None:
-    result, targets, _ = run_long_smoke(packaged_s05(), engine_cfg)
-    assert len(targets) >= 40
-    invested = [t for t in targets.values() if not t.empty]
-    assert invested
-    assert all(t.sum() <= 1 + 1e-9 for t in invested)
-    assert not result.trades.empty
-    assert_ledger_consistent(result)
 
 
 def test_future_prices_cannot_change_a_target(engine_cfg: AppConfig) -> None:

@@ -32,11 +32,11 @@ in a fresh context with only the card, the diff and the repository.
      Worker: feat/<card-id>-<slug> from develop → tests → code → PR into develop
      │
      ▼
- G1  CI green ──────────────── lint, types, tests (3 OS × 3 Python), guardrails,
+ G1  CI green ──────────────── lint, types, tests (PR: 2 jobs; full matrix on push/nightly), guardrails,
      │                         secret scan, benchmark comparison
      ▼
  G2  Code review ───────────── light tier: manager · full tier: QA Reviewer
-     │                         (request changes → worker; delta re-review, max 2 rounds)
+     │                         (one round; delta re-review only for an unfixed blocker)
      ▼
      Manager checks CI is green on the head SHA, squash-merges into develop, logs progress
      │
@@ -112,6 +112,9 @@ These hold for every card (from the [plan](plan/plan.md), section 6.4):
 4. **Count every trial.** DSR uses the total trial count.
 5. **Deterministic.** Seeds come from config.
 6. **Tests.** pytest, no network in unit tests, hand-computed cases for every market rule.
+   Test policy for new cards (2026-11-26): one happy path per feature, the edge cases that
+   matter, and the guard tests (no lookahead, guardrails, hand-computed market rules). No
+   exhaustive parameter matrices, no duplicated cases; tests over ~2 s are `@pytest.mark.slow`.
 7. **Dry-run first.** Every writing command supports `--dry-run`.
 8. **Secrets.** Env or `.env` only; never logged, printed, committed or sent to the browser.
 9. **Recommend-only.** No order placement anywhere (enforced by `tests/test_guardrails.py`).

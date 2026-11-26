@@ -12,6 +12,17 @@ from vnstratlab.config.models import AppConfig
 
 
 @pytest.fixture(autouse=True)
+def isolated_app_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """No test may read or write the user's real app home (runs, data, terms, config).
+
+    Since P1-T27a every CLI pipeline records a run under ``<home>/logs/runs``; a test that
+    forgets ``APP_HOME`` would otherwise leave run folders in the real home. Tests that need
+    their own home still set ``APP_HOME`` themselves (that overrides this one).
+    """
+    monkeypatch.setenv("APP_HOME", str(tmp_path / "isolated-app-home"))
+
+
+@pytest.fixture(autouse=True)
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fail any test that opens a socket connection (ADR-007: CI never reaches Yahoo).
 

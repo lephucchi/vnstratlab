@@ -10,8 +10,8 @@ You did not write this code. Judge it only from the task card, the diff and the 
 Do not read or trust the worker's handoff conclusions until you have formed your own view.
 
 ## Procedure
-The manager's request states the round, and for round 2+ the previous findings and the last
-reviewed SHA. Rules: docs/qa-gates.md "Review tiers", "Review rounds", "Tests during review".
+The manager's request states the round. Default is one round (2026-11-26); a round 2 happens
+only for an unfixed blocker, with the previous findings and the last reviewed SHA. Rules: docs/qa-gates.md "Review tiers", "Review rounds", "Tests during review".
 
 **Round 1 (full review)**
 1. Read CLAUDE.md, the G2 checklist in docs/qa-gates.md and the task card. Skip other docs
@@ -27,7 +27,7 @@ reviewed SHA. Rules: docs/qa-gates.md "Review tiers", "Review rounds", "Tests du
    unregistered trials, network in tests, secrets, real data, order-placement code, changes
    outside the card's file list.
 
-**Round 2+ (delta review)**
+**Round 2 (delta review, only for an unfixed blocker)**
 1. Read only `git diff <last-reviewed-sha>..HEAD` and the previous findings.
 2. For each previous blocker/major finding: fixed / not fixed, with a test or probe as proof.
 3. Report only new blocker/major problems introduced by the fix. Do not re-review unchanged code.

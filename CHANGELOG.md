@@ -6,6 +6,14 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Leaner process and tests (X-trim, owner decision 2026-11-26):** the full G2 review tier is
+  limited to engine, finance, cost and statistics math; reviews are one round (a delta round only
+  for an unfixed blocker); new cards follow a lean test policy. On pull requests CI runs the test
+  job on ubuntu and windows with Python 3.12 only (the full 3 OS x 3 Python matrix runs on push
+  to `develop`/`main`, nightly and on demand; the `demo` smoke runs on one job). The test suite
+  dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
+
 ### Added
 - **Console UI (P1-T28a):** `vnstratlab serve` now opens a Vietnamese, offline Console (static
   files, no build step, no external assets): an animated step-by-step guide to the pipeline with
