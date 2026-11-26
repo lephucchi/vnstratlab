@@ -23,6 +23,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +37,7 @@ from vnstratlab.data.pipeline import ExecutionFrame, ingest, load_execution_fram
 from vnstratlab.data.protocol import TickTable, universe_tickers
 from vnstratlab.data.sources.synthetic import SyntheticSource
 from vnstratlab.data.store import MarketStore
-from vnstratlab.engine import ENGINE_VERSION, make_params, run_simulation
+from vnstratlab.engine import ENGINE_VERSION, SimResult, make_params, run_simulation
 from vnstratlab.engine.loop import build_bars
 from vnstratlab.features.build import build_features, load_features
 from vnstratlab.lab.metrics import ann_vol, avg_turnover, cagr, max_drawdown, sharpe
@@ -51,6 +52,7 @@ COOLDOWN_SESSIONS: dict[str, int] = {"short": 5, "medium": 21, "long": 21}
 SOURCE = "synthetic"
 WARNING_LINE = "SYNTHETIC DATA - results say nothing about the real market."
 BENCHMARK_ID = "S17_equal_weight"
+BENCHMARK_NOTE = "benchmark, no risk layer"
 SUMMARY_COLUMNS = (
     "trial_id",
     "trial",
@@ -86,11 +88,12 @@ class DemoRow:
     trades: int
     digest: str
     equity: pd.DataFrame
+    is_trial: bool = True  # False for the benchmark row: not registered, not counted
 
     @property
     def label(self) -> str:
         text = self.strategy_id if not self.params else f"{self.strategy_id} {self.params}"
-        return f"{text} (benchmark)" if self.benchmark else text
+        return f"{text} ({BENCHMARK_NOTE})" if self.benchmark else text
 
 
 @dataclass(frozen=True)
@@ -272,8 +275,30 @@ def stage_strategies(st: DemoState) -> dict[str, Any]:
     return {"trials": len(st.plans)}
 
 
+def _row(
+    trial_id: str, strategy: Any, horizon: str, result: SimResult, *, benchmark: bool = False
+) -> DemoRow:
+    return DemoRow(
+        trial_id=trial_id,
+        strategy_id=strategy.id,
+        params=_short_params(strategy.params),
+        horizon=horizon,
+        benchmark=benchmark,
+        cagr=cagr(result.returns),
+        vol=ann_vol(result.returns),
+        sharpe=sharpe(result.returns),
+        max_dd=max_drawdown(result.returns),
+        turnover=avg_turnover(result.turnover),
+        trades=len(result.trades),
+        digest=result.digest(),
+        equity=result.equity[["date", "equity"]].reset_index(drop=True),
+        is_trial=not benchmark,
+    )
+
+
 def stage_simulate(st: DemoState, progress: Callable[[str], None] | None = None) -> dict[str, Any]:
-    """Run the simulator (executable mode, risk layer) for each planned trial."""
+    """Run the simulator (executable mode, risk layer) for each planned trial, plus one
+    benchmark row per horizon of S17 without the risk layer (not a trial)."""
     note = progress or (lambda _msg: None)
     prep, cfg = st.prepared, st.cfg
     if prep is None:
@@ -281,39 +306,32 @@ def stage_simulate(st: DemoState, progress: Callable[[str], None] | None = None)
     risk = RiskLayer(cfg.risk)
     st.rows = []
     bars = build_bars(prep.frame.prices)  # same price frame for every trial: build once
+    benchmarks: list[DemoRow] = []
     for strategy, horizon, targets in st.plans:
         note(f"{strategy.id} {horizon}")
         capital = float(getattr(cfg.books, horizon).capital_vnd)
         params = make_params(cfg, "executable", capital, lots=True, odd_lots=True)
-        result = run_simulation(
+
+        run = partial(
+            run_simulation,
             prep.frame.prices,
             prep.frame.actions,
             targets,
             prep.calendar,
             params,
-            risk=risk,
             cooldown_sessions=COOLDOWN_SESSIONS[horizon],
             bars=bars,
         )
         spec = make_trial_spec(strategy, horizon, prep.feature_version, ENGINE_VERSION)
-        st.rows.append(
-            DemoRow(
-                trial_id=spec.trial_id,
-                strategy_id=strategy.id,
-                params=_short_params(strategy.params),
-                horizon=horizon,
-                benchmark=strategy.id == BENCHMARK_ID,
-                cagr=cagr(result.returns),
-                vol=ann_vol(result.returns),
-                sharpe=sharpe(result.returns),
-                max_dd=max_drawdown(result.returns),
-                turnover=avg_turnover(result.turnover),
-                trades=len(result.trades),
-                digest=result.digest(),
-                equity=result.equity[["date", "equity"]].reset_index(drop=True),
-            )
-        )
-    return {"trials": len(st.rows)}
+        st.rows.append(_row(spec.trial_id, strategy, horizon, run(risk=risk)))
+        if strategy.id == BENCHMARK_ID:
+            # Equal weight without the risk layer: capital, lots, costs and T+ only. Not a
+            # trial: never registered and not in the trial count.
+            note(f"{strategy.id} {horizon} (benchmark, no risk layer)")
+            bench_id = f"benchmark_{strategy.id}_{horizon}"
+            benchmarks.append(_row(bench_id, strategy, horizon, run(risk=None), benchmark=True))
+    st.rows.extend(benchmarks)
+    return {"trials": len(st.rows) - len(benchmarks), "benchmarks": len(benchmarks)}
 
 
 def stage_report(st: DemoState) -> dict[str, Any]:
@@ -333,7 +351,8 @@ def stage_report(st: DemoState) -> dict[str, Any]:
     for target in (st.artifact_dir, st.out_dir):
         if target is not None:
             write_outputs(st.report, target)
-    return {"trials": len(rows), "skipped": len(st.report.skipped)}
+    trials = sum(r.is_trial for r in rows)
+    return {"trials": trials, "skipped": len(st.report.skipped)}
 
 
 def run_demo(
@@ -417,7 +436,13 @@ def format_report(report: DemoReport, *, quiet: bool = False) -> str:
         f"data window {report.start} .. {report.end} "
         f"(synthetic data from {report.data_start}, features warm)"
     )
-    lines.append(f"trials run {len(report.rows)}, skipped {len(report.skipped)}")
+    trials = sum(r.is_trial for r in report.rows)
+    lines.append(f"trials run {trials}, skipped {len(report.skipped)}")
+    if trials != len(report.rows):
+        lines.append(
+            f"benchmark rows ({len(report.rows) - trials}): S17 equal weight without the risk "
+            "layer; not trials, not registered, not counted"
+        )
     lines.append(f"run time {report.seconds:.1f} s")
     lines.append("no trials were registered (synthetic runs are not lab evidence)")
     if report.out_dir is not None:

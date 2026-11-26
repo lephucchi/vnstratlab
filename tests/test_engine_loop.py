@@ -1528,3 +1528,99 @@ def test_lot_sync_tolerance_is_relative_with_fractional_shares(
     # (three buys, three lots) and the lots still add up to the ledger.
     assert len(sim._lots["AAA"]) == 3
     assert sum(x.qty for x in sim._lots["AAA"]) == pytest.approx(sim.ledger.shares("AAA"))
+
+
+# ---------------------------------------------------------------- breaker re-arm (X-breaker)
+
+
+def _crash_prices(recover: bool) -> tuple[list[date], pd.DataFrame]:
+    """AAA 50,000 until idx 16; close 42,000 at idx 17 (-16 %), 42,000 through idx 18; then
+    43,000 (idx 19-21) and 44,200 from idx 22 (or 42,000 throughout when ``recover`` is off).
+    Limits are widened so the stop exit fills."""
+    days = make_days(30)
+    over: dict[int, dict[str, float]] = {}
+    for i in range(len(days)):
+        px = 50_000.0 if i < 17 else 42_000.0
+        if recover and i >= 19:
+            px = 43_000.0 if i < 22 else 44_200.0
+        over[i] = {"ceiling": 70_000, "floor": 20_000}
+        if i == 17:
+            over[i]["close"] = px
+        elif i > 17:
+            over[i].update(open=px, close=px)
+    return days, wide(synthetic_prices(synthetic_bars("AAA", days, 50_000, over=over)))
+
+
+def _crash_run(cfg: AppConfig, recover: bool) -> tuple[Simulator, dict[int, tuple[float, ...]]]:
+    days, prices = _crash_prices(recover)
+    layer = RiskLayer(cfg.risk.model_copy(update={"circuit_breaker_drawdown_pct": 0.01}))
+    sim = Simulator(prices, None, CAL, executable(cfg), risk=layer, cooldown_sessions=2)
+    targets = {14: weights(AAA=0.08), 21: weights(AAA=0.08), 23: weights(AAA=0.08)}
+    seen: dict[int, tuple[float, ...]] = {}
+    for i, day in enumerate(days):
+        sim.open_session(day)
+        sim.mark(day)
+        shadow = sim.shadow_equity
+        seen[i] = (sim.equity_now(), sim.peak_equity, -1.0 if shadow is None else shadow)
+        if i in targets:
+            sim.decide(day, targets[i])
+        sim.record(day)
+    return sim, seen
+
+
+def test_breaker_rearms_on_shadow_equity_hand_computed(engine_cfg: AppConfig) -> None:
+    """dd 1 %, peak = capital 100,000,000 -> threshold 99,000,000.
+
+    Buy at idx 15 (AAA 0.08, 50,050 with slippage). Idx 17 close 42,000: the position loses
+    about 1.3 M, equity E17 is about 98.7 M <= 99.0 M -> breaker on, shadow = E17. The ATR stop
+    (50,050 - 2 x 1,500) also fires; the book is in cash from idx 18-19 and its equity is flat.
+    Shadow holds the h shares of the book at the trigger until the idx-21 decision (price
+    43,000), which moves it to 0.08 x shadow / 43,000 shares (fractional, no costs).
+        shadow(19..21) = E17 + h x 1,000
+        shadow(22)     = shadow(21) + 0.08 x shadow(21) / 43,000 x 1,200   (44,200 close)
+    Idx 21 is just short of 99.0 M and idx 22 is above it: off at idx 22, peak := actual equity.
+    """
+    days, _ = _crash_prices(True)
+    sim, seen = _crash_run(engine_cfg, True)
+    ev = sim.result().risk_events
+    assert ev is not None
+    ev = ev[ev["event"].str.startswith("circuit")].reset_index(drop=True)
+    assert [(r.session, r.event) for r in ev.itertuples()] == [
+        (days[17], "circuit_breaker_on"),
+        (days[22], "circuit_breaker_off"),
+    ]
+    e17, peak17, shadow17 = seen[17]
+    assert peak17 == 100_000_000
+    assert shadow17 == pytest.approx(e17)
+    assert e17 <= 99_000_000 < seen[16][0]  # on at 17; the equity before it was above
+    assert seen[16][2] == -1.0  # shadow only exists while on
+    pos = sim.result().positions
+    h = round(float(pos[pos["date"] == days[17]]["shares"].iloc[0]))
+    s21 = e17 + h * 1_000
+    assert seen[19][2] == pytest.approx(s21)
+    assert seen[21][2] == pytest.approx(s21)
+    assert s21 < 99_000_000  # still on at idx 21
+    s22 = s21 + 0.08 * s21 / 43_000 * 1_200
+    assert s22 >= 99_000_000  # off exactly at idx 22
+    assert f"shadow {s22:.0f}" in ev["detail"].iloc[1]
+    # Peak reset to the actual (flat, in cash) equity: no immediate re-trigger, buys resume.
+    assert seen[22][1] == pytest.approx(seen[22][0])
+    assert seen[22][1] < 99_000_000
+    assert seen[22][2] == -1.0
+    buys = sim.result().trades[sim.result().trades["side"] == "buy"]
+    assert sorted(set(zip(buys["ticker"], buys["session"], strict=True))) == [
+        ("AAA", days[15]),
+        ("AAA", days[24]),
+    ]  # none after the idx-21 decision (breaker on); the idx-23 decision buys at idx 24
+
+
+def test_breaker_stays_on_when_prices_never_recover(engine_cfg: AppConfig) -> None:
+    days, _ = _crash_prices(False)
+    sim, seen = _crash_run(engine_cfg, False)
+    ev = sim.result().risk_events
+    assert ev is not None
+    ev = ev[ev["event"].str.startswith("circuit")]
+    assert [(r.session, r.event) for r in ev.itertuples()] == [(days[17], "circuit_breaker_on")]
+    assert seen[29][2] == pytest.approx(seen[17][0])  # shadow flat at E17: 98.7 M < 99.0 M
+    trades = sim.result().trades
+    assert set(trades[trades["side"] == "buy"]["session"]) == {days[15]}
