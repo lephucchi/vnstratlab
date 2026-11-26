@@ -75,12 +75,19 @@ def test_constants_are_fixed_dates() -> None:
 
 def test_every_enabled_packaged_trial_runs_once(full_run: tuple[DemoReport, Path]) -> None:
     report, _ = full_run
-    assert len(report.rows) == expected_trials()
+    trials = [r for r in report.rows if r.is_trial]
+    benchmarks = [r for r in report.rows if r.benchmark]
+    s17 = [r for r in trials if r.strategy_id == "S17_equal_weight"]
+    assert len(trials) == expected_trials()
+    assert len(report.rows) == len(trials) + len(s17)  # one benchmark row per S17 horizon
     assert len({r.trial_id for r in report.rows}) == len(report.rows)
     assert (report.start, report.end) == (START, END)
     assert all(r.trades >= 0 and len(r.equity) > 50 for r in report.rows)
-    benchmarks = [r for r in report.rows if r.benchmark]
     assert {r.strategy_id for r in benchmarks} == {"S17_equal_weight"}
+    assert not any(r.benchmark or "benchmark" in r.label for r in s17)  # packaged S17: a trial
+    assert all(
+        not r.is_trial and r.label.endswith("(benchmark, no risk layer)") for r in benchmarks
+    )
     horizons = [r.horizon for r in report.rows]
     order = {"short": 0, "medium": 1, "long": 2}
     assert horizons == sorted(horizons, key=order.__getitem__)
@@ -169,13 +176,14 @@ def test_report_lists_skipped_and_the_run_leaves_the_app_home_unchanged(
     report = run_demo(tmp_path / "o", START, date(2017, 3, 31))
     assert snapshot(home) == before
     assert "vnstratlab.data.sources.yahoo" not in sys.modules  # no source library, no network
-    assert len(list((tmp_path / "o" / "equity").iterdir())) == len(report.rows) == 2
+    assert len(list((tmp_path / "o" / "equity").iterdir())) == len(report.rows) == 4
     assert report.skipped == (("S06_blocked", "blocked on P1-T04 (synthetic reason)"),)
     text = format_report(report)
     assert text.splitlines()[0] == WARNING_LINE
     assert "skipped: S06_blocked: blocked on P1-T04 (synthetic reason)" in text
-    assert "S17_equal_weight (benchmark)" in text
+    assert "S17_equal_weight (benchmark, no risk layer)" in text
     assert "trials run 2, skipped 1" in text
+    assert "benchmark rows (2): S17 equal weight without the risk layer; not trials" in text
     assert "no trials were registered" in text
     assert f"files written to {tmp_path / 'o'}" in text
     assert "CAGR" in text
@@ -239,7 +247,32 @@ def test_shared_bars_do_not_change_any_digest(
     assert [(r.trial_id, r.digest) for r in old.rows] == [
         (r.trial_id, r.digest) for r in full_run[0].rows
     ]
-    assert len(old.rows) == expected_trials()
+    assert sum(r.is_trial for r in old.rows) == expected_trials()
+
+
+def test_benchmark_row_runs_without_the_risk_layer_and_holds_the_universe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(demo_module, "demo_config", lambda: small_config())
+    real = demo_module.run_simulation
+    seen: list[tuple[bool, int]] = []  # (risk layer used, max positions held on any session)
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        result = real(*args, **kwargs)
+        most = int(result.positions.groupby("date").size().max())
+        seen.append((kwargs["risk"] is not None, most))
+        return result
+
+    monkeypatch.setattr(demo_module, "run_simulation", spy)
+    report = run_demo(None, START, END)
+    max_positions = demo_config().risk.max_positions
+    with_risk = [n for used, n in seen if used]
+    without = [n for used, n in seen if not used]
+    assert len(with_risk) == 2
+    assert len(without) == 2  # S17 short + medium, each once more
+    assert all(n <= max_positions for n in with_risk)
+    assert all(n > max_positions for n in without)  # about the whole universe
+    assert [r.is_trial for r in report.rows].count(False) == 2
 
 
 def test_breaker_warns_once_per_transition_not_per_decision(

@@ -96,7 +96,7 @@ def test_demo_run_through_the_api(client: TestClient) -> None:
 
     results = client.get(f"/api/results/{run_id}").json()
     assert results["synthetic"] is True
-    assert len(results["rows"]) == 2
+    assert len(results["rows"]) == 4  # 2 S17 trials + 2 benchmark rows (no risk layer)
     trial_id = results["rows"][0]["trial_id"]
     assert len(results["equity"][trial_id]["dates"]) > 20
 
