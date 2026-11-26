@@ -89,6 +89,7 @@ jobs:
         run: |
           vnstratlab --help
           vnstratlab doctor
+          vnstratlab demo --quiet
 
   build:
     runs-on: ubuntu-latest
