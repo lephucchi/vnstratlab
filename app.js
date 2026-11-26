@@ -400,6 +400,7 @@ function show(data) {
   renderPulls(data);
   renderRuns(data);
   renderProgress(data);
+  if (typeof window.renderDemo === "function") window.renderDemo(data.demo); // demo.js; absent in old builds
   $("#phase-filter").onchange = () => renderBoard(data);
 }
 
