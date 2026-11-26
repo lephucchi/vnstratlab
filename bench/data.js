@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795683698630,
+  "lastUpdate": 1795687696720,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1521,6 +1521,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00017261665191005245",
             "extra": "mean: 9.847191428570616 msec\nrounds: 14"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f0bff57f5690aaf3a253af184dfc4bbf7f71576a",
+          "message": "feat(runs): run registry with DAG runner and per-task logs, vnstratlab serve API (P1-T27a) (#70)\n\nP1-T27a: runs package (demo/refresh/ingest/rebuild/features pipelines, per-task logs, retention 50), serve on loopback with runs/logs/SSE/data/results API, Yahoo terms confirmation. G2 light (manager): loopback Host/Origin guard, X-Vnstratlab header on POST, run_id regex before path use, no secrets.",
+          "timestamp": "2026-11-26T17:07:26+07:00",
+          "tree_id": "65eb64b34f84b9ebae84ee038a101ad292080bc7",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/f0bff57f5690aaf3a253af184dfc4bbf7f71576a"
+        },
+        "date": 1795687695914,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 1.962735740002567,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0120095885576511",
+            "extra": "mean: 509.49293866666545 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 51.5674522480502,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0007816844488008132",
+            "extra": "mean: 19.392076909089695 msec\nrounds: 11"
           }
         ]
       }
