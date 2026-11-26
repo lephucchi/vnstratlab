@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795693530839,
+  "lastUpdate": 1795693936169,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1749,6 +1749,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00038835890392665667",
             "extra": "mean: 18.96539133332927 msec\nrounds: 12"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3517b0a385570e13e4ebf648e0ed51b72fdaaf12",
+          "message": "feat(lab): walk-forward runner, oos_returns, vnstratlab backtest (P1-T20) (#82)\n\nCloses #78. G2 full round 1: request changes with one major (runner selects trials from config, not the registry) -> follow-up P1-T20b, must land before P1-T21; minors in the same card.",
+          "timestamp": "2026-11-26T18:51:30+07:00",
+          "tree_id": "ff63d555d8e200eea60d90e819b8c52cd71c1e1f",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/3517b0a385570e13e4ebf648e0ed51b72fdaaf12"
+        },
+        "date": 1795693935546,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 2.6044270279811186,
+            "unit": "iter/sec",
+            "range": "stddev: 0.006150778051404899",
+            "extra": "mean: 383.96161200000023 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 75.15030286022564,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0003644867637483981",
+            "extra": "mean: 13.306666266667358 msec\nrounds: 15"
           }
         ]
       }
