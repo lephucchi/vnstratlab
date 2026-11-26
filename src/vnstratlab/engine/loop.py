@@ -375,6 +375,10 @@ class Simulator:
         self._entries: dict[str, tuple[float, float, float]] = {}  # shares, avg price, avg ATR
         self._peak = self.params.capital
         self._breaker = False
+        self._trigger_peak = self.params.capital  # peak at the close the breaker turned on
+        self._trigger_index = 0  # session index of that close
+        self._shadow_cash = 0.0  # frictionless fractional paper book, only while the breaker is on
+        self._shadow_shares: dict[str, float] = {}
         self._index = {d: i for i, d in enumerate(self.sessions)}
         if self._risk is None:
             return
@@ -527,18 +531,79 @@ class Simulator:
             detail = f"close {close:.2f} <= stop {stop:.2f}"
             self._risk_events.append((today, "stop_triggered", ticker, detail))
         equity = self.equity_now()
-        self._peak = max(self._peak, equity)
-        active = risk.breaker_active(equity, self._peak)
-        if active != self._breaker:
-            self._breaker = active
-            detail = f"equity {equity:.0f}, peak {self._peak:.0f}"
-            event = "circuit_breaker_on" if active else "circuit_breaker_off"
-            self._risk_events.append((today, event, "", detail))
-            log.warning("%s on %s: %s", event, today, detail)
-        if active:
+        if not self._breaker:
+            self._peak = max(self._peak, equity)
+            if risk.breaker_active(equity, self._peak):
+                self._breaker_on(today, equity)
+        else:
+            shadow = self._shadow_equity()
+            elapsed = self._index[today] - self._trigger_index
+            if risk.breaker_rearmed(shadow, self._trigger_peak, elapsed, self._cooldown_n):
+                self._breaker_off(today, equity, shadow)
+        if self._breaker:
             for order in [o for o in self._pending if o.side == "buy"]:
                 self._log(order, today, "cancelled", "circuit breaker active")
                 self._drop(order)
+
+    def _breaker_on(self, today: date, equity: float) -> None:
+        """Trigger: remember the peak and start the shadow book at the actual equity, holding
+        what the book holds now (engine.md section 7)."""
+        self._breaker = True
+        self._trigger_peak = self._peak
+        self._trigger_index = self._index[today]
+        self._shadow_shares = dict(self.ledger.holdings())
+        self._shadow_cash = equity - self._positions_value()
+        detail = f"equity {equity:.0f}, peak {self._peak:.0f}"
+        self._risk_events.append((today, "circuit_breaker_on", "", detail))
+        log.warning("circuit_breaker_on on %s: %s", today, detail)
+
+    def _breaker_off(self, today: date, equity: float, shadow: float) -> None:
+        """Re-arm: the shadow book recovered; the peak restarts at the actual equity."""
+        self._breaker = False
+        detail = (
+            f"shadow {shadow:.0f}, trigger peak {self._trigger_peak:.0f}, "
+            f"equity {equity:.0f}, peak reset to {equity:.0f}"
+        )
+        self._peak = equity
+        self._shadow_shares, self._shadow_cash = {}, 0.0
+        self._risk_events.append((today, "circuit_breaker_off", "", detail))
+        log.warning("circuit_breaker_off on %s: %s", today, detail)
+
+    def _shadow_equity(self) -> float:
+        """Shadow book marked like the engine marks the book (last closes, execution basis)."""
+        value = sum(q * self._last_close[t] for t, q in self._shadow_shares.items())
+        return self._shadow_cash + value
+
+    @property
+    def shadow_equity(self) -> float | None:
+        """Shadow book value at the last mark; ``None`` while the breaker is off."""
+        return self._shadow_equity() if self._breaker else None
+
+    @property
+    def peak_equity(self) -> float:
+        return self._peak
+
+    def _shadow_rebalance(self, weights: pd.Series) -> None:
+        """Frictionless, fractional move to the pre-breaker targets at today's close."""
+        value = self._shadow_equity()
+        shares = {
+            str(t): float(w) * value / self._last_close[str(t)]
+            for t, w in weights.items()
+            if float(w) > 0.0
+        }
+        self._shadow_cash = value - sum(q * self._last_close[t] for t, q in shares.items())
+        self._shadow_shares = shares
+
+    def _shadow_action(self, action: _Action) -> None:
+        """Corporate action on the shadow shares (cash: the receivable counts at once, as in the
+        engine's equity; stock: fractional bonus shares)."""
+        shares = self._shadow_shares.get(action.ticker, 0.0)
+        if shares <= 0:
+            return
+        if action.kind == "cash":
+            self._shadow_cash += shares * action.value
+        else:
+            self._shadow_shares[action.ticker] = shares * (1 + action.value)
 
     def _apply_risk(
         self, risk: RiskLayer, today: date, weights: pd.Series, equity: float,
@@ -556,16 +621,18 @@ class Simulator:
         history = None
         if risk.config.vol_target_annual is not None:
             history = pd.Series(self._returns, dtype=float)
-        decision = risk.apply(
-            weights,
-            equity=equity,
-            prices_close={t: self._last_close[t] for t in tickers},
-            atr={t: self._atr_now.get(t, math.nan) for t in tickers},
-            held=held,
-            peak_equity=max(self._peak, equity),
-            cooldown=cooldown,
-            returns_history=history,
-        )
+        inputs: dict[str, Any] = {
+            "equity": equity,
+            "prices_close": {t: self._last_close[t] for t in tickers},
+            "atr": {t: self._atr_now.get(t, math.nan) for t in tickers},
+            "held": held,
+            "peak_equity": max(self._peak, equity),
+            "cooldown": cooldown,
+            "returns_history": history,
+        }
+        if self._breaker:  # the shadow book follows the targets as if the breaker were off
+            self._shadow_rebalance(risk.apply(weights, breaker=False, **inputs).weights)
+        decision = risk.apply(weights, breaker=self._breaker, **inputs)
         stopped = [t for t in held if self._has_stop_order(t)]
         return decision.weights.drop(stopped, errors="ignore")
 
@@ -642,6 +709,8 @@ class Simulator:
                 self._cash_dividend(action)
             else:
                 self._stock_dividend(action, today)
+            if self._breaker:
+                self._shadow_action(action)
 
     def _cash_dividend(self, a: _Action) -> None:
         """Receivable on the shares held at pre-open of the ex-date, even if applied late."""

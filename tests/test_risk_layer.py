@@ -34,6 +34,7 @@ def apply(
     held: dict[str, float] | None = None,
     cooldown: tuple[str, ...] = (),
     returns: pd.Series | None = None,
+    breaker: bool | None = None,
 ):  # type: ignore[no-untyped-def]
     tickers = set(weights.index) | set(held or {})
     return rl.apply(
@@ -45,6 +46,7 @@ def apply(
         peak_equity=peak,
         cooldown=cooldown,
         returns_history=returns,
+        breaker=breaker,
     )
 
 
@@ -166,6 +168,14 @@ def test_circuit_breaker_blocks_buys_and_allows_sells(engine_cfg: AppConfig) -> 
     # Exactly at the threshold counts as breached (<=).
     assert rl.breaker_active(90_000_000, 100_000_000)
     assert not rl.breaker_active(90_000_001, 100_000_000)
+    # Re-arm: shadow >= trigger peak AND >= period sessions since the trigger.
+    assert rl.breaker_rearmed(100_000_000, 100_000_000, 5, 5)
+    assert not rl.breaker_rearmed(99_999_999, 100_000_000, 5, 5)  # not fully recovered
+    assert not rl.breaker_rearmed(100_000_000, 100_000_000, 4, 5)  # period not elapsed
+    # The caller's state wins over the stateless trigger.
+    still_on = apply(rl, w(AAA=0.20, BBB=0.10), atr=10, equity=95_000_000, held=held, breaker=True)
+    assert still_on.alert is True
+    assert still_on.weights["BBB"] == 0.0
 
 
 def test_stop_price_formula(engine_cfg: AppConfig) -> None:
