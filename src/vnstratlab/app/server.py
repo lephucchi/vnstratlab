@@ -265,6 +265,37 @@ def create_app(
             "gaps": [g.model_dump(mode="json") for g in register.with_status(None)],
         }
 
+    @app.get("/api/backtest/summary", response_model=None)
+    def backtest_summary(source: str | None = None) -> Any:
+        import duckdb
+
+        from vnstratlab.lab.walkforward import (
+            SEGMENT_LABELS,
+            SUMMARY_COLUMNS,
+            data_label,
+            load_summary,
+        )
+
+        name = source
+        if name is None:
+            try:
+                name = load_config(paths.home).data.source
+            except ConfigError as exc:
+                return _error(422, "config_invalid", problems=list(exc.problems))
+        try:
+            frame = load_summary(paths, name)
+        except duckdb.Error as exc:  # the lab store is being written (a backtest is running)
+            return _error(409, "lab_store_busy", message=str(exc))
+        rows = frame.astype(object).where(frame.notna(), None).to_dict("records")
+        return {
+            "source": name,
+            "synthetic": name == "synthetic",
+            "label": data_label(name),
+            "segments": SEGMENT_LABELS,
+            "columns": list(SUMMARY_COLUMNS),
+            "rows": rows,
+        }
+
     @app.get("/api/results/{run_id}", response_model=None)
     def results(run_id: str) -> Any:
         import pandas as pd

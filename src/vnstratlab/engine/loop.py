@@ -273,6 +273,12 @@ def _bars(prices: pd.DataFrame) -> dict[date, dict[str, _Bar]]:
     return out
 
 
+def build_bars(prices: pd.DataFrame) -> Mapping[date, Mapping[str, _Bar]]:
+    """Validated per-session bars of ``prices``; read-only, so one result can be shared by every
+    :class:`Simulator` run on the same frame (pass it as ``bars=``)."""
+    return _bars(prices)
+
+
 def _optional_date(value: Any) -> date | None:
     return None if pd.isna(value) else pd.Timestamp(value).date()
 
@@ -323,10 +329,13 @@ class Simulator:
         *,
         risk: RiskLayer | None = None,
         cooldown_sessions: int | None = None,
+        bars: Mapping[date, Mapping[str, _Bar]] | None = None,
     ) -> None:
+        """``bars`` is an optional :func:`build_bars` result for the same ``prices`` (skips
+        rebuilding it); it is never modified."""
         self.params = params
         self.calendar = calendar
-        self._bars = _bars(prices)
+        self._bars = _bars(prices) if bars is None else bars
         self.sessions = sorted(self._bars)
         bad = [d for d in self.sessions if not calendar.is_trading_day(d)]
         if bad:
@@ -915,6 +924,7 @@ def run_simulation(
     *,
     risk: RiskLayer | None = None,
     cooldown_sessions: int | None = None,
+    bars: Mapping[date, Mapping[str, _Bar]] | None = None,
 ) -> SimResult:
     """Run every session in ``prices``; ``targets[d]`` is decided at the close of ``d``.
 
@@ -930,7 +940,7 @@ def run_simulation(
     """
     sim = Simulator(
         prices, corporate_actions, calendar, params,
-        risk=risk, cooldown_sessions=cooldown_sessions,
+        risk=risk, cooldown_sessions=cooldown_sessions, bars=bars,
     )  # fmt: skip
     unknown = sorted(set(targets) - set(sim.sessions))
     if unknown:

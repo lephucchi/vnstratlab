@@ -7,6 +7,12 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Changed
+- **Demo follow-ups (X-65):** the risk layer logs a blocked decision at DEBUG (the engine already
+  warns once when the circuit breaker turns on or off, so a demo run has a handful of warnings
+  instead of over a thousand); the demo warning line is pure ASCII (Windows consoles); the demo
+  builds the per-session price bars once and shares them across trials (`bars=` on `Simulator`
+  and `run_simulation`), so it is faster. No simulation result changes (digests are equal; the
+  engine version is not bumped).
 - **Leaner process and tests (X-trim, owner decision 2026-11-26):** the full G2 review tier is
   limited to engine, finance, cost and statistics math; reviews are one round (a delta round only
   for an unfixed blocker); new cards follow a lean test policy. On pull requests CI runs the test
@@ -27,6 +33,15 @@ All notable changes are documented here. The format follows
   the source-terms gate applies, 30 minute limit, cancel kills the command); pipelines and started
   runs show their equivalent `cli` command. Parameter schemas live in `strategies/schemas.py`, so
   built-in trial ids are unchanged. Packaged defaults are untouched.
+- **Walk-forward runner and `vnstratlab backtest` (P1-T20):** for every registered trial, ideal and
+  executable out-of-sample returns per decision period (strategies see rows up to the decision day
+  only; close of one decision day to the close of the next) stored in `lab.duckdb` table
+  `oos_returns` (idempotent re-run; rows tagged `in_sample_by_design` against `registered_at`).
+  `backtest --strategy ID | --all [--source] [--mode ideal|executable|both] [--register]` prints
+  CAGR, vol, Sharpe, max drawdown and turnover split historical / forward with a data label
+  (SYNTHETIC or interim Yahoo / GAP-13); an unregistered trial is refused. New pipeline
+  `backtest_all` (features check, backtest, report) and `GET /api/backtest/summary?source=`.
+  `demo._targets` is now the public `demo.decision_targets` (no behaviour change).
 - **PO dashboard product demo (X-po-demo):** the Pages build runs the offline `demo` pipeline into a temp `APP_HOME` and adds a `demo` object (run DAG with durations, last 40 log lines per task, summary table, downsampled equity for S17 and the top 3 trials) to the encrypted PO data only; `tools/build_status.py` takes `--demo-home`, and `status.json` never carries demo fields. The build also publishes the Console's `guide-data.js` under `/po/guide/` and four Playwright screenshots of the synthetic Console under `/po/shots/` (not the Data page). A demo or screenshot failure never fails the build (`demo: unavailable`).
 - **Console UI (P1-T28a):** `vnstratlab serve` now opens a Vietnamese, offline Console (static
   files, no build step, no external assets): an animated step-by-step guide to the pipeline with

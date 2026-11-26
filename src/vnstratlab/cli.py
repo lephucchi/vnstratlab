@@ -798,12 +798,67 @@ def _features_build_run(source: str | None, dry_run: bool) -> None:
         typer.echo("dry run: nothing was written")
 
 
+class BacktestMode(StrEnum):
+    ideal = "ideal"
+    executable = "executable"
+    both = "both"
+
+
 @app.command()
 def backtest(
-    strategy: Annotated[str, typer.Option("--strategy", help="Registered strategy id.")],
+    strategy: Annotated[
+        str | None, typer.Option("--strategy", help="Strategy id: all its registered trials.")
+    ] = None,
+    all_: Annotated[
+        bool, typer.Option("--all", help="Every enabled strategy in the config.")
+    ] = False,
+    source: Annotated[
+        str | None, typer.Option("--source", help="Data source; default data.source in config.")
+    ] = None,
+    mode: Annotated[BacktestMode, typer.Option("--mode", help="Which mode(s) to run.")] = (
+        BacktestMode.both
+    ),
+    register: Annotated[
+        bool, typer.Option("--register", help="Register the trials first (like `lab register`).")
+    ] = False,
 ) -> None:
-    """Walk-forward backtest of one registered strategy."""
-    _not_implemented("P1-T20")
+    """Walk-forward backtest of registered trials: out-of-sample returns into lab.duckdb."""
+    from vnstratlab.data.protocol import SourceError
+    from vnstratlab.lab.trials import UnregisteredTrialError
+    from vnstratlab.lab.walkforward import WalkForwardError, format_summary
+    from vnstratlab.runs import BusyError, run_pipeline
+
+    _tolerant_output()
+    if (strategy is None) == (not all_):
+        raise typer.BadParameter("give exactly one of --strategy ID or --all")
+    cfg = _load_cfg_or_exit()
+    name = source or cfg.data.source
+    params = {"source": name, "strategy": strategy, "modes": mode.value, "register": register}
+
+    def progress(message: str) -> None:
+        typer.echo(f"... {message}", err=True)
+
+    try:
+        result = run_pipeline(get_paths().home, "backtest_all", params, progress=progress)
+        result.raise_for_failure()
+    except BusyError:
+        typer.echo("error: another run is in progress", err=True)
+        raise typer.Exit(code=1) from None
+    except (UnregisteredTrialError, WalkForwardError, SourceError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    summary = result.state["backtest_summary"]
+    outcome = result.state["backtest"]
+    if outcome.registered_now:
+        typer.echo(
+            f"registered {len(outcome.registered_now)} new trial(s) first (--register); "
+            f"trials now in the registry include them"
+        )
+    typer.echo(format_summary(summary, outcome.source))
+    typer.echo(
+        f"trials run {len(outcome.trials)}, rows written {outcome.rows_written} "
+        f"(feature version {outcome.feature_version}); stored in lab.duckdb, table oos_returns"
+    )
 
 
 lab_app = typer.Typer(

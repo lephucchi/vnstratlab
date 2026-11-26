@@ -119,7 +119,7 @@ class RiskLayer:
                 lower(t, w[t] * scale, "vol_scale")
         alert = self.breaker_active(equity, peak_equity)  # 6. circuit breaker
         if alert:
-            log.warning("circuit breaker active: equity %.0f, peak %.0f", equity, peak_equity)
+            log.debug("circuit breaker active: equity %.0f, peak %.0f", equity, peak_equity)
             for t in sorted(w):
                 lower(t, current.get(t, 0.0), "circuit_breaker")
         out = pd.Series({t: w[t] for t in sorted(w)}, dtype=float)

@@ -44,6 +44,7 @@ PIPELINE_CLI = {
     "ingest": "vnstratlab ingest",
     "rebuild": "vnstratlab data rebuild",
     "features": "vnstratlab features build",
+    "backtest_all": "vnstratlab backtest --all",
     "refresh": "vnstratlab ingest && vnstratlab data rebuild && vnstratlab features build",
 }
 
