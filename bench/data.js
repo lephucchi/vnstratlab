@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795687696720,
+  "lastUpdate": 1795689064067,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1559,6 +1559,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0007816844488008132",
             "extra": "mean: 19.392076909089695 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "36ca54c824055626f4c92e9d66a0586dd48761d5",
+          "message": "feat(app): Console UI with guide, runs, data and results pages (P1-T28a) (#74)\n\nP1-T28a: static Console (Vietnamese, offline, no build step): animated 6-step guide, Airflow-like runs grid and live DAG with SSE logs, data and results pages. G2 light (manager): no innerHTML/eval, X-Vnstratlab header on POST, no external URLs. Not verified in a browser: mid-run live view, 390 px layout, terms dialog.",
+          "timestamp": "2026-11-26T17:30:25+07:00",
+          "tree_id": "0a29453921c576a2b3eee2a4d44410854b89e9ab",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/36ca54c824055626f4c92e9d66a0586dd48761d5"
+        },
+        "date": 1795689063756,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 1.9641044255766624,
+            "unit": "iter/sec",
+            "range": "stddev: 0.017768200210744788",
+            "extra": "mean: 509.1378986666655 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 53.609266270048494,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00029091823880515115",
+            "extra": "mean: 18.65349163636474 msec\nrounds: 11"
           }
         ]
       }
