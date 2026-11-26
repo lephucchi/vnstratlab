@@ -212,10 +212,33 @@ reports show how often each rule bound.
   are blocked. While the exit is pending the ticker is also blocked. Buy orders of a ticker in
   cooldown are refused at resolution ("stop cooldown"). The layer keeps an existing holding at
   its current weight, never increases it.
-- **Circuit breaker.** Stateless: `equity <= peak x (1 - circuit_breaker_drawdown_pct)` with
-  `peak` = running maximum of closing equity, starting at the initial capital, never reset. While
-  active, no weight may exceed its held weight (sells and exits pass) and pending buys are
-  cancelled; it re-arms as soon as equity is above the threshold again.
+- **Circuit breaker** (owner decision 2026-11-26, replaces the stateless rule; `ENGINE_VERSION`
+  `engine-v2`). The old rule never turned off once the book was in cash (equity is flat), which
+  is why the re-arm runs on a shadow book. `dd` = `circuit_breaker_drawdown_pct`.
+  1. **Trigger.** At a close, if the breaker is off and `equity <= peak x (1 - dd)` (`peak` =
+     running maximum of closing equity, starting at the initial capital) the breaker turns **on**
+     and `trigger_peak = peak`.
+  2. **Shadow equity while on.** From the trigger close, `shadow` is a frictionless, fractional
+     paper book. It starts at the actual equity at the trigger close, holding the shares the
+     book holds then. On every decision day it moves, at that close and without costs, lots or
+     settlement, to the **pre-breaker target weights**: what the risk layer returns for the same
+     inputs with the breaker ignored (cooldown, sizing, caps and vol scaling still apply; a
+     stop-triggered exit does not take the shadow out). It is marked at each close with the
+     engine's own marks (execution-basis closes, last close for a suspended ticker). Stock
+     actions scale its shares and cash dividends credit its cash at the ex-date, as the
+     engine's equity counts a receivable. It measures whether the strategy recovered, not the
+     book.
+  3. **Re-arm** (owner decision 2026-11-26: re-arm at full shadow recovery and >= one decision
+     period; hysteresis). At a close, if on, `shadow >= trigger_peak` (full recovery to the peak
+     at the trigger, not `trigger_peak x (1 - dd)`) **and** at least one decision period has
+     passed since the trigger close (sessions elapsed >= the resolved stop cooldown, i.e.
+     `risk.stop_cooldown_sessions` if set, else the caller's `cooldown_sessions`: 5 short, 21
+     medium and long in the demo and walk-forward), the breaker turns **off** and `peak` is
+     **reset to the current actual equity** (otherwise the cash book, still below the old
+     threshold, would re-trigger at once). The `circuit_breaker_off` event detail carries
+     shadow, trigger peak, equity and the new peak.
+  4. **While on**, no weight may exceed its held weight (sells and exits pass) and pending buys
+     are cancelled.
 - Time exits (short horizon): positions are re-decided every decision day; no extra rule.
 
 ## 8. Cash ledger

@@ -5,7 +5,7 @@ const PERCENT = new Set(["CAGR", "vol", "maxDD"]);
 const COLUMN_LABEL = { trial: "Trial", horizon: "Khung", CAGR: "CAGR", vol: "Biến động", Sharpe: "Sharpe", maxDD: "Sụt giảm tối đa", turnover: "Vòng quay", trades: "Số lệnh" };
 const SHOWN = ["trial", "horizon", "CAGR", "vol", "Sharpe", "maxDD", "turnover", "trades"];
 
-const isBenchmark = (row) => String(row.trial_id).startsWith("S17") || String(row.trial).includes("(benchmark)");
+const isBenchmark = (row) => String(row.trial_id).startsWith("benchmark_") || String(row.trial).includes("(benchmark");
 
 function fmtCell(col, v) {
   if (v === null || v === undefined) return "n/a";

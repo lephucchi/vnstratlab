@@ -166,6 +166,22 @@ All notable changes are documented here. The format follows
   `po/data.json` is no longer written.
 
 ### Fixed
+- **Circuit breaker re-arms on shadow equity (X-breaker, G3 finding R1, owner decision
+  2026-11-26):** the stateless breaker could never turn off once the book was in cash. While on,
+  a frictionless fractional shadow book follows the pre-breaker targets; the breaker turns off
+  when the shadow has fully recovered to `trigger_peak` and at least one decision period (the
+  stop cooldown, in sessions) has passed since the trigger (hysteresis, owner decision
+  2026-11-26); the peak then resets to the actual equity (engine.md section 7). `ENGINE_VERSION` is now `engine-v2`, so trial ids change.
+- **Demo benchmark is a true equal-weight book (G3 finding R2):** the row
+  `S17_equal_weight (benchmark) no risk layer` runs S17 with `risk=None` (executable, no ATR
+  sizing, position cap, vol scaling, stops or breaker). It is not a trial: not registered and not
+  counted. The packaged S17 trials run with the risk layer and lose the benchmark label.
+- **Demo follow-ups (X-65):** the risk layer logs a blocked decision at DEBUG (the engine already
+  warns once when the circuit breaker turns on or off, so a demo run has a handful of warnings
+  instead of over a thousand); the demo warning line is pure ASCII (Windows consoles); the demo
+  builds the per-session price bars once and shares them across trials (`bars=` on `Simulator`
+  and `run_simulation`), so it is faster. No simulation result changes (digests are equal; the
+  engine version is not bumped).
 - **Risk follow-ups (P1-T12b):** `Simulator.add_actions` now updates the ex-date ATR factors and
   recomputes the affected tickers' ATR series, so a late stock action gives the same ATR state
   from its apply session on as one known up front (past reads are not rewritten). Lots shrink to
