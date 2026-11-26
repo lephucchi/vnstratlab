@@ -14,6 +14,8 @@ All user files live in one directory:
 
 Override with `APP_HOME`. `vnstratlab doctor` prints the active paths.
 
+`vnstratlab init` writes only the keys you change (capital per book, `data.source`, `costs.brokerage_fee_pct`) to `config.yaml`; with `--force` it first copies an existing file to `config.yaml.bak-<YYYYmmddTHHMMSS>` and keeps your other keys (comments are not preserved).
+
 ```
 <home>/
 ├── config.yaml        # your overrides (written by `vnstratlab init`)

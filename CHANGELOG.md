@@ -7,6 +7,11 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **`vnstratlab init` (P1-T35):** interactive (or `--yes` with flags) wizard that creates the home
+  folders and a minimal `config.yaml` (capital per book, data source, brokerage fee), validated with
+  the config loader, written atomically; `--force` keeps a `.bak-*` copy and your other keys. It
+  never handles secrets.
+
 - **`vnstratlab demo` (P1-T32):** one offline command that runs ingest, rebuild, features, every
   enabled packaged trial (19 today) and the simulator with the risk layer on the synthetic
   market (fixed window 2016-2020, about 45 s) and prints a summary table headed by a synthetic
