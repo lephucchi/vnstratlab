@@ -1,11 +1,12 @@
-// Task DAG as inline SVG: simple layered left-to-right layout.
+// Task DAG as inline SVG: layered top-to-bottom layout, hover card per node, click to select.
+import { hcRow, hoverCard } from "./ui.js";
 import { STATUS_VI, fmtDur, h } from "./util.js";
 
-const W = 150;
-const H = 46;
-const GAP_X = 56;
-const GAP_Y = 26;
-const PAD = 12;
+const W = 156;
+const H = 58;
+const GAP_X = 18;
+const GAP_Y = 24;
+const PAD = 14;
 
 function layers(tasks) {
   const level = {};
@@ -21,7 +22,7 @@ function layers(tasks) {
 }
 
 function wrap(label) {
-  if (label.length <= 17) return [label];
+  if (label.length <= 19) return [label];
   const words = label.split(" ");
   let best = [label];
   let diff = Infinity;
@@ -36,23 +37,21 @@ function wrap(label) {
   return best;
 }
 
-/** Draw the DAG. Returns {el, update(tasks)}; ``onSelect(taskId)`` fires on node click. */
+/** Draw the DAG. Returns {el, update(tasks), select(id)}; ``onSelect(taskId)`` fires on node click. */
 export function createDag(tasks, onSelect) {
+  // Vertical layout: one row per dependency level, parallel tasks side by side.
   const level = layers(tasks);
-  const cols = {};
-  tasks.forEach((t) => (cols[level[t.id]] = [...(cols[level[t.id]] || []), t.id]));
-  const nCols = Math.max(...Object.keys(cols).map(Number)) + 1;
-  const nRows = Math.max(...Object.values(cols).map((c) => c.length));
-  const width = PAD * 2 + nCols * W + (nCols - 1) * GAP_X;
-  const height = PAD * 2 + nRows * (H + 16) + (nRows - 1) * GAP_Y;
+  const rowsOf = {};
+  tasks.forEach((t) => (rowsOf[level[t.id]] = [...(rowsOf[level[t.id]] || []), t.id]));
+  const nLevels = Math.max(...Object.keys(rowsOf).map(Number)) + 1;
+  const nWide = Math.max(...Object.values(rowsOf).map((c) => c.length));
+  const width = PAD * 2 + nWide * W + (nWide - 1) * GAP_X;
+  const height = PAD * 2 + nLevels * H + (nLevels - 1) * GAP_Y;
   const pos = {};
-  for (const [c, ids] of Object.entries(cols)) {
-    const colH = ids.length * (H + 16) + (ids.length - 1) * GAP_Y;
+  for (const [lv, ids] of Object.entries(rowsOf)) {
+    const rowW = ids.length * W + (ids.length - 1) * GAP_X;
     ids.forEach((id, i) => {
-      pos[id] = {
-        x: PAD + Number(c) * (W + GAP_X),
-        y: PAD + (height - PAD * 2 - colH) / 2 + i * (H + 16 + GAP_Y),
-      };
+      pos[id] = { x: PAD + (width - PAD * 2 - rowW) / 2 + i * (W + GAP_X), y: PAD + Number(lv) * (H + GAP_Y) };
     });
   }
 
@@ -63,33 +62,32 @@ export function createDag(tasks, onSelect) {
       if (!pos[u]) return;
       const a = pos[u];
       const b = pos[t.id];
-      const x1 = a.x + W;
-      const y1 = a.y + H / 2;
-      const x2 = b.x;
-      const y2 = b.y + H / 2;
-      const mx = (x1 + x2) / 2;
-      const el = h("path", { class: "edge", d: `M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2 - 6} ${y2}` });
+      const x1 = a.x + W / 2;
+      const y1 = a.y + H;
+      const x2 = b.x + W / 2;
+      const y2 = b.y;
+      const my = (y1 + y2) / 2;
+      edgeEls.push(h("path", { class: "edge", d: `M${x1} ${y1} C${x1} ${my} ${x2} ${my} ${x2} ${y2 - 4}` }));
       edges.push({ to: t.id, from: u });
-      edgeEls.push(el);
     })
   );
 
+  const latest = {};
+  tasks.forEach((t) => (latest[t.id] = t));
   const nodeEls = {};
   const durEls = {};
   const nodes = tasks.map((t) => {
     const lines = wrap(t.label_vi);
-    const rect = h("rect", { class: "node-rect", width: W, height: H, rx: 8 });
     const text = h(
       "text",
-      { class: "node-label", x: W / 2, "text-anchor": "middle" },
+      { class: "node-label", x: W / 2 + 3, "text-anchor": "middle" },
       lines.map((ln, i) => {
-        const span = h("tspan", { x: W / 2, y: lines.length === 1 ? H / 2 + 4 : H / 2 - 4 + i * 14 });
+        const span = h("tspan", { x: W / 2 + 3, y: lines.length === 1 ? 24 : 20 + i * 14 });
         span.textContent = ln;
         return span;
       })
     );
-    const dur = h("text", { class: "node-dur", x: W / 2, y: H + 13, "text-anchor": "middle" }, "");
-    const title = h("title", null, t.label_vi);
+    const dur = h("text", { class: "node-dur", x: W / 2 + 3, y: H - 9, "text-anchor": "middle" }, "");
     const g = h(
       "g",
       {
@@ -97,6 +95,7 @@ export function createDag(tasks, onSelect) {
         transform: `translate(${pos[t.id].x} ${pos[t.id].y})`,
         tabindex: 0,
         role: "button",
+        "aria-label": t.label_vi,
         onclick: () => onSelect && onSelect(t.id),
         onkeydown: (e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -105,43 +104,46 @@ export function createDag(tasks, onSelect) {
           }
         },
       },
-      title,
-      rect,
+      h("rect", { class: "node-rect", width: W, height: H, rx: 10 }),
+      h("rect", { class: "node-bar", x: 0, y: 8, width: 4, height: H - 16, rx: 2 }),
       text,
       dur
     );
+    hoverCard(g, () => {
+      const cur = latest[t.id];
+      const first = cur.error ? String(cur.error).split("\n")[0] : null;
+      return [
+        h("b", null, cur.label_vi),
+        hcRow("Trạng thái", STATUS_VI[cur.status] || cur.status || "—"),
+        hcRow("Thời gian", fmtDur(cur.duration_s)),
+        cur.upstream.length ? hcRow("Phụ thuộc", cur.upstream.join(", ")) : null,
+        first ? h("div", { class: "err" }, first) : null,
+        h("div", { class: "muted small" }, "Bấm để xem log"),
+      ];
+    });
     nodeEls[t.id] = g;
     durEls[t.id] = dur;
     return g;
   });
 
-  const svg = h(
-    "svg",
-    { class: "dag", viewBox: `0 0 ${width} ${height}`, width, height, role: "img", "aria-label": "Sơ đồ tác vụ" },
-    h("g", null, edgeEls),
-    h("g", null, nodes)
-  );
+  const svg = h("svg", { class: "dag", viewBox: `0 0 ${width} ${height}`, width, height, role: "group", "aria-label": "Sơ đồ tác vụ" }, h("g", null, edgeEls), h("g", null, nodes));
 
   function update(current) {
     const status = {};
     current.forEach((t) => {
       status[t.id] = t.status;
+      latest[t.id] = t;
       const g = nodeEls[t.id];
       if (!g) return;
       g.setAttribute("class", `dag-node st-${t.status}${g.classList.contains("selected") ? " selected" : ""}`);
-      g.querySelector("title").textContent = `${t.label_vi}: ${STATUS_VI[t.status] || t.status}`;
       durEls[t.id].textContent = t.status === "running" ? "đang chạy…" : t.duration_s != null ? fmtDur(t.duration_s) : "";
     });
     edges.forEach((e, i) => {
       const s = status[e.to];
-      const state = s === "running" ? "flow" : s === "success" || s === "failed" ? "done" : "idle";
-      edgeEls[i].setAttribute("class", `edge edge-${state}`);
+      edgeEls[i].setAttribute("class", `edge edge-${s === "running" ? "flow" : s === "success" || s === "failed" ? "done" : "idle"}`);
     });
   }
-
-  function select(id) {
-    Object.entries(nodeEls).forEach(([k, g]) => g.classList.toggle("selected", k === id));
-  }
+  const select = (id) => Object.entries(nodeEls).forEach(([k, g]) => g.classList.toggle("selected", k === id));
 
   return { el: h("div", { class: "dag-wrap" }, svg), update, select };
 }

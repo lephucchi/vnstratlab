@@ -1,28 +1,11 @@
 // Page 1: Hướng dẫn. A six-step pipeline diagram you can play or step through.
 import { QUICK_START, STEPS } from "./guide-data.js";
-import { h, reducedMotion, toast } from "./util.js";
+import { cliLine, pageHead } from "./ui.js";
+import { h, reducedMotion } from "./util.js";
 import { startPipeline } from "./runs.js";
+import { startTour } from "./tour.js";
 
 const FRAME_MS = 2600;
-
-function copyButton(text) {
-  return h(
-    "button",
-    {
-      class: "btn btn-small",
-      type: "button",
-      onclick: async () => {
-        try {
-          await navigator.clipboard.writeText(text);
-          toast("Đã sao chép lệnh");
-        } catch {
-          toast("Không sao chép được; hãy chọn và sao chép thủ công");
-        }
-      },
-    },
-    "Sao chép"
-  );
-}
 
 function connector(i, active) {
   // Arrow between node i-1 and node i: done (solid), flowing (animated) or idle.
@@ -42,10 +25,10 @@ export function renderGuide(root) {
 
   const diagram = h("div", { class: "pipe", role: "group", "aria-label": "Sơ đồ quy trình" });
   const card = h("section", { class: "card frame", "aria-live": "polite" });
-  const playBtn = h("button", { class: "btn btn-primary", type: "button" }, "Phát");
-  const prevBtn = h("button", { class: "btn", type: "button" }, "‹ Trước");
-  const nextBtn = h("button", { class: "btn", type: "button" }, "Sau ›");
-  const counter = h("span", { class: "muted" });
+  const playBtn = h("button", { class: "btn", type: "button" }, "Phát");
+  const prevBtn = h("button", { class: "btn ghost", type: "button" }, "‹ Trước");
+  const nextBtn = h("button", { class: "btn ghost", type: "button" }, "Sau ›");
+  const counter = h("span", { class: "chip soft" });
 
   function stop() {
     if (timer) clearInterval(timer);
@@ -68,17 +51,18 @@ export function renderGuide(root) {
               go(i);
             },
           },
-          h("span", { class: "node-n" }, String(i + 1)),
+          h("span", { class: "n" }, String(i + 1)),
           s.name
         ),
       ]).filter(Boolean)
     );
     const s = STEPS[active];
     card.replaceChildren(
+      h("span", { class: "counter" }, `Khung ${active + 1}/${STEPS.length}`),
       h("h2", null, `${active + 1}. ${s.name}`),
       h("p", null, s.what),
-      h("div", { class: "cmd" }, h("code", null, s.command), copyButton(s.command)),
-      h("h3", { class: "watch-title" }, "⚠ Cần để ý"),
+      cliLine(s.command),
+      h("h3", { class: "watch-title" }, "Cần để ý"),
       h("ul", { class: "watch" }, s.watch.map((w) => h("li", null, w)))
     );
     card.classList.remove("enter");
@@ -112,7 +96,8 @@ export function renderGuide(root) {
     go(active + 1);
   });
 
-  const demoBtn = h("button", { class: "btn btn-primary", type: "button" }, "Chạy demo ngay");
+  const demoBtn = h("button", { class: "btn", type: "button" }, "Chạy demo ngay");
+  const tourBtn = h("button", { class: "btn ghost", type: "button", onclick: () => startTour() }, "Tham quan giao diện (Tour)");
   demoBtn.addEventListener("click", async () => {
     demoBtn.disabled = true;
     await startPipeline("demo");
@@ -120,8 +105,7 @@ export function renderGuide(root) {
   });
 
   root.append(
-    h("h1", null, "Hướng dẫn"),
-    h("p", { class: "lead" }, "Từ dữ liệu giá đến báo cáo: sáu bước, mỗi bước có lệnh và những điểm cần để ý."),
+    pageHead("Hướng dẫn", "Từ dữ liệu giá đến báo cáo: sáu bước, mỗi bước có lệnh và những điểm cần để ý", tourBtn),
     diagram,
     h(
       "div",
@@ -130,7 +114,7 @@ export function renderGuide(root) {
       prevBtn,
       nextBtn,
       counter,
-      reduced ? h("span", { class: "muted" }, "Giảm chuyển động đang bật: dùng nút Trước/Sau để xem từng khung.") : null
+      reduced ? h("span", { class: "muted small" }, "Giảm chuyển động đang bật: dùng nút Trước/Sau để xem từng khung.") : null
     ),
     card,
     h(
@@ -138,7 +122,8 @@ export function renderGuide(root) {
       { class: "card quick" },
       h("h2", null, "Bắt đầu nhanh"),
       h("ol", { class: "quick-steps" }, QUICK_START.map((t) => h("li", null, t))),
-      demoBtn
+      h("div", { class: "btn-row" }, demoBtn),
+      cliLine("vnstratlab demo")
     )
   );
   draw();

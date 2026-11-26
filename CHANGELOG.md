@@ -15,6 +15,13 @@ All notable changes are documented here. The format follows
   dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
 
 ### Added
+- **Console v2 UI (X-console-ui):** the Console now looks like the intro site and the PO dashboard
+  (monochrome tokens, dot grid, bundled Geist fonts with the OFL licence, buffalo mascot, light and
+  dark). New pages Tổng quan, Chiến lược and Cấu hình; command palette (Ctrl/⌘+K), keyboard
+  shortcuts, toasts, an active-run tracker, Cancel and Rerun, log search with highlight, chart
+  hovers, a Tour, a built-in terminal for `vnstratlab` commands and the equivalent CLI line on every
+  action. `?mock=1` serves contract-shaped synthetic fixtures (`docs/cards/console-v2-api.md`) so every
+  page works without the new API. Static files only, no external URLs.
 - **PO dashboard product demo (X-po-demo):** the Pages build runs the offline `demo` pipeline into a temp `APP_HOME` and adds a `demo` object (run DAG with durations, last 40 log lines per task, summary table, downsampled equity for S17 and the top 3 trials) to the encrypted PO data only; `tools/build_status.py` takes `--demo-home`, and `status.json` never carries demo fields. The build also publishes the Console's `guide-data.js` under `/po/guide/` and four Playwright screenshots of the synthetic Console under `/po/shots/` (not the Data page). A demo or screenshot failure never fails the build (`demo: unavailable`).
 - **Console UI (P1-T28a):** `vnstratlab serve` now opens a Vietnamese, offline Console (static
   files, no build step, no external assets): an animated step-by-step guide to the pipeline with
