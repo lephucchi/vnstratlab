@@ -61,7 +61,7 @@ Nothing reaches `main` (production) without G1–G4.
 |---|---|---|---|---|
 | G0 | Before work starts | Manager | Yes | Task card issue with acceptance criteria |
 | G1 | Every push to a PR | CI | Yes (required checks) | Green checks |
-| G2 | Every PR into `develop`, `release/*`, `main` | Manager (light tier) or QA Reviewer (full tier), see [qa-gates.md](qa-gates.md#review-tiers-owner-decision-2026-11-21) | Yes | Verdict + findings |
+| G2 | Every PR into `develop`, `release/*`, `main` | Manager (light tier) or QA Reviewer (full tier), see [qa-gates.md](qa-gates.md#review-tiers-owner-decisions-2026-11-21-narrowed-2026-11-26) | Yes | Verdict + findings |
 | G3 | Every `release/*` branch | Reality Analyst | Yes for minor/major; reduced for patch | `docs/reports/release-vX.Y.Z-readiness.md` |
 | G4 | Release PR into `main` | Owner | Yes | Approval on the PR |
 

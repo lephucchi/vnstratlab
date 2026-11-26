@@ -6,13 +6,7 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
-### Changed
-- **Leaner process and tests (X-trim, owner decision 2026-11-26):** the full G2 review tier is
-  limited to engine, finance, cost and statistics math; reviews are one round (a delta round only
-  for an unfixed blocker); new cards follow a lean test policy. On pull requests CI runs the test
-  job on ubuntu and windows with Python 3.12 only (the full 3 OS x 3 Python matrix runs on push
-  to `develop`/`main`, nightly and on demand; the `demo` smoke runs on one job). The test suite
-  dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
+## [0.1.0] - 2026-11-26
 
 ### Added
 - **PO dashboard product demo (X-po-demo):** the Pages build runs the offline `demo` pipeline into a temp `APP_HOME` and adds a `demo` object (run DAG with durations, last 40 log lines per task, summary table, downsampled equity for S17 and the top 3 trials) to the encrypted PO data only; `tools/build_status.py` takes `--demo-home`, and `status.json` never carries demo fields. The build also publishes the Console's `guide-data.js` under `/po/guide/` and four Playwright screenshots of the synthetic Console under `/po/shots/` (not the Data page). A demo or screenshot failure never fails the build (`demo: unavailable`).
@@ -36,7 +30,6 @@ All notable changes are documented here. The format follows
   folders and a minimal `config.yaml` (capital per book, data source, brokerage fee), validated with
   the config loader, written atomically; `--force` keeps a `.bak-*` copy and your other keys. It
   never handles secrets.
-
 - **`vnstratlab demo` (P1-T32):** one offline command that runs ingest, rebuild, features, every
   enabled packaged trial (19 today) and the simulator with the risk layer on the synthetic
   market (fixed window 2016-2020, about 45 s) and prints a summary table headed by a synthetic
@@ -80,16 +73,6 @@ All notable changes are documented here. The format follows
   (1/N, no params, short/medium/long). Both are in the packaged `strategies:` config, so
   `vnstratlab lab register` now lists 5 trials. A user `config.yaml` merges with these entries;
   set `enabled: false` to drop one.
-
-### Fixed
-- **Risk follow-ups (P1-T12b):** `Simulator.add_actions` now updates the ex-date ATR factors and
-  recomputes the affected tickers' ATR series, so a late stock action gives the same ATR state
-  from its apply session on as one known up front (past reads are not rewritten). Lots shrink to
-  the ledger's remaining shares (no drift after floored bonuses or late credits); shares added
-  with no lot (a late bonus on a sold position) get a lot at the last close before the apply
-  session with the current ATR. No change without a risk layer.
-
-### Added
 - **Strategy base, registry and trial log (P1-T13):** `Strategy` protocol and `BaseStrategy` with `validate_weights` and an `asof_guard` that refuses feature rows dated after `asof`; a registry that loads strategies and parameter sets from `strategies:` in the config (disabled entries skipped with their reason, unknown ids and bad params raise `StrategyConfigError`); deterministic `trial_id` over strategy id, canonical params, horizon, code hash, feature version and `ENGINE_VERSION`; append-only `trial_registry` in `lab.duckdb` with `ensure_trial` (`UnregisteredTrialError`) and a trial count for the DSR; `vnstratlab lab trials` and `lab register [--dry-run]` (the `lab --horizon` cycle command is unchanged). The packaged `strategies:` stays empty.
 - **Feature store v1 (P1-T10):** pure `vnstratlab.features` (trend/momentum, relative strength,
   mean reversion, volatility, volume/liquidity and equal-weight-universe market context; windows in
@@ -110,47 +93,12 @@ All notable changes are documented here. The format follows
   in `defaults.yaml`; `cash_proceeds_offset`, `cash_dividend_pay_lag_days`,
   `stock_dividend_listing_lag_sessions` in `hose.yaml` (all `VERIFY`). Values are frozen by the owner
   at merge.
-
 - **Risk layer (P1-T12):** pure `vnstratlab.risk` (Wilder `atr`, `RiskLayer`: stop cooldown,
   1 %-at-risk ATR sizing, max weight, max positions, optional vol scaling, circuit breaker) and,
   in the simulator, ATR stops on the close (`stop_pending_settlement` order event), the circuit
   breaker, the rebalance threshold and a `risk_events` output; all opt-in (`risk=` argument), so
   runs without it are unchanged. New config key `risk.stop_cooldown_sessions` (`null` = one decision
   period of the book's horizon, resolved by the caller); owner to confirm.
-
-### Fixed
-- **Data (P1-T06b):** `data rebuild` no longer loses a ticker to a few out-of-scale Yahoo
-  sessions: up to 2 sessions that return to scale are omitted (`scale_outlier_row`), a persistent
-  step at a stored event excludes the rows through the ex-date (`scale_step_before`) and the event
-  is no longer returned as an action, and rows before the first 60 in-band sessions of a
-  `split_adjusted` ticker are excluded (`non_hose_history`, GAP-04). Yahoo cash dividends are
-  booked as `amount x F(ex_date)` (`DIVIDENDS_SPLIT_ADJUSTED = True`). The rebuild report prints a
-  count per kind; the `dq_error` detail no longer says "latest run".
-- **Engine (P1-T11b):** late corporate actions use the holdings at pre-open of the ex-date;
-  stock events rescale only pending orders created before the ex-date (also with no shares held);
-  turnover divides by the previous close's equity (first session: initial capital).
-- **Data:** the synthetic market declares the sessions it suspended; a trailing gap made only of
-  such sessions is a `missing_ticker` warning ("declared suspension"), so synthetic ingests no
-  longer end in `failed_dq`. Undeclared gaps (raw sources) keep their severity.
-- **CLI:** `vnstratlab --help` and `--version` no longer import pandas, numpy or duckdb.
-
-### Changed
-- **Data source (ADR-007):** Yahoo Finance becomes the interim Phase 1 price source through an
-  optional adapter (P1-T37); the data pipeline is a separate layer (`vnstratlab.data`); known
-  shortfalls are tracked in a gap register (`src/vnstratlab/data/gaps.yaml`, `docs/data-gaps.md`).
-  New cards P1-T36 (scope extended), P1-T37, P1-T38; P1-T03 is replaced. Review:
-  `docs/reports/data-source-yahoo.md`.
-- **Data source (ADR-006):** plan decision D6 (`vnstock`) is superseded. Phase 1 runs on a
-  synthetic market (new card P1-T36); real-data cards wait for the owner's source decision.
-  Review: `docs/reports/data-source-vnstock.md`.
-- **Breaking:** environment variables have no project prefix: `APP_HOME` (was
-  `VNSTRATLAB_HOME`), `LOG_LEVEL`, `VNSTOCK_API_KEY` (was `VNSTRATLAB_DATA_API_KEY`),
-  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. The unused LLM key is removed until the Phase 2
-  card that needs it. Rename the keys in your `.env`.
-- Pages: PO dashboard data is published only encrypted (`po/data.enc.json`); the plaintext
-  `po/data.json` is no longer written.
-
-### Added
 - Data-quality checks use a per-year calendar (warnings in years with incomplete holiday
   lists), summarise findings on rescaled split-adjusted history, report per-ticker holes and mark
   a crashed check run `dq_crashed` (P1-T38 review fixes).
@@ -194,3 +142,47 @@ All notable changes are documented here. The format follows
 - Engine specification (`docs/engine.md`), strategy catalogue (`docs/strategies.md`),
   ADR-003 (proposed engine and architecture refinements).
 - Implementation plan v1.1 (recommend-only, portfolio optimisation as Phase 3).
+
+### Changed
+- **Leaner process and tests (X-trim, owner decision 2026-11-26):** the full G2 review tier is
+  limited to engine, finance, cost and statistics math; reviews are one round (a delta round only
+  for an unfixed blocker); new cards follow a lean test policy. On pull requests CI runs the test
+  job on ubuntu and windows with Python 3.12 only (the full 3 OS x 3 Python matrix runs on push
+  to `develop`/`main`, nightly and on demand; the `demo` smoke runs on one job). The test suite
+  dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
+- **Data source (ADR-007):** Yahoo Finance becomes the interim Phase 1 price source through an
+  optional adapter (P1-T37); the data pipeline is a separate layer (`vnstratlab.data`); known
+  shortfalls are tracked in a gap register (`src/vnstratlab/data/gaps.yaml`, `docs/data-gaps.md`).
+  New cards P1-T36 (scope extended), P1-T37, P1-T38; P1-T03 is replaced. Review:
+  `docs/reports/data-source-yahoo.md`.
+- **Data source (ADR-006):** plan decision D6 (`vnstock`) is superseded. Phase 1 runs on a
+  synthetic market (new card P1-T36); real-data cards wait for the owner's source decision.
+  Review: `docs/reports/data-source-vnstock.md`.
+- **Breaking:** environment variables have no project prefix: `APP_HOME` (was
+  `VNSTRATLAB_HOME`), `LOG_LEVEL`, `VNSTOCK_API_KEY` (was `VNSTRATLAB_DATA_API_KEY`),
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. The unused LLM key is removed until the Phase 2
+  card that needs it. Rename the keys in your `.env`.
+- Pages: PO dashboard data is published only encrypted (`po/data.enc.json`); the plaintext
+  `po/data.json` is no longer written.
+
+### Fixed
+- **Risk follow-ups (P1-T12b):** `Simulator.add_actions` now updates the ex-date ATR factors and
+  recomputes the affected tickers' ATR series, so a late stock action gives the same ATR state
+  from its apply session on as one known up front (past reads are not rewritten). Lots shrink to
+  the ledger's remaining shares (no drift after floored bonuses or late credits); shares added
+  with no lot (a late bonus on a sold position) get a lot at the last close before the apply
+  session with the current ATR. No change without a risk layer.
+- **Data (P1-T06b):** `data rebuild` no longer loses a ticker to a few out-of-scale Yahoo
+  sessions: up to 2 sessions that return to scale are omitted (`scale_outlier_row`), a persistent
+  step at a stored event excludes the rows through the ex-date (`scale_step_before`) and the event
+  is no longer returned as an action, and rows before the first 60 in-band sessions of a
+  `split_adjusted` ticker are excluded (`non_hose_history`, GAP-04). Yahoo cash dividends are
+  booked as `amount x F(ex_date)` (`DIVIDENDS_SPLIT_ADJUSTED = True`). The rebuild report prints a
+  count per kind; the `dq_error` detail no longer says "latest run".
+- **Engine (P1-T11b):** late corporate actions use the holdings at pre-open of the ex-date;
+  stock events rescale only pending orders created before the ex-date (also with no shares held);
+  turnover divides by the previous close's equity (first session: initial capital).
+- **Data:** the synthetic market declares the sessions it suspended; a trailing gap made only of
+  such sessions is a `missing_ticker` warning ("declared suspension"), so synthetic ingests no
+  longer end in `failed_dq`. Undeclared gaps (raw sources) keep their severity.
+- **CLI:** `vnstratlab --help` and `--version` no longer import pandas, numpy or duckdb.

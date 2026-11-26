@@ -46,11 +46,16 @@ bao giờ kết nối công ty chứng khoán. Chi tiết: [docs/architecture.md
 
 ## Trạng thái
 
-Pre-alpha. Repo hiện mới có khung dự án (task card **P1-T01**). Xem [lộ trình](docs/roadmap.md).
+**v0.1.0.** Đã có: tải dữ liệu (thị trường giả lập và adapter Yahoo tạm thời), kiểm tra chất lượng
+dữ liệu, giá điều chỉnh và giá thực thi, chỉ báo (features), bộ mô phỏng HOSE kèm lớp rủi ro,
+19 trial của 12 chiến lược, `demo` offline, `init` và Console chạy trên máy (`serve`). Lab thống
+kê (`backtest`, chu trình `lab`, cổng, trọng số, `stress`, `daily`) và lịch chạy tự động chưa có,
+sẽ ra ở v0.2 và v0.3. Kết quả trên dữ liệu thật từ nguồn Yahoo tạm thời không phải bằng chứng
+(thiên lệch sống sót, xem [data gaps](docs/data-gaps.md)). Xem [lộ trình](docs/roadmap.md).
 
 | Bản | Nội dung |
 |---|---|
-| v0.1 | Tải dữ liệu, bộ mô phỏng theo luật HOSE, các chiến lược đầu tiên, `demo` offline |
+| v0.1 (bản này) | Tải dữ liệu, bộ mô phỏng theo luật HOSE, các chiến lược đầu tiên, `demo` offline |
 | v0.2 | `backtest` walk-forward, lab thống kê: DSR, PBO, SPA, MCS, trọng số, meta-backtest, stress test, báo cáo |
 | v0.3 | Danh mục giả lập (paper book), dashboard chạy trên máy, lịch chạy tự động, báo cáo Telegram (tùy chọn) |
 | v0.4 | Thu thập và chấm điểm tin tức bằng LLM, đánh giá bằng kiểm định đăng ký trước (ADR-002) |
@@ -71,21 +76,44 @@ vnstratlab doctor
 
 Khi đã phát hành: `uv tool install vnstratlab` hoặc `pipx install vnstratlab`.
 
-## Cách dùng (mục tiêu)
+## Bắt đầu nhanh
+
+Có trong v0.1.0:
 
 ```bash
-vnstratlab demo                          # chạy toàn bộ trên dữ liệu giả, không cần mạng
-vnstratlab init                          # chọn danh sách mã, vốn, thư mục dữ liệu, thông báo
-vnstratlab ingest --from 2015-01-01      # tải dữ liệu về MÁY CỦA BẠN
-vnstratlab backtest --strategy S02_breakout20
-vnstratlab lab --horizon short           # cổng thống kê -> MCS -> trọng số -> khuyến nghị
-vnstratlab stress --horizon short        # kiểm tra tính thực tế
-vnstratlab serve                         # dashboard tại 127.0.0.1:8000 + lịch chạy mỗi tối
+vnstratlab doctor                        # kiểm tra cài đặt
+vnstratlab demo                          # chạy toàn bộ trên dữ liệu giả, không cần mạng, ~45 giây
+vnstratlab serve                         # Console trên máy tại 127.0.0.1:8000: hướng dẫn, lần chạy, log, kết quả
+vnstratlab init                          # tạo config.yaml (vốn, nguồn dữ liệu, phí)
+vnstratlab ingest --source synthetic     # nạp dữ liệu vào kho cục bộ (hoặc: --source yahoo, gói tùy chọn)
+vnstratlab data rebuild                  # giá điều chỉnh và giá thực thi
+vnstratlab features build                # chỉ báo theo từng thời điểm
+vnstratlab lab register --dry-run        # liệt kê 19 trial sẽ được đăng ký
 ```
 
-Mọi lệnh có ghi dữ liệu đều hỗ trợ `--dry-run`.
+Dự kiến (lệnh đã có nhưng báo chưa cài đặt):
 
-## Mỗi tối hệ thống làm gì (từ v0.3)
+```bash
+vnstratlab backtest --strategy S02_breakout_volume   # v0.2
+vnstratlab lab --horizon short                       # v0.2: cổng thống kê -> MCS -> trọng số -> khuyến nghị
+vnstratlab stress --horizon short                    # v0.2
+vnstratlab daily                                     # v0.3: vòng lặp mỗi tối kèm lịch chạy
+```
+
+| Lệnh | Việc làm | Card |
+|---|---|---|
+| `demo` | Toàn bộ pipeline trên thị trường giả lập, offline, trong thư mục tạm | ✅ P1-T32 |
+| `init` | Thiết lập cấu hình người dùng | ✅ P1-T35 |
+| `ingest` | Tải hoặc làm mới dữ liệu (synthetic, Yahoo) | ✅ P1-T36, P1-T37 |
+| `serve` | Console trên máy (lần chạy, log, hướng dẫn, kết quả); chưa có lịch chạy | ✅ P1-T27a, P1-T28a |
+| `backtest`, `lab` (chu trình), `meta-backtest`, `stress` | Lab thống kê | P1-T20, T22, T23, T33 (v0.2) |
+| `daily` | Vòng lặp mỗi tối | P1-T26 (v0.3) |
+
+`--dry-run` có ở `ingest`, `data rebuild`, `features build`, `lab register`, chu trình `lab` và
+`daily`; `demo` chạy trong thư mục tạm và không ghi gì vào thư mục dữ liệu của bạn. Chưa có lịch
+chạy tự động; dự kiến ở v0.3.
+
+## Mỗi tối hệ thống làm gì (dự kiến từ v0.3)
 
 | Giờ | Bước |
 |---|---|
