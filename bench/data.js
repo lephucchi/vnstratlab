@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795692058243,
+  "lastUpdate": 1795693530839,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1711,6 +1711,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00015710432602829112",
             "extra": "mean: 10.576989631574993 msec\nrounds: 19"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "98cd096fa13c1c128d320b98191331da681102a7",
+          "message": "fix(demo): quiet circuit-breaker log, ASCII warning, shared simulator bars (X-65) (#81)\n\nCloses #65. Breaker WARNING lines per demo 1303 -> 38 (engine on/off transitions only); ASCII warning line; bars built once per run (digests byte-identical, ENGINE_VERSION unchanged); test gaps from G2 closed. G2 light (manager).",
+          "timestamp": "2026-11-26T18:44:49+07:00",
+          "tree_id": "60eba87f5ea4dfb4d51558508c9a3987da165365",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/98cd096fa13c1c128d320b98191331da681102a7"
+        },
+        "date": 1795693530471,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 1.9189089912444313,
+            "unit": "iter/sec",
+            "range": "stddev: 0.015379075990287035",
+            "extra": "mean: 521.1294566666709 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 52.72762277478698,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00038835890392665667",
+            "extra": "mean: 18.96539133332927 msec\nrounds: 12"
           }
         ]
       }
