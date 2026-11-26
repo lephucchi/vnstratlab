@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795683238221,
+  "lastUpdate": 1795683698630,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1483,6 +1483,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00033154781782424037",
             "extra": "mean: 9.142458727272253 msec\nrounds: 11"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fa5edfbe269740d409867d4f150f98ec6a2c0fac",
+          "message": "docs: close P1-T32 and P1-T35, progress log, roadmap (#67)\n\nDocs only.",
+          "timestamp": "2026-11-26T16:00:53+07:00",
+          "tree_id": "11f2147e685b290928057ced230543e1fe71be60",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/fa5edfbe269740d409867d4f150f98ec6a2c0fac"
+        },
+        "date": 1795683697878,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 3.085417100454967,
+            "unit": "iter/sec",
+            "range": "stddev: 0.01079901051099737",
+            "extra": "mean: 324.105288666658 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 101.55179852588246,
+            "unit": "iter/sec",
+            "range": "stddev: 0.00017261665191005245",
+            "extra": "mean: 9.847191428570616 msec\nrounds: 14"
           }
         ]
       }
