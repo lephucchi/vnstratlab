@@ -4,16 +4,25 @@
   <meta charset="utf-8">
   <title>vnstratlab Console</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/console.css">
+  <script type="module" src="js/main.js"></script>
 </head>
 <body>
-  <h1>vnstratlab Console</h1>
-  <p>Giao diện đang được xây dựng (thẻ P1-T28a). Hiện tại bạn có thể xem dữ liệu qua API cục bộ:</p>
-  <ul>
-    <li><a href="/api/pipelines">/api/pipelines</a> - các quy trình và tác vụ</li>
-    <li><a href="/api/runs">/api/runs</a> - lịch sử các lần chạy</li>
-    <li><a href="/api/data/status">/api/data/status</a> - tình trạng dữ liệu</li>
-    <li><a href="/api/data/gaps">/api/data/gaps</a> - các khoảng trống dữ liệu</li>
-  </ul>
-  <p>vnstratlab chỉ đưa ra khuyến nghị; công cụ không bao giờ đặt lệnh.</p>
+  <header class="topbar">
+    <button id="nav-toggle" class="icon-btn" aria-label="Mở menu" aria-expanded="false">&#9776;</button>
+    <strong class="brand">vnstratlab <span class="muted">Console</span></strong>
+    <span class="tag-safe">Chỉ khuyến nghị — không đặt lệnh</span>
+  </header>
+  <div class="shell">
+    <nav id="nav" class="nav" aria-label="Điều hướng">
+      <a href="#/huong-dan" data-route="huong-dan">Hướng dẫn</a>
+      <a href="#/runs" data-route="runs">Runs</a>
+      <a href="#/du-lieu" data-route="du-lieu">Dữ liệu</a>
+      <a href="#/ket-qua" data-route="ket-qua" id="nav-results">Kết quả gần nhất</a>
+    </nav>
+    <main id="view" tabindex="-1"></main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

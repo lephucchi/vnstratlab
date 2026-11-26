@@ -15,6 +15,11 @@ All notable changes are documented here. The format follows
   dropped duplicated cases and shares one synthetic ingest per module; no behaviour change.
 
 ### Added
+- **Console UI (P1-T28a):** `vnstratlab serve` now opens a Vietnamese, offline Console (static
+  files, no build step, no external assets): an animated step-by-step guide to the pipeline with
+  commands and watch-outs, a Runs page (start pipelines, grid of recent runs, live task DAG and
+  logs over Server-Sent Events with a polling fallback), a Data page (stores, tickers, checks, open
+  gaps) and a Results page for the demo (synthetic banner, sortable table, equity chart).
 - **Run registry and `vnstratlab serve` (P1-T27a):** new package `vnstratlab.runs`: pipelines
   (`demo`, `refresh`, `ingest`, `rebuild`, `features`) are DAGs of tasks run in a background thread
   (one run at a time), each task with a status, a summary and a log, stored under

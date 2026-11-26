@@ -139,6 +139,24 @@ is not loopback is refused. One run at a time; starting the Yahoo `refresh` from
 to confirm the source terms first. The API is JSON under `/api` (`/api/pipelines`, `/api/runs`,
 `/api/data/status`, `/api/results/<run_id>`); it has no endpoint that places orders.
 
+#### The Console pages
+
+The page opens in Vietnamese and works offline (no build step, nothing loaded from the internet).
+It has four pages, a permanent "Chỉ khuyến nghị — không đặt lệnh" tag, and light and dark themes:
+
+- **Hướng dẫn** (`#/huong-dan`, default): the six pipeline steps (Ingest, Rebuild, Features,
+  Strategies, Simulator, Báo cáo) as a diagram you can play ("Phát") or step through
+  ("Trước"/"Sau"). Each frame shows what the step does, its command and the "Cần để ý" points.
+  "Chạy demo ngay" starts the offline demo. With reduced motion on, frames are static.
+- **Runs** (`#/runs`, `#/runs/<run_id>`): buttons to start a pipeline (the Yahoo one asks you to
+  confirm the source terms first), a grid of the last 20 runs by task, and a run view with the task
+  DAG, live status and logs (level filter, search, auto-tail, download). A finished demo has a
+  "Xem kết quả" button.
+- **Dữ liệu** (`#/du-lieu`): each store (SYNTHETIC or THẬT badge), tickers, last ingest runs, the
+  last checks and the open data gaps.
+- **Kết quả** (`#/ket-qua/<run_id>`): for a demo run, a red synthetic-data banner, the sortable
+  summary table (the equal-weight S17 is marked as the benchmark) and the equity chart.
+
 ## 4. Daily use (planned for v0.3)
 
 ```bash
