@@ -152,9 +152,30 @@ def doctor() -> None:
 
 
 @app.command()
-def demo() -> None:
-    """Run the whole pipeline offline on bundled synthetic data."""
-    _not_implemented("P1-T32")
+def demo(
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", help="Also write summary.csv and equity/*.csv here (empty dir)."),
+    ] = None,
+    quiet: Annotated[
+        bool, typer.Option("--quiet", help="No progress lines and no table: warning and footer.")
+    ] = False,
+) -> None:
+    """Run the whole pipeline offline on synthetic data (temporary files, no trials registered)."""
+    from vnstratlab.demo import DemoError, format_report, run_demo
+
+    _tolerant_output()
+
+    def progress(message: str) -> None:
+        if not quiet:
+            typer.echo(f"... {message}", err=True)
+
+    try:
+        report = run_demo(out, progress=progress)
+    except DemoError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(format_report(report, quiet=quiet))
 
 
 @app.command()
