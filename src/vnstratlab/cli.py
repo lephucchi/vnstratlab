@@ -960,6 +960,82 @@ def lab_trials(
     typer.echo(f"trials: {total}" + (f" (horizon {selected})" if selected else ""))
 
 
+@lab_app.command("stats")
+def lab_stats(
+    horizon: Annotated[Horizon | None, typer.Option("--horizon", help="Only this horizon.")] = None,
+    source: Annotated[
+        str | None, typer.Option("--source", help="Data source; default data.source in config.")
+    ] = None,
+    mode: Annotated[
+        BacktestMode, typer.Option("--mode", help="ideal or executable (default executable).")
+    ] = BacktestMode.executable,
+) -> None:
+    """Sharpe, Deflated Sharpe and PBO of the current trials, with the gate-1 verdicts.
+
+    Computes from the stored out-of-sample returns and stores the rows in lab.duckdb (table
+    trial_stats). Gate inputs are the historical (in-sample by design) segment; no selection yet.
+    """
+    import duckdb
+
+    from vnstratlab.lab.stats import add_gate_columns, compute_lab_stats
+    from vnstratlab.lab.walkforward import SEGMENT_LABELS, data_label
+
+    if mode is BacktestMode.both:
+        raise typer.BadParameter("give one mode: ideal or executable", param_hint="--mode")
+    _tolerant_output()
+    cfg = _load_cfg_or_exit()
+    name = source or cfg.data.source
+    paths = get_paths()
+    if not paths.lab_db.is_file():
+        typer.echo("no lab store yet: run `vnstratlab backtest --all --register`")
+        return
+    try:
+        frame = compute_lab_stats(
+            cfg, paths, name, None if horizon is None else horizon.value, mode.value
+        )
+    except duckdb.Error as exc:
+        _lab_db_error(paths.lab_db, exc)
+    typer.echo(data_label(name))
+    typer.echo(f"mode {mode.value}; historical = {SEGMENT_LABELS['historical']}")
+    if frame.empty:
+        typer.echo("no trials: run `vnstratlab backtest --all --register`")
+        return
+    gated = add_gate_columns(frame, cfg)
+    hist = gated[gated["segment"] == "historical"]
+    fwd_periods = {
+        str(k): int(v)
+        for k, v in zip(
+            frame.loc[frame["segment"] == "forward", "trial_id"],
+            frame.loc[frame["segment"] == "forward", "periods"],
+            strict=True,
+        )
+    }
+
+    def num(v: Any, spec: str) -> str:
+        return "n/a" if v != v else format(v, spec)
+
+    def mark(v: Any) -> str:
+        return "pass" if v else "FAIL"
+
+    header = f"{'trial':<18}{'hz':<7}{'T':>4}{'SR':>8}{'skew':>8}{'kurt':>7}{'DSR':>7}{'N':>4}  "
+    typer.echo(header + f"{'PBO':>6}  periods dsr  pbo   fwd T")
+    rows: list[dict[Any, Any]] = hist.to_dict("records")
+    for r in rows:
+        typer.echo(
+            f"{r['trial_id']:<18}{r['horizon']:<7}{int(r['periods']):>4}{num(r['sr'], '.3f'):>8}"
+            f"{num(r['skew'], '.2f'):>8}{num(r['kurt'], '.2f'):>7}{num(r['dsr'], '.3f'):>7}"
+            f"{int(r['n_trials']):>4}  {num(r['pbo'], '.3f'):>6}  "
+            f"{mark(r['periods_ok']):<7} {mark(r['dsr_ok']):<5}{mark(r['pbo_ok']):<5} "
+            f"{fwd_periods[r['trial_id']]}"
+        )
+    passing = sum(1 for r in rows if r["periods_ok"] and r["dsr_ok"] and r["pbo_ok"])
+    typer.echo(
+        f"gate 1: DSR >= {cfg.lab.gate1.dsr_min}, PBO <= {cfg.lab.gate1.pbo_max}, periods >= "
+        f"min_periods (no selection yet); passing all three: "
+        f"{passing} of {len(rows)}"
+    )
+
+
 @lab_app.command("register")
 def lab_register(
     source: Annotated[

@@ -469,7 +469,7 @@ def test_backtest_all_pipeline_and_summary_endpoint(home: Path) -> None:
     client = TestClient(create_app(home), base_url="http://127.0.0.1:8000")
     listing = client.get("/api/pipelines").json()["pipelines"]
     tasks = next(p for p in listing if p["id"] == "backtest_all")["tasks"]
-    assert [t["id"] for t in tasks] == ["features", "backtest", "report"]
+    assert [t["id"] for t in tasks] == ["features", "backtest", "lab_stats", "report"]
     body = client.get("/api/backtest/summary", params={"source": "synthetic"}).json()
     assert body["synthetic"] is True
     assert "SYNTHETIC" in body["label"]

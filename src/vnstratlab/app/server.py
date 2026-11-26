@@ -296,6 +296,46 @@ def create_app(
             "rows": rows,
         }
 
+    @app.get("/api/lab/stats", response_model=None)
+    def lab_stats(horizon: str | None = None, source: str | None = None) -> Any:
+        import duckdb
+
+        from vnstratlab.lab.stats import HORIZONS, STATS_COLUMNS, add_gate_columns
+        from vnstratlab.lab.store import LabStore
+        from vnstratlab.lab.walkforward import SEGMENT_LABELS, data_label
+
+        if horizon is not None and horizon not in HORIZONS:
+            return _error(422, "bad_horizon", horizon=horizon, available=list(HORIZONS))
+        try:
+            cfg = load_config(paths.home)
+        except ConfigError as exc:
+            return _error(422, "config_invalid", problems=list(exc.problems))
+        name = source or cfg.data.source
+        frame = None
+        if paths.lab_db.is_file():
+            try:
+                with LabStore(paths.lab_db, read_only=True) as lab:
+                    frame = lab.trial_stats_rows(source=name, horizon=horizon)
+            except duckdb.Error as exc:  # the lab store is being written
+                return _error(409, "lab_store_busy", message=str(exc))
+        if frame is None or frame.empty:
+            rows: list[dict[str, Any]] = []
+        else:
+            gated = add_gate_columns(frame, cfg)
+            gated["computed_at"] = gated["computed_at"].astype(str)
+            rows = [
+                {str(k): v for k, v in rec.items()}
+                for rec in gated.astype(object).where(gated.notna(), None).to_dict("records")
+            ]
+        return {
+            "source": name,
+            "synthetic": name == "synthetic",
+            "label": data_label(name),
+            "segments": SEGMENT_LABELS,
+            "columns": [*STATS_COLUMNS, "periods_ok", "dsr_ok", "pbo_ok"],
+            "rows": rows,
+        }
+
     @app.get("/api/results/{run_id}", response_model=None)
     def results(run_id: str) -> Any:
         import pandas as pd

@@ -36,6 +36,25 @@ OOS_COLUMNS = (
     "in_sample_by_design",
 )
 MODES = ("ideal", "executable")
+STATS_TABLE = "trial_stats"
+STATS_COLUMNS = (
+    "trial_id",
+    "horizon",
+    "mode",
+    "source",
+    "segment",
+    "periods",
+    "sr",
+    "skew",
+    "kurt",
+    "dsr",
+    "n_trials",
+    "var_sr",
+    "pbo",
+    "computed_at",
+    "feature_version",
+    "engine_version",
+)
 
 
 class LabStore(TrialRegistry):
@@ -59,6 +78,27 @@ class LabStore(TrialRegistry):
                     computed_at TIMESTAMPTZ NOT NULL,
                     in_sample_by_design BOOLEAN NOT NULL,
                     PRIMARY KEY (trial_id, mode, period_end, source)
+                )"""
+            )
+            self._con.execute(
+                f"""CREATE TABLE IF NOT EXISTS {STATS_TABLE} (
+                    trial_id VARCHAR NOT NULL,
+                    horizon VARCHAR NOT NULL,
+                    mode VARCHAR NOT NULL,
+                    source VARCHAR NOT NULL,
+                    segment VARCHAR NOT NULL,
+                    periods INTEGER NOT NULL,
+                    sr DOUBLE,
+                    skew DOUBLE,
+                    kurt DOUBLE,
+                    dsr DOUBLE,
+                    n_trials INTEGER,
+                    var_sr DOUBLE,
+                    pbo DOUBLE,
+                    computed_at TIMESTAMPTZ NOT NULL,
+                    feature_version VARCHAR NOT NULL,
+                    engine_version VARCHAR NOT NULL,
+                    PRIMARY KEY (trial_id, mode, source, segment)
                 )"""
             )
 
@@ -152,5 +192,62 @@ class LabStore(TrialRegistry):
         return self._con.execute(
             f"SELECT {', '.join(OOS_COLUMNS)} FROM {OOS_TABLE} {clause} "  # noqa: S608
             "ORDER BY trial_id, mode, period_end",
+            args,
+        ).df()
+
+    # ------------------------------------------------------------------ trial_stats (P1-T21)
+
+    def replace_trial_stats(self, frame: pd.DataFrame, source: str, horizon: str, mode: str) -> int:
+        """Replace the stored ``trial_stats`` of (source, horizon, mode) with ``frame`` (columns
+        ``STATS_COLUMNS``; NaN is stored as NULL); returns the number of rows written."""
+        if self.read_only:
+            raise TrialError("lab store opened read-only: cannot write trial_stats")
+        records: list[list[Any]] = []
+        for row in frame[list(STATS_COLUMNS)].itertuples(index=False, name=None):
+            records.append([None if isinstance(v, float) and v != v else v for v in row])
+        for rec in records:
+            if rec[5] is not None:
+                rec[5] = int(rec[5])
+            if rec[10] is not None:
+                rec[10] = int(rec[10])
+            if isinstance(rec[13], pd.Timestamp):
+                rec[13] = rec[13].to_pydatetime()
+        self._con.execute("BEGIN TRANSACTION")
+        try:
+            self._con.execute(
+                f"DELETE FROM {STATS_TABLE} WHERE source = ? AND horizon = ? AND mode = ?",  # noqa: S608
+                [source, horizon, mode],
+            )
+            if records:
+                self._con.executemany(
+                    f"INSERT INTO {STATS_TABLE} ({', '.join(STATS_COLUMNS)}) "  # noqa: S608
+                    f"VALUES ({', '.join('?' * len(STATS_COLUMNS))})",
+                    records,
+                )
+            self._con.execute("COMMIT")
+        except BaseException:
+            self._con.execute("ROLLBACK")
+            raise
+        return len(records)
+
+    def trial_stats_rows(
+        self, *, source: str | None = None, horizon: str | None = None, mode: str | None = None
+    ) -> pd.DataFrame:
+        """Stored ``trial_stats`` rows (``STATS_COLUMNS``), ordered by horizon, trial, segment."""
+        row = self._con.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ?", [STATS_TABLE]
+        ).fetchone()
+        if row is None:
+            return pd.DataFrame(columns=list(STATS_COLUMNS))
+        where: list[str] = []
+        args: list[str] = []
+        for column, value in (("source", source), ("horizon", horizon), ("mode", mode)):
+            if value is not None:
+                where.append(f"{column} = ?")
+                args.append(value)
+        clause = f"WHERE {' AND '.join(where)}" if where else ""
+        return self._con.execute(
+            f"SELECT {', '.join(STATS_COLUMNS)} FROM {STATS_TABLE} {clause} "  # noqa: S608
+            "ORDER BY horizon, trial_id, mode, segment",
             args,
         ).df()
