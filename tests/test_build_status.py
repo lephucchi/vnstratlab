@@ -265,3 +265,81 @@ def test_build_drops_covered_range_and_superseded(
     assert ids["P1-T15"] == "in-review"
     status = json.loads((tmp_path / "out" / "data" / "status.json").read_text(encoding="utf-8"))
     assert status["cards_total"] == len(captured["cards"])
+
+
+# ------------------------------------------------------------------ demo run (PO data only)
+
+
+def _fake_demo_home(tmp_path: Path) -> Path:
+    home = tmp_path / "home"
+    run_id = "20261126T103350-demo-8686"
+    run_dir = home / "logs" / "runs" / run_id
+    (run_dir / "demo" / "equity").mkdir(parents=True)
+    run = {
+        "run_id": run_id,
+        "status": "success",
+        "created_at": "2026-11-26T10:33:50+00:00",
+        "ended_at": "2026-11-26T10:34:34+00:00",
+        "duration_s": 44.0,
+        "tasks": [
+            {"id": "a", "label_vi": "Một", "status": "success", "duration_s": 1.5, "upstream": []},
+            {
+                "id": "b",
+                "label_vi": "Hai",
+                "status": "success",
+                "duration_s": 2.0,
+                "upstream": ["a"],
+                "summary": {"rows": 3},
+            },
+        ],
+    }
+    (run_dir / "run.json").write_text(json.dumps(run), encoding="utf-8")
+    (run_dir / "a.log").write_text("\n".join(f"line {i}" for i in range(100)), encoding="utf-8")
+    (run_dir / "demo" / "summary.csv").write_text(
+        "trial_id,trial,horizon,Sharpe\n"
+        "t1,S01 x,short,0.5\nt2,S02 y,short,1.5\nb1,S17_equal_weight (benchmark),short,0.1\n",
+        encoding="utf-8",
+    )
+    for tid in ("t1", "t2", "b1"):
+        rows = "".join(f"2020-01-{d:02d},{100 + d}\n" for d in range(1, 29))
+        (run_dir / "demo" / "equity" / f"{tid}.csv").write_text(
+            "date,equity\n" + rows * 20, encoding="utf-8"
+        )
+    return home
+
+
+def test_build_demo_from_run_folder(tmp_path: Path) -> None:
+    demo = bs.build_demo(_fake_demo_home(tmp_path))
+    assert demo["available"] is True
+    assert demo["run_id"] == "20261126T103350-demo-8686"
+    assert [t["id"] for t in demo["tasks"]] == ["a", "b"]
+    assert demo["edges"] == [{"from": "a", "to": "b"}]
+    assert demo["logs"]["a"] == [f"line {i}" for i in range(60, 100)]  # last 40 lines
+    assert demo["logs"]["b"] == []
+    assert demo["results"]["columns"] == ["trial_id", "trial", "horizon", "Sharpe"]
+    assert set(demo["equity"]) == {"b1", "t1", "t2"}  # benchmark + top trials
+    assert len(demo["equity"]["t1"]["dates"]) == 260  # 560 points downsampled
+    assert demo["equity"]["t1"]["dates"][-1] == "2020-01-28"
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_build_demo_unavailable(tmp_path: Path, missing: bool) -> None:
+    demo = bs.build_demo(None if missing else tmp_path / "empty")
+    assert demo["available"] is False
+    assert demo["reason"]
+
+
+def test_demo_only_in_po_payload(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs" / "plan").mkdir(parents=True)
+    (repo / "docs" / "plan" / "plan.md").write_text("# Plan\n", encoding="utf-8")
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)  # no network
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        bs, "publish_po", lambda plain, po_dir: captured.update(json.loads(plain.decode("utf-8")))
+    )
+    bs.build(repo, tmp_path / "out", None, None, None, _fake_demo_home(tmp_path))
+    assert captured["demo"]["available"] is True
+    status_text = (tmp_path / "out" / "data" / "status.json").read_text(encoding="utf-8")
+    assert "demo" not in status_text
+    assert "20261126T103350" not in status_text

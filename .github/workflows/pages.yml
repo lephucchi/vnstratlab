@@ -65,6 +65,17 @@ jobs:
           pytest -m "not slow and not network" --cov-report=json:../coverage.json \
             --junitxml=../junit.xml || echo "tests failed; status will show it"
 
+      # Synthetic demo run for the PO dashboard "Demo sản phẩm" (card X-po-demo). Fully offline,
+      # synthetic data only. Neither step may fail the Pages build; build_status.py then publishes
+      # `demo: unavailable` (encrypted PO data only).
+      - name: Run synthetic demo (PO dashboard)
+        continue-on-error: true
+        timeout-minutes: 5
+        working-directory: dev
+        env:
+          APP_HOME: ${{ runner.temp }}/vnstratlab-demo-home
+        run: vnstratlab demo --quiet > /dev/null
+
       - name: Build docs from main
         working-directory: main
         run: |
@@ -76,8 +87,54 @@ jobs:
           mkdir -p _site/po
           if [ -f site/index.html ]; then cp -r site/. _site/; rm -rf _site/.git _site/.github; fi
           if [ -f po/index.html ]; then cp -r po/. _site/po/; rm -rf _site/po/.git _site/po/.github; fi
+          # one source for the guide motion: the PO page imports the Console's guide data
+          mkdir -p _site/po/guide
+          cp dev/src/vnstratlab/app/static/js/guide-data.js _site/po/guide/ || echo "guide data not copied"
           [ -f _site/index.html ] || echo '<meta http-equiv="refresh" content="0; url=docs/">' > _site/index.html
           touch _site/.nojekyll
+
+      # Four Console screenshots of the synthetic demo only (never the Data page: it shows the
+      # home path). Generic file names; failure is logged and ignored.
+      - name: Console screenshots (synthetic demo)
+        continue-on-error: true
+        timeout-minutes: 5
+        working-directory: dev
+        env:
+          APP_HOME: ${{ runner.temp }}/vnstratlab-demo-home
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+          vnstratlab serve --no-open --port 8765 > "$RUNNER_TEMP/serve.log" 2>&1 &
+          SERVER=$!
+          trap 'kill $SERVER 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            curl -fs http://127.0.0.1:8765/api/runs >/dev/null && break
+            sleep 1
+          done
+          mkdir -p ../_site/po/shots
+          python - ../_site/po/shots <<'PY'
+          import json, sys, urllib.request
+          from playwright.sync_api import sync_playwright
+
+          base, out = "http://127.0.0.1:8765", sys.argv[1]
+          runs = json.load(urllib.request.urlopen(base + "/api/runs"))["runs"]
+          run_id = next(r["run_id"] for r in runs if r["pipeline"] == "demo")
+          with sync_playwright() as p:
+              page = p.chromium.launch().new_page(viewport={"width": 1280, "height": 800})
+
+              def shot(route, name, click=None, wait=".card"):
+                  page.goto(f"{base}/#/{route}")
+                  page.wait_for_selector(wait, timeout=20000)
+                  if click:
+                      page.locator(click[0]).nth(click[1]).click()
+                  page.wait_for_timeout(1200)
+                  page.screenshot(path=f"{out}/{name}.png")
+
+              shot("huong-dan", "guide", (".pipe .node", 2))
+              shot("runs", "runs", wait=".grid")
+              shot("runs/" + run_id, "run", (".dag-node", 4), ".dag-node")
+              shot("ket-qua/" + run_id, "results", wait=".tbl")
+          PY
 
       # build_status.py publishes the PO data only encrypted with the PO login
       # (tools/encrypt_po.py); without the two secrets nothing is published under /po/.
