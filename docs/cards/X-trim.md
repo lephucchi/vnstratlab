@@ -3,7 +3,7 @@ id: X-trim
 title: Lean tests, smaller PR CI, one-round reviews (owner decision 2026-11-26)
 milestone: M1.4
 release: v0.1.0
-status: in-progress
+status: done
 branch: chore/X-trim-lean-tests
 due: 2026-11-27
 ---

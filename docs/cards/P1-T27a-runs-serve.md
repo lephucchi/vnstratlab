@@ -3,7 +3,7 @@ id: P1-T27a
 title: Run registry (DAG runner, per-task logs) and `vnstratlab serve` API
 milestone: M1.4
 release: v0.1.0
-status: in-progress
+status: done
 branch: feat/P1-T27a-runs-serve
 due: 2026-11-28
 ---
