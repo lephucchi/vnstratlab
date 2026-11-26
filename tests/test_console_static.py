@@ -97,6 +97,7 @@ def test_nav_routes_exist_in_router() -> None:
         "runs",
         "du-lieu",
         "ket-qua",
+        "co-phieu",
         "chien-luoc",
         "cau-hinh",
     ]
@@ -127,4 +128,22 @@ def test_no_order_ui() -> None:
         text = path.read_text(encoding="utf-8")
         # the only allowed mention is the "recommend only" disclaimer itself
         text = text.replace("không đặt lệnh", "").replace("không bao giờ đặt lệnh", "")
+        text = text.replace("tự đặt lệnh", "")  # the recommendation disclaimer
         assert not ORDER_WORDS.search(text), path.name
+
+
+def test_stock_pages_are_wired() -> None:
+    js = STATIC_DIR / "js"
+    assert (js / "stocks.js").is_file()
+    assert (js / "recs.js").is_file()
+    main = (js / "main.js").read_text(encoding="utf-8")
+    assert 'page === "co-phieu"' in main
+    palette = (js / "palette.js").read_text(encoding="utf-8")
+    assert "Phân tích mã" in palette
+    assert "Xem khuyến nghị" in palette
+    mock = (js / "mock.js").read_text(encoding="utf-8")
+    for path in ("recommendations/all", "stocks/*/analyze", "stocks/*/analysis", "stocks/compare"):
+        assert path in mock, path
+    recs = (js / "recs.js").read_text(encoding="utf-8")
+    assert "Bản xem trước — chưa qua lab chọn lọc" in recs
+    assert "tự quyết định và tự đặt lệnh" in recs

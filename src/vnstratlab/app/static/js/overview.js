@@ -1,4 +1,5 @@
 // Tổng quan: data freshness, last runs, quick actions, gaps by severity, strategies/trials, VERIFY.
+import { renderRecsMini } from "./recs.js";
 import { pipelineButton } from "./runs.js";
 import { cliLine, emptyState, pageHead } from "./ui.js";
 import { api, cliOf, errorBox, fmtAgo, fmtDur, fmtInt, h } from "./util.js";
@@ -104,5 +105,5 @@ export async function renderOverview(root) {
     h("div", { class: "sevs" }, [["high", "Cao"], ["medium", "Trung bình"], ["low", "Thấp"]].map(([k, label]) => h("a", { class: "sevbox", href: "#/du-lieu" }, h("div", { class: "value mono" }, String(ov.gaps[k])), h("span", { class: `sev sev-${k}` }, label))))
   );
 
-  root.append(h("div", { class: "grid-2" }, freshness(ov.store), quick), h("div", { class: "grid-2" }, runsCard, gapsCard));
+  root.append(await renderRecsMini(), h("div", { class: "grid-2" }, freshness(ov.store), quick), h("div", { class: "grid-2" }, runsCard, gapsCard));
 }

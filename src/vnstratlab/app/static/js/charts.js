@@ -40,13 +40,14 @@ function nearest(xs, target) {
 
 /**
  * Line chart. ``set({series, bars, yFmt, area})``.
- * series: [{id, label, x: [ms], y: [number|null], stroke?, dash?, width?}]; bars: {x:[ms], y:[number]} drawn small at the bottom.
+ * series: [{id, label, x: [ms], y: [number|null], stroke?, dash?, width?}]; bars: {x:[ms], y:[number]} drawn small at the bottom;
+ * markers: [{x: ms, y: number, side: "in"|"out", label}] drawn as triangles on the first series (filled up = in, hollow down = out).
  */
 export function lineChart({ height = 300 } = {}) {
   const svg = h("svg", { class: "chart", role: "img" });
   const tip = h("div", { class: "chart-tip", hidden: true });
   const el = h("div", { class: "chart-wrap" }, svg, tip);
-  let state = { series: [], bars: null, yFmt: (v) => String(v), area: false, label: "Biểu đồ", barFmt: (v) => String(v) };
+  let state = { series: [], bars: null, markers: [], yFmt: (v) => String(v), area: false, label: "Biểu đồ", barFmt: (v) => String(v) };
   let highlight = null;
   const M = { l: 62, r: 12, t: 10, b: 24 };
   let W = 800;
@@ -116,6 +117,14 @@ export function lineChart({ height = 300 } = {}) {
         })
       );
     });
+    for (const mk of state.markers || []) {
+      if (!Number.isFinite(mk.y) || mk.x < x0 || mk.x > x1) continue;
+      const cx = X(mk.x);
+      const up = mk.side === "in";
+      const cy = Y(mk.y) + (up ? 9 : -9);
+      const pts = up ? `${cx},${cy - 5} ${cx - 4.5},${cy + 3.5} ${cx + 4.5},${cy + 3.5}` : `${cx},${cy + 5} ${cx - 4.5},${cy - 3.5} ${cx + 4.5},${cy - 3.5}`;
+      svg.append(h("polygon", { class: `mk ${up ? "in" : "out"}`, points: pts }, h("title", null, `${mk.label || ""} ${up ? "vào" : "ra"} ${isoDay(mk.x)}`)));
+    }
     svg.append(h("g", { class: "hover" }));
   }
 
@@ -139,6 +148,8 @@ export function lineChart({ height = 300 } = {}) {
     const lines = rows.slice(0, 8).map(([s, v]) =>
       h("div", { class: "r" }, h("span", null, h("i", { class: "sw", style: `border-top-color:${s.stroke || "var(--fg)"}${s.dash ? ";border-top-style:dashed" : ""}` }), s.label), h("span", null, state.yFmt(v)))
     );
+    const near = (state.markers || []).filter((mk) => Math.abs(mk.x - xv) <= 2 * 86400000);
+    near.slice(0, 4).forEach((mk) => lines.push(h("div", { class: "r" }, h("span", null, `${mk.side === "in" ? "▲ vào" : "▽ ra"} · ${mk.label || ""}`), h("span", null, ""))));
     if (state.bars) {
       const bi = nearest(state.bars.x, xv);
       lines.push(h("div", { class: "r" }, h("span", null, "Khối lượng"), h("span", null, state.barFmt(state.bars.y[bi]))));

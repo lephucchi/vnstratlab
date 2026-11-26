@@ -7,6 +7,9 @@ All notable changes are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Console stock insight UI (X-stock-ui):** recommendations on Kết quả and a Tổng quan mini card,
+  new Cổ phiếu page (picker, live analysis run, numbers, signals, backtest, risk, compare), palette
+  and tour entries, contract-shaped `?mock=1` data (`docs/cards/stock-insight-api.md`).
 - **Lab statistics (P1-T21):** `vnstratlab.lab.stats` with per-period Sharpe, the Deflated
   Sharpe Ratio (plan Appendix C, non-excess kurtosis, N = every registered trial of the horizon)
   and PBO by CSCV; table `trial_stats` in `lab.duckdb`; `vnstratlab lab stats` with gate-1

@@ -10,6 +10,7 @@ export const ROUTES = [
   ["runs", "Runs", "r"],
   ["du-lieu", "Dữ liệu", "d"],
   ["ket-qua", "Kết quả", "k"],
+  ["co-phieu", "Cổ phiếu", "p"],
   ["chien-luoc", "Chiến lược", "s"],
   ["cau-hinh", "Cấu hình", "c"],
 ];
@@ -55,12 +56,13 @@ async function buildItems() {
   const go = (hash) => () => (location.hash = hash);
   ROUTES.forEach(([id, label, k]) => items.push({ group: "Trang", label, hint: `g ${k}`, run: go(`#/${id}`) }));
   items.push(
+    { group: "Hành động", label: "Xem khuyến nghị", hint: "Kết quả", run: () => ((location.hash = "#/ket-qua"), setTimeout(() => document.getElementById("recs")?.scrollIntoView({ block: "start" }), 700)) },
     { group: "Hành động", label: "Mở terminal", hint: "Ctrl+`", run: () => hooks.openTerminal && hooks.openTerminal() },
     { group: "Hành động", label: "Đổi giao diện sáng/tối", hint: "t", run: toggleTheme },
     { group: "Hành động", label: "Xem phím tắt", hint: "?", run: showShortcuts },
     { group: "Hành động", label: "Tham quan giao diện (Tour)", hint: "", run: () => startTour() }
   );
-  const [pipes, runs, data, strat] = await Promise.all([api("/pipelines"), api("/runs?limit=8"), api("/data/status"), api("/strategies")]);
+  const [pipes, runs, data, strat, stocks] = await Promise.all([api("/pipelines"), api("/runs?limit=8"), api("/data/status"), api("/strategies"), api("/stocks")]);
   if (pipes.ok) pipes.body.pipelines.forEach((p) => items.push({ group: "Chạy quy trình", label: `Chạy: ${p.label_vi}`, hint: p.cli || p.id, run: () => startPipeline(p.id) }));
   const act = runs.ok && runs.body.runs.find((r) => r.status === "running" || r.status === "queued");
   if (act) {
@@ -79,6 +81,7 @@ async function buildItems() {
     const seen = new Set();
     data.body.stores.forEach((s) => (s.tickers || []).forEach((t) => !seen.has(t.ticker) && (seen.add(t.ticker), items.push({ group: "Mã cổ phiếu", label: t.ticker, hint: "Dữ liệu", run: () => ((location.hash = "#/du-lieu"), setTimeout(() => document.querySelector(`[data-ticker="${t.ticker}"]`)?.click(), 600)) }))));
   }
+  if (stocks.ok) stocks.body.tickers.forEach((s) => items.push({ group: "Phân tích mã", label: `Phân tích mã ${s.ticker}${s.name ? ` · ${s.name}` : ""}`, hint: `vnstratlab stock ${s.ticker}`, run: go(`#/co-phieu/${s.ticker}`) }));
   if (strat.ok) strat.body.strategies.forEach((s) => items.push({ group: "Chiến lược", label: `${s.id} · ${s.name_vi}`, hint: s.blocked ? "bị chặn" : "", run: go("#/chien-luoc") }));
   return items;
 }
