@@ -79,12 +79,26 @@ Existing endpoints (P1-T27a) stay unchanged.
 - Every UI action that starts a run also returns/shows its **equivalent CLI command**
   (`POST /api/runs` response gains `cli: "vnstratlab ..."`; `/api/pipelines` items gain `cli`).
 
-## Deviations in the implementation (API PR #86), handled by the UI
-- `pct` config values are raw fractions; the UI shows them x100 with "%".
-- Fields may carry `min_exclusive`, `max_exclusive` and `nullable` (null means off; empty input sends null).
-- Overview `store.tickers` is a list of strings plus `ticker_count`.
-- `POST /api/strategies/{id}/param-sets` may return 409 `features_required`; success returns `index` and `backup`.
-- `DELETE` of a packaged set returns 409 `packaged_set`.
-- Cancel and rerun of a run that is not live return 409 `not_active`; rerun of an unknown pipeline returns 422 `not_rerunnable`.
-- The terminal 202 `argv` starts with "vnstratlab".
-- `backtest_all` is a pipeline (`cli`: `vnstratlab backtest --all`).
+## Implementation notes (X-console-api, additive to the contract above)
+- **Percent values** are the raw config fractions (`0.0015` = 0.15 %); `min`/`max`/`step` of a
+  `pct` field are fractions too and the UI multiplies by 100. A bound that excludes its limit has
+  `min_exclusive` / `max_exclusive: true`; a field that may be `null` (off) has `nullable: true`.
+- **Strategy param-set storage** (user `config.yaml`): `strategies.<id>.user_params: [{params,
+  horizons, enabled?}]` and `strategies.<id>.disabled_params: [packaged index]`. `index` in the API
+  is packaged sets first (0..n-1), then user sets in file order; deleting a user set shifts later
+  user indices (refetch). `horizons_allowed` = the horizons of the packaged entry.
+- `params_schema` items may carry `min_exclusive`. `PARAMS_SCHEMA` lives in
+  `strategies/schemas.py` (not on the strategy classes), so trial ids do not change.
+- `blocked` = the strategy has no config entry or its entry is invalid (`reason` lists why).
+- `trial_ids` is `[]` while the local store has no features (the feature version is part of the
+  trial id); `POST .../param-sets` then answers 409 `features_required`. The listing also returns
+  `feature_version`. `POST .../param-sets` returns `index` and `backup` too.
+- `overview.store.tickers` is a list of tickers (`ticker_count` is the number);
+  `overview.strategies.enabled` counts strategies with at least one enabled set;
+  `verify_count` counts market rules and holidays with status `VERIFY`.
+- `/api/data/prices` also returns `series`; `level` of a quality row is the stored severity.
+- Cancel is checked between tasks, and a `cli` task kills its child at once. A run whose last task
+  was already running when cancel arrived ends `success` (nothing was skipped).
+- Terminal: `cli` of the `refresh` pipeline is the three commands joined with `&&` (display only;
+  the terminal itself never runs `&&`). A rerun of a `cli` run re-checks the command and the terms
+  gate. `init` is listed `allowed: true` with a `reason_vi` hint (needs `--yes`).

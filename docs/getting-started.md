@@ -80,7 +80,7 @@ and a summary table. The window is fixed (2016-01-01 .. 2020-12-31) whatever tod
 Output shape (numbers are illustrative):
 
 ```text
-SYNTHETIC DATA — results say nothing about the real market.
+SYNTHETIC DATA - results say nothing about the real market.
 trial                                   horizon   CAGR    vol  Sharpe   maxDD  turnover  trades
 S01_weekly_reversal n=2                 short    -1.4%   5.4%   -0.23  -10.3%     0.574     364
 S17_equal_weight (benchmark)            short     2.4%   6.0%    0.43   -8.9%     0.065     177
@@ -117,6 +117,31 @@ once; the answer is stored in `<app home>/state/accepted_sources.json`. For an O
 Prices are split-adjusted and Yahoo history starts at different dates per ticker; see
 [data-gaps.md](data-gaps.md). Data is written to `market.duckdb` in your data directory and is
 never part of the repository.
+
+### Walk-forward backtest: `vnstratlab backtest`
+
+After `ingest`, `data rebuild` and `features build` (it never ingests or builds), `backtest` walks
+every **registered** trial forward and stores its out-of-sample return per decision period, ideal
+and executable, in `lab.duckdb` (table `oos_returns`):
+
+```bash
+vnstratlab lab register                       # or add --register below (it says so)
+vnstratlab backtest --strategy S08_momentum   # all its registered parameter sets x horizons
+vnstratlab backtest --all                     # every enabled strategy
+vnstratlab backtest --all --source synthetic  # offline: needs `ingest --source synthetic` first
+vnstratlab backtest --all --mode ideal        # ideal | executable | both (default)
+```
+
+A trial that is not in the registry is refused before anything runs. At each decision day a
+strategy sees only feature rows dated up to that day; a period's return runs from the close of one
+decision day to the close of the next (orders fill at the next open). The table prints, per trial
+and mode, the number of periods, CAGR, volatility, Sharpe, max drawdown and turnover, split into
+**historical** periods (before the trial was registered: in-sample by design) and **forward**
+periods (after: true out-of-sample). Short results use 52 periods a year, medium and long 12.
+Synthetic runs are labelled `SYNTHETIC DATA`; real-data runs carry the Yahoo / survivorship
+(GAP-13) label. Re-running replaces a trial's rows for that source. The same work is the
+`backtest_all` pipeline in the Console, and `GET /api/backtest/summary?source=` returns the
+summary rows.
 
 ### Runs, and the local Console: `vnstratlab serve`
 

@@ -33,12 +33,14 @@ STATUSES = ("queued", "running", "success", "failed", "skipped")
 TERMINAL = ("success", "failed")  # run statuses once it is over
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 LOG_DATE_FORMAT = "%H:%M:%S"
+PARENT_ENV = "VNSTRATLAB_RUN_PARENT"  # set by the Console terminal: the parent run records it
 RUN_ID_RE = re.compile(r"^\d{8}T\d{6}-[a-z0-9_]+-[0-9a-f]{4}$")
 _TASK_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
 _log = logging.getLogger("vnstratlab.runs")
 _BUSY = threading.Lock()  # one run at a time per process
 _active: set[str] = set()
+_cancels: dict[str, threading.Event] = {}  # run id -> its cancel flag (live runs only)
 
 
 class RunError(RuntimeError):
@@ -63,6 +65,7 @@ class RunContext:
     state: dict[str, Any] = field(default_factory=dict)
     exit_stack: ExitStack = field(default_factory=ExitStack)  # closed when the run ends
     progress: Callable[[str], None] | None = None
+    cancel: threading.Event = field(default_factory=threading.Event)  # set by ``request_cancel``
 
     def note(self, message: str) -> None:
         """A progress line: goes to the task log and to the caller's progress callback."""
@@ -206,7 +209,7 @@ class _TaskLog(logging.FileHandler):
     """Writes the ``vnstratlab`` records of one thread to one file."""
 
     def __init__(self, path: Path, thread_id: int) -> None:
-        super().__init__(path, mode="w", encoding="utf-8")
+        super().__init__(path, mode="a", encoding="utf-8")  # a task may also append to it
         self._thread_id = thread_id
         self.setFormatter(logging.Formatter(LOG_FORMAT, LOG_DATE_FORMAT))
         self.addFilter(lambda record: record.thread == self._thread_id)
@@ -242,6 +245,17 @@ class RunResult:
     def raise_for_failure(self) -> None:
         for exc in self.errors.values():
             raise exc
+
+
+def request_cancel(run_id: str) -> bool:
+    """Ask a live run to stop: the running task finishes (a long task may watch ``ctx.cancel``),
+    the remaining tasks are skipped and the run ends failed with reason ``cancelled``.
+    False if the run is not live in this process."""
+    event = _cancels.get(run_id)
+    if event is None or run_id not in _active:
+        return False
+    event.set()
+    return True
 
 
 def make_run_id(pipeline_id: str, now: datetime | None = None) -> str:
@@ -287,6 +301,7 @@ def create_run(home: Path, pipeline: Pipeline, params: Mapping[str, Any] | None 
         run_id = make_run_id(pipeline.id)
         store.run_dir(run_id).mkdir(parents=True, exist_ok=True)
         _active.add(run_id)
+        _cancels[run_id] = threading.Event()
         store.save(_blank_run(run_id, pipeline, params or {}))
         store.prune()
     except BaseException:
@@ -308,6 +323,7 @@ def execute_run(
         return _execute(home, pipeline, run_id, params or {}, progress)
     finally:
         _active.discard(run_id)
+        _cancels.pop(run_id, None)
         _BUSY.release()
 
 
@@ -324,6 +340,8 @@ def _execute(
     by_id = {t["id"]: t for t in run["tasks"]}
     errors: dict[str, BaseException] = {}
     ctx = RunContext(home, run_dir, dict(params), progress=progress)
+    ctx.cancel = _cancels.get(run_id) or ctx.cancel
+    cancelled_skip = False
     t_run = time.perf_counter()
     run.update(status="running", started_at=_now())
     store.save(run)
@@ -331,12 +349,20 @@ def _execute(
         with ctx.exit_stack:
             for task in pipeline.ordered():
                 rec = by_id[task.id]
+                if ctx.cancel.is_set():  # cooperative: only between tasks
+                    rec["status"] = "skipped"
+                    cancelled_skip = True
+                    store.save(run)
+                    continue
                 if any(by_id[u]["status"] != "success" for u in task.upstream):
                     rec["status"] = "skipped"
                     store.save(run)
                     continue
                 _run_task(store, run, rec, task, ctx, run_dir / f"{task.id}.log", errors)
-        run["status"] = "failed" if errors else "success"
+        cancelled = ctx.cancel.is_set() and (cancelled_skip or bool(errors))
+        run["status"] = "failed" if errors or cancelled else "success"
+        if cancelled:
+            run["reason"] = "cancelled"
     except BaseException:
         run["status"] = "failed"
         run["reason"] = "interrupted"
@@ -375,11 +401,27 @@ def _run_task(
                     _log.error("%s", part)
             errors[task.id] = exc
             rec.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+            failed_summary = getattr(exc, "summary", None)  # e.g. a command's exit code
+            if isinstance(failed_summary, Mapping):
+                rec["summary"] = dict(failed_summary)
         else:
             rec.update(status="success", summary=dict(summary or {}))
     rec["ended_at"] = _now()
     rec["duration_s"] = round(time.perf_counter() - t0, 3)
     store.save(run)
+
+
+@contextlib.contextmanager
+def _recording_home(home: Path) -> Iterator[Path]:
+    """``home``, or a throwaway one when the Console terminal started this process: the parent
+    run records the command, so it must not make a second record (stdout is unchanged)."""
+    if not os.environ.get(PARENT_ENV):
+        yield home
+        return
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="vnstratlab-child-", ignore_cleanup_errors=True) as tmp:
+        yield Path(tmp)
 
 
 def run_pipeline(
@@ -393,8 +435,9 @@ def run_pipeline(
     from vnstratlab.runs.pipelines import get_pipeline
 
     pipeline = get_pipeline(pipeline_id)
-    run_id = create_run(home, pipeline, params)
-    return execute_run(home, pipeline, run_id, params, progress=progress)
+    with _recording_home(home) as where:
+        run_id = create_run(where, pipeline, params)
+        return execute_run(where, pipeline, run_id, params, progress=progress)
 
 
 def run_inline(home: Path, pipeline_id: str, label_vi: str, body: Callable[[], None]) -> None:
@@ -415,8 +458,9 @@ def run_inline(home: Path, pipeline_id: str, label_vi: str, body: Callable[[], N
             raise
 
     pipeline = Pipeline(pipeline_id, label_vi, (Task(pipeline_id, label_vi, task_fn),))
-    run_id = create_run(home, pipeline, {})
-    result = execute_run(home, pipeline, run_id)
+    with _recording_home(home) as where:
+        run_id = create_run(where, pipeline, {})
+        result = execute_run(where, pipeline, run_id)
     result.raise_for_failure()
     if clean_exits:
         raise clean_exits[0]

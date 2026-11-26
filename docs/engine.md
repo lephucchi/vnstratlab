@@ -317,6 +317,47 @@ not truly out-of-sample for them. Lab reports always split performance at
 | Before `registered_at` | *historical walk-forward (in-sample by design)* | Gates and selection |
 | After `registered_at` | *forward (true OOS)* | Reported separately; G3 compares the two |
 
+### As implemented (P1-T20)
+
+`vnstratlab.lab.walkforward` and `vnstratlab backtest` (also the `backtest_all` pipeline).
+
+- **Registered first:** `run_trial` calls `ensure_trial` before any strategy code; `run_backtest`
+  checks every selected trial before running any, and registers the missing ones only with
+  `register=True` (`backtest --register`).
+- **Decision slices:** the same helper as `demo` (`demo.decision_targets`): feature rows dated
+  `<= d`, last `lookback_sessions` sessions, through `BaseStrategy.target_weights` (`asof_guard`).
+  Features are past-looking by construction, so no "tomorrow's return" signal can be built from the
+  runner's inputs. The first decision day follows `WARMUP_SESSIONS` (250, the longest feature
+  window) feature sessions unless `start` is given.
+- **Periods:** decision days of the horizon; the return stored for `period_end = d'` is the
+  compounded session return from the close of the previous decision day `d` to the close of `d'`
+  (orders decided at the close of `d`, filled at the next open). The stretch before the first
+  decision day and after the last one is dropped. Per-period turnover is the sum of session
+  turnover over the period.
+- **Modes:** `ideal` (fractional shares, `engine.ideal_capital_vnd`, costs on, no risk layer, as in
+  section 10) and `executable` (the horizon book's capital, lots and odd lots on, `RiskLayer`,
+  cooldown of one decision period in sessions, as in `demo`). Ideal equals the frictionless
+  equal-weight book only while cash does not bind (a fill at a higher open than the sizing close
+  is cash-limited when the weights sum to 1).
+- **Storage:** `lab.duckdb` table `oos_returns(trial_id, horizon, mode, period_end, ret, turnover,
+  source, feature_version, engine_version, run_id, computed_at, in_sample_by_design)`, primary key
+  `(trial_id, mode, period_end, source)`; a re-run replaces the trial's rows for that mode and
+  source. `in_sample_by_design = period_end <= the Vietnam date of registered_at` (a period ending
+  on the registration day counts as historical).
+- **Summary:** per trial, mode and segment (historical / forward): periods, CAGR, volatility,
+  Sharpe, max drawdown, mean turnover of traded periods; `lab.metrics` formulas with 52 periods a
+  year for short and 12 for medium and long. CAGR counts one period per stored decision period:
+  a decision day skipped because it is not a session still counts as one period, so a series
+  with gaps is annualised as if it had none.
+- **Trials:** `backtest --all` / `--strategy` run the registry records of the current
+  `feature_version` and `ENGINE_VERSION` (not the config), rebuilt from id, params and horizon
+  with the code hash checked; a record that cannot be rebuilt is reported as not runnable, never
+  skipped silently. The summary shows only trials of the current versions.
+- **Fitted components:** none yet. `fit_cutoff(sessions, d, label_sessions, embargo)` is the hook
+  for S07 / S16 (P1-T31): the last session whose label is known on `d`, minus the embargo.
+- **Source label:** `synthetic` results are labelled `SYNTHETIC DATA`; others carry the Yahoo /
+  GAP-13 survivorship note.
+
 ## 13. Reproducibility
 
 Every run writes a `run_manifest`: run id, command, package version, git commit,

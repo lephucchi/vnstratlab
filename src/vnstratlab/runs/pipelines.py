@@ -4,6 +4,9 @@
   market (the stages of ``vnstratlab.demo``; nothing touches the user's stores or trial registry).
 - ``refresh``: ingest -> rebuild -> features on the configured source (real data).
 - ``ingest``, ``rebuild``, ``features``: one task each.
+- ``backtest_all``: features (check only, never ingests or builds) -> backtest (walk-forward of the
+  registered trials, results in ``lab.duckdb``) -> report. Parameters: ``source``, ``strategy``,
+  ``modes``, ``register``, ``start``, ``end``; all optional.
 
 Heavy imports (pandas, duckdb) happen inside the task functions, so importing this module is cheap.
 """
@@ -11,6 +14,7 @@ Heavy imports (pandas, duckdb) happen inside the task functions, so importing th
 from __future__ import annotations
 
 import importlib.util
+import logging
 import tempfile
 from collections.abc import Mapping
 from datetime import date
@@ -180,6 +184,80 @@ def _real_features(ctx: RunContext) -> Mapping[str, Any]:
     }
 
 
+# ------------------------------------------------------------------ backtest tasks
+
+
+def _bt_source(ctx: RunContext) -> str:
+    given = ctx.params.get("source")
+    return str(given) if given else _config(ctx).data.source
+
+
+def _bt_features(ctx: RunContext) -> Mapping[str, Any]:
+    """Check only: the features of the source are built. Never ingests, rebuilds or builds."""
+    from vnstratlab.data.protocol import SourceError
+    from vnstratlab.data.store import MarketStore, kind_of_source
+    from vnstratlab.lab.trials import TrialError, store_feature_version
+
+    source = _bt_source(ctx)
+    db_path = get_paths(ctx.home).market_db_for(kind_of_source(source))
+    if not db_path.is_file():
+        raise SourceError(f"no store at {db_path}: run the refresh pipeline first")
+    with MarketStore(db_path, kind_of_source(source), read_only=True) as store:
+        try:
+            version = store_feature_version(store)
+        except TrialError as exc:
+            raise SourceError(f"{exc} (run the refresh pipeline)") from None
+    ctx.note(f"features of {source} are built (version {version})")
+    return {"source": source, "feature_version": version}
+
+
+def _bt_backtest(ctx: RunContext) -> Mapping[str, Any]:
+    from vnstratlab.lab.walkforward import run_backtest
+
+    modes = str(ctx.params.get("modes") or "both")
+    result = run_backtest(
+        _config(ctx),
+        get_paths(ctx.home),
+        source=_bt_source(ctx),
+        strategy_id=ctx.params.get("strategy") or None,
+        modes=("ideal", "executable") if modes == "both" else (modes,),
+        register=bool(ctx.params.get("register", False)),
+        run_id=ctx.run_dir.name,
+        start=_opt_date(ctx.params.get("start")),
+        end=_opt_date(ctx.params.get("end")),
+        progress=ctx.note,
+    )
+    ctx.state["backtest"] = result
+    unrunnable = logging.getLogger("vnstratlab.runs")
+    for item in result.not_runnable:
+        unrunnable.warning("trial %s not runnable: %s", item.trial_id, item.reason)
+    return {
+        "source": result.source,
+        "trials": len(result.trials),
+        "not_runnable": [{"trial_id": n.trial_id, "reason": n.reason} for n in result.not_runnable],
+        "not_runnable_count": len(result.not_runnable),
+        "registered_now": len(result.registered_now),
+        "rows_written": result.rows_written,
+    }
+
+
+def _bt_report(ctx: RunContext) -> Mapping[str, Any]:
+    from vnstratlab.lab.walkforward import load_summary
+
+    result = ctx.state["backtest"]
+    summary = load_summary(get_paths(ctx.home), result.source, result.trials, result.modes)
+    ctx.state["backtest_summary"] = summary
+    out = ctx.run_dir / "backtest"
+    out.mkdir(parents=True, exist_ok=True)
+    summary.to_csv(out / "summary.csv", index=False, lineterminator="\n")
+    ctx.note(result.label)
+    return {"source": result.source, "trials": len(result.trials), "summary_rows": len(summary)}
+
+
+def _opt_date(value: object) -> date | None:
+    return None if value is None else _as_date(value, date.min)
+
+
 # ------------------------------------------------------------------ registry
 
 _INGEST = Task("ingest", "Tải dữ liệu", _real_ingest)
@@ -209,9 +287,19 @@ def _build() -> dict[str, Pipeline]:
             _FEATURES,
         ),
     )
+    backtest_all = Pipeline(
+        "backtest_all",
+        "Chạy backtest walk-forward",
+        (
+            Task("features", "Kiểm tra đặc trưng", _bt_features),
+            Task("backtest", "Chạy walk-forward", _bt_backtest, ("features",)),
+            Task("report", "Lập báo cáo", _bt_report, ("backtest",)),
+        ),
+    )
     return {
         "demo": demo,
         "refresh": refresh,
+        "backtest_all": backtest_all,
         "ingest": Pipeline("ingest", "Tải dữ liệu", (Task("ingest", "Tải dữ liệu", _real_ingest),)),
         "rebuild": Pipeline(
             "rebuild", "Dựng lại chuỗi giá", (Task("rebuild", "Dựng lại chuỗi giá", _real_rebuild),)
