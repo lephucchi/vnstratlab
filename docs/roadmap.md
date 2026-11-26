@@ -33,7 +33,7 @@ Planned dates; the PO dashboard shows the live status of each card.
 | P1-T06 | Corporate actions and adjusted prices (respects `price_basis`) ✅ (+ T06b–T06e) | P1-T38 | done 2026-11-21 | — |
 | P1-T10 | Feature store v1 ✅ | P1-T06 | done 2026-11-21 | — |
 | P1-T11 … P1-T19 | Engine, risk, strategies (T11–T17, T19 ✅; T18 and S13 blocked on P1-T07, S06 on P1-T04) | P1-T36 | 2026-11-30 → 2026-12-18 | — |
-| P1-T32, P1-T35 | `demo` (in progress, #59), `init` | P1-T19 | week of 2026-11-30 | `feat/P1-T32-demo` |
+| P1-T32, P1-T35 | `demo` ✅, `init` ✅ | P1-T19 | done 2026-11-26 | — |
 | release/v0.1.0 | Gate G3 (reality analyst) and G4 (owner) | all above | 2026-12-28 | — |
 
 > **v0.1.0 scope (manager decision delegated by the owner, 2026-11-26).** Not in v0.1.0:

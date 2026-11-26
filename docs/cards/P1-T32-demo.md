@@ -3,7 +3,7 @@ id: P1-T32
 title: vnstratlab demo — offline end-to-end run on synthetic data
 milestone: M1.4 Strategies
 release: v0.1.0
-status: in review
+status: done
 branch: feat/P1-T32-demo
 due: 2026-12-22
 ---

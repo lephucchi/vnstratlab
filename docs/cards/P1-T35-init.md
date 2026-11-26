@@ -3,8 +3,8 @@ id: P1-T35
 title: vnstratlab init — interactive user config wizard
 milestone: M1.4
 release: v0.1.0
-status: in progress
-branch: feat/P1-T35-init
+status: done
+branch: feat/P1-T35-init-v2
 due: 2026-12-22
 ---
 
