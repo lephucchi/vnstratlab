@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795698069494,
+  "lastUpdate": 1795698154468,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1825,6 +1825,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.00031766793698533095",
             "extra": "mean: 10.207179222222843 msec\nrounds: 18"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8f24b1886f6797ef933d57a87fac75b23e0c7cd2",
+          "message": "feat(app): Console v2 API: overview, cancel/rerun, config editing, strategy param sets, prices, built-in terminal (#86)\n\nCloses #80. Config edits via init_wizard (validated, atomic, .bak), user param sets registered before use (schemas in strategies/schemas.py, no trial-id churn), cancel/rerun, overview/prices/quality, dbt-style terminal (vnstratlab subcommands only, shell=False, stdin closed, terms gate, one run record per command), cli field on pipelines. G2 light (manager): subprocess and guard reviewed.",
+          "timestamp": "2026-11-26T20:01:57+07:00",
+          "tree_id": "e63a9e6204850e7a663d476f3ae5f1a0ba9ffd6d",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/8f24b1886f6797ef933d57a87fac75b23e0c7cd2"
+        },
+        "date": 1795698153731,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 3.531428758937351,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009703431922977438",
+            "extra": "mean: 283.1715059999998 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 99.69958134428222,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0004043630682126185",
+            "extra": "mean: 10.030132388889415 msec\nrounds: 18"
           }
         ]
       }
