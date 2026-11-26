@@ -7,6 +7,7 @@ import { renderOverview } from "./overview.js";
 import { renderResults } from "./results.js";
 import { renderGrid } from "./runs.js";
 import { renderRun } from "./runview.js";
+import { renderStocks } from "./stocks.js";
 import { renderStrategies } from "./strategies.js";
 import { createTerminal } from "./terminal.js";
 import { startTracker } from "./tracker.js";
@@ -67,6 +68,7 @@ async function route() {
   else if (page === "runs") result = arg ? renderRun(root, arg) : renderGrid(root);
   else if (page === "du-lieu") result = renderData(root);
   else if (page === "ket-qua") result = renderResults(root, arg, latestResultsHref);
+  else if (page === "co-phieu") result = renderStocks(root, arg);
   else if (page === "chien-luoc") result = renderStrategies(root);
   else if (page === "cau-hinh") result = renderConfig(root);
   else root.append(h("p", null, "Không tìm thấy trang. ", h("a", { href: "#/tong-quan" }, "Về Tổng quan")));

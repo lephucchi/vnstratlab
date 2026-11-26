@@ -2,6 +2,8 @@
 // Runs progress in real time so the tracker, toasts, cancel, rerun, logs and the terminal can be tried.
 // Shapes follow docs/cards/console-v2-api.md plus the existing /api endpoints.
 
+import { createStockMock } from "./mock-stocks.js";
+
 const reply = (status, body) => ({ ok: status >= 200 && status < 300, status, body });
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -34,6 +36,9 @@ const PIPELINES = [
   { id: "rebuild", label_vi: "Dựng lại chuỗi giá", needs_source_terms: false, cli: "vnstratlab data rebuild", tasks: [T("rebuild", "Dựng lại chuỗi giá")] },
   { id: "features", label_vi: "Tính đặc trưng", needs_source_terms: false, cli: "vnstratlab features build", tasks: [T("features", "Tính đặc trưng")] },
 ].map((p) => ({ ...p, edges: p.tasks.flatMap((t) => t.upstream.map((u) => [u, t.id])) }));
+// Per-ticker analysis (docs/cards/stock-insight-api.md): started from the Cổ phiếu page, not listed in /pipelines.
+const STOCK_PIPELINE = { id: "stock_analysis", label_vi: "Phân tích cổ phiếu", needs_source_terms: false, cli: "vnstratlab stock <TICKER>", tasks: [T("load", "Đọc giá và đặc trưng"), T("features", "Tính đặc trưng", ["load"]), T("signals", "Tín hiệu chiến lược", ["features"]), T("backtest", "Đối chiếu backtest", ["signals"]), T("report", "Lập báo cáo", ["backtest"])] };
+STOCK_PIPELINE.edges = STOCK_PIPELINE.tasks.flatMap((t) => t.upstream.map((u) => [u, t.id]));
 
 // ---------------- runs ----------------
 const MIN = 60000;
@@ -41,8 +46,8 @@ const TASK_MS = 2200;
 let seq = 0;
 const runs = []; // newest first
 
-function mkRun(pipelineId, { label, createdAgo = 0, sim = true, planMs, command = null } = {}) {
-  const p = PIPELINES.find((x) => x.id === pipelineId);
+function mkRun(pipelineId, { label, createdAgo = 0, sim = true, planMs, command = null, params = {} } = {}) {
+  const p = [...PIPELINES, STOCK_PIPELINE].find((x) => x.id === pipelineId);
   const tasks = (p ? p.tasks : [T("cli", label || command || "cli")]).map((t) => ({ ...t, planMs: planMs ? planMs[t.id] || TASK_MS : pipelineId === "cli" ? 3600 : TASK_MS }));
   const created = Date.now() - createdAgo;
   const run = {
@@ -54,6 +59,7 @@ function mkRun(pipelineId, { label, createdAgo = 0, sim = true, planMs, command 
     tasks,
     sim: sim ? { start: created } : null,
     command,
+    params,
     exit_code: 0,
   };
   runs.unshift(run);
@@ -107,7 +113,7 @@ function view(run) {
     started_at: new Date(started).toISOString(),
     ended_at: done ? new Date(Math.min(now, endAt || now)).toISOString() : null,
     duration_s: done ? (run.fixed ? out.reduce((a, x) => a + (x.duration_s || 0), 0) : Math.max(0, (Math.min(now, endAt) - started) / 1000)) : (now - started) / 1000,
-    params: {},
+    params: run.params || {},
     tasks: out,
   };
 }
@@ -151,6 +157,9 @@ const LOG = {
   strategies: ["đăng ký 24 trial từ 8 chiến lược", "S06 bị chặn (GAP-04): bỏ qua", "tính danh mục mục tiêu cho 3 sổ", "mỗi trial được đếm trong registry"],
   simulate: ["mô phỏng khớp lệnh theo luật HOSE (T+2, lô 100)", "áp phí 0,15% và thuế 0,1% [VERIFY]", "cầu dao 10% không kích hoạt", "xong 24 trial, 1.804 lệnh mô phỏng"],
   report: ["tổng hợp bảng chỉ số", "vẽ đường vốn từng trial", "ghi summary.csv và equity/*.csv", "báo cáo SYNTHETIC: không nói gì về thị trường thật"],
+  load: ["đọc giá điều chỉnh và giá thực thi của mã", "chỉ dùng dữ liệu đến phiên mới nhất (asof)", "13 mã trong vũ trụ để xếp hạng"],
+  signals: ["tính xếp hạng của mã theo từng chiến lược đã đăng ký", "chỉ dùng dữ liệu <= asof (không nhìn trước)", "ghi tín hiệu và lịch sử chọn mã"],
+  backtest: ["đối chiếu lịch sử chọn mã với lợi suất kỳ kế tiếp", "tính đóng góp theo chiến lược và buy & hold", "mỗi trial được đếm trong registry"],
   cli: ["vnstratlab: khởi động", "đọc cấu hình từ config.yaml", "thực hiện lệnh…", "xong"],
 };
 function logLines(run, task, v) {
@@ -441,6 +450,24 @@ function postCli(body) {
   return reply(202, { run_id: run.run_id, argv: ["vnstratlab", ...toks] });
 }
 
+// ---------------- stock pages ----------------
+let stockApi = null;
+const stock = () => (stockApi = stockApi || createStockMock({ TICKERS, DATES, PRICES, capitalFor: (hz) => effective().books[hz].capital_vnd, trialsTotal }));
+const SEEDED_ANALYSES = new Set(["VCB", "LPB", "BID"]); // analyses "already stored" when the Console opens
+const STOCK_PLAN = { load: 1100, features: 900, signals: 1300, backtest: 1100, report: 800 };
+function startStockRun(ticker, body) {
+  const run = mkRun("stock_analysis", { planMs: STOCK_PLAN, params: { ticker, source: body.source || "synthetic", horizons: body.horizons || ["short", "medium", "long"] } });
+  run.label_vi = `Phân tích ${ticker}`;
+  run.cli = `vnstratlab stock ${ticker}`;
+  return run;
+}
+function storedAnalysis(ticker) {
+  const done = runs.find((r) => r.pipeline === "stock_analysis" && r.params.ticker === ticker && view(r).status === "success");
+  if (done) return { runId: done.run_id, generatedAt: view(done).ended_at };
+  if (SEEDED_ANALYSES.has(ticker)) return { runId: `seed-stock-${ticker}`, generatedAt: new Date(Date.now() - 3 * 60 * MIN).toISOString() };
+  return null;
+}
+
 // ---------------- router ----------------
 export function mockApi(path, init) {
   const method = (init.method || "GET").toUpperCase();
@@ -473,6 +500,23 @@ export function mockApi(path, init) {
         gaps: { high: GAPS.filter((g) => g.severity === "high").length, medium: GAPS.filter((g) => g.severity === "medium").length, low: GAPS.filter((g) => g.severity === "low").length },
         verify_count: 4, strategies: { registered: STRATS.filter((s) => !s.blocked).length, enabled: STRATS.reduce((a, s) => a + s.param_sets.filter((p) => p.enabled).length, 0), trials: trialsTotal() },
       });
+    }
+    if (m("recommendations/all")) return R(200, stock().allRecommendations());
+    if (m("recommendations")) {
+      const hz = q.get("horizon") || "short";
+      return ["short", "medium", "long"].includes(hz) ? R(200, stock().recommendation(hz)) : R(422, { error: "invalid_horizon", message: "horizon phải là short, medium hoặc long" });
+    }
+    if (m("stocks")) return R(200, stock().stocksList());
+    if (m("stocks/compare")) {
+      const tks = (q.get("tickers") || "").split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
+      if (!tks.length || tks.length > 4 || tks.some((t) => !stock().has(t))) return R(422, { error: "invalid_tickers", message: "Chọn từ 1 đến 4 mã trong vũ trụ" });
+      return R(200, stock().compare(tks.filter((t) => storedAnalysis(t)), tks.filter((t) => !storedAnalysis(t))));
+    }
+    if ((x = m("stocks/*/analysis"))) {
+      const tk = x[0].toUpperCase();
+      if (!stock().has(tk)) return R(404, { error: "unknown_ticker", ticker: tk });
+      const st = storedAnalysis(tk);
+      return st ? R(200, stock().analysis(tk, st)) : R(404, { error: "no_analysis", ticker: tk });
     }
     if (m("pipelines")) return R(200, { pipelines: clone(PIPELINES) });
     if (m("runs")) return R(200, { runs: runs.slice(0, Number(q.get("limit") || 20)).map(view) });
@@ -534,12 +578,20 @@ export function mockApi(path, init) {
       const r = runs.find((y) => y.run_id === x[0]);
       if (!r) return R(404, { error: "not_found" });
       if (view(r).status === "running" || view(r).status === "queued") return R(409, { error: "not_active", run_id: x[0] });
-      if (r.pipeline !== "cli" && !PIPELINES.some((y) => y.id === r.pipeline)) return R(422, { error: "not_rerunnable" });
+      if (r.pipeline !== "cli" && r.pipeline !== "stock_analysis" && !PIPELINES.some((y) => y.id === r.pipeline)) return R(422, { error: "not_rerunnable" });
       const act = activeRun();
       if (act) return R(409, { error: "busy", active_run_id: act.run_id });
-      const n = r.command ? mkRun("cli", { command: r.command }) : mkRun(r.pipeline);
+      const n = r.command ? mkRun("cli", { command: r.command }) : r.pipeline === "stock_analysis" ? startStockRun(r.params.ticker, r.params) : mkRun(r.pipeline);
       n.label_vi = r.label_vi;
       return R(202, { run_id: n.run_id, pipeline: n.pipeline, cli: n.cli });
+    }
+    if ((x = m("stocks/*/analyze"))) {
+      const tk = x[0].toUpperCase();
+      if (!stock().has(tk)) return R(404, { error: "unknown_ticker", ticker: tk });
+      const act = activeRun();
+      if (act) return R(409, { error: "busy", active_run_id: act.run_id });
+      const run = startStockRun(tk, body);
+      return R(202, { run_id: run.run_id, cli: run.cli });
     }
     if (m("cli")) return Promise.resolve(postCli(body));
     if (m("config/validate")) {

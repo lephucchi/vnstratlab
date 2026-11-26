@@ -1,5 +1,6 @@
 // Kết quả: synthetic banner, sortable/filterable table, trial checkboxes drive the equity chart.
 import { lineChart, toMs } from "./charts.js";
+import { renderRecsPanel } from "./recs.js";
 import { emptyState, pageHead, segmented } from "./ui.js";
 import { api, errorBox, fmtNum, h } from "./util.js";
 
@@ -128,7 +129,9 @@ function view(rows, equity) {
 }
 
 export async function renderResults(root, runId, latest) {
-  root.append(pageHead("Kết quả", "Bảng chỉ số và đường vốn của demo"));
+  root.append(pageHead("Kết quả", "Khuyến nghị hiện tại và kết quả chạy thử"));
+  root.append(await renderRecsPanel());
+  root.append(h("h2", { class: "section-title" }, "Kết quả chạy thử (demo)"), h("p", { class: "muted small" }, "Bảng chỉ số và đường vốn của lần chạy demo trên dữ liệu giả lập: để xem phương pháp hoạt động, không phải khuyến nghị."));
   let id = runId;
   if (!id) {
     const href = await latest();

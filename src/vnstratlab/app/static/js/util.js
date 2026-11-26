@@ -91,6 +91,30 @@ export function fmtInt(v) {
   return typeof v === "number" && Number.isFinite(v) ? v.toLocaleString("vi-VN") : "—";
 }
 
+// ---- Vietnamese number formats for the stock pages (fractions in, text out) ----
+const vi = (v, d) => v.toLocaleString("vi-VN", { minimumFractionDigits: d, maximumFractionDigits: d });
+const ok = (v) => typeof v === "number" && Number.isFinite(v);
+/** 0.123 -> "12,3%"; ``sign`` adds "+" to positives. */
+export function fmtPct(v, d = 1, sign = false) {
+  return ok(v) ? `${sign && v > 0 ? "+" : ""}${vi(v * 100, d)}%` : "—";
+}
+/** VND as a full number with thousands separators: 62300 -> "62.300". */
+export function fmtVnd(v) {
+  return ok(v) ? Math.round(v).toLocaleString("vi-VN") : "—";
+}
+/** VND for large sums: "11,0 tr", "1,2 tỷ". */
+export function fmtVndShort(v) {
+  if (!ok(v)) return "—";
+  const a = Math.abs(v);
+  if (a >= 1e9) return `${vi(v / 1e9, 1)} tỷ`;
+  if (a >= 1e6) return `${vi(v / 1e6, 1)} tr`;
+  return Math.round(v).toLocaleString("vi-VN");
+}
+export function fmtNumVi(v, d = 2) {
+  return ok(v) ? vi(v, d) : "—";
+}
+export const fmtDate = (iso) => (iso ? String(iso).slice(0, 10) : "—");
+
 export function statusChip(status) {
   return h("span", { class: `chip st-${status}` }, h("span", { class: "dot" }), STATUS_VI[status] || status);
 }

@@ -20,6 +20,8 @@ const STEPS = [
   { sel: ".pcards", route: "#/runs", title: "Chạy quy trình", text: "Mỗi thẻ có nút chạy và dòng lệnh CLI tương đương để sao chép hoặc mở trong terminal." },
   { sel: ".grid", route: "#/runs", title: "Lưới các lần chạy", text: "Mỗi cột là một lần chạy, mỗi hàng là một tác vụ. Rê chuột vào ô để xem trạng thái, thời gian và lỗi." },
   { sel: ".logs", route: "latest-run", title: "Log của tác vụ", text: "Lọc theo mức, tìm kiếm có tô sáng và nhảy giữa các kết quả, tự cuộn, sao chép từng dòng hoặc tải về." },
+  { sel: ".recs", route: "#/ket-qua", title: "Khuyến nghị hiện tại", text: "Các mã được đề xuất theo ba khung đầu tư, kèm tỷ trọng, vùng mua, số lô, giá cắt lỗ và chi phí. Đây là bản xem trước, chỉ để tham khảo." },
+  { sel: ".stk-picker", route: "#/co-phieu", title: "Phân tích từng cổ phiếu", text: "Chọn một mã rồi bấm Phân tích: bạn thấy số liệu giá, tín hiệu của từng chiến lược, rủi ro và khuyến nghị. Có thể so sánh tối đa 4 mã." },
   { sel: ".cfg-layout", route: "#/cau-hinh", title: "Cấu hình", text: "Sửa tham số của riêng bạn: có kiểm tra tức thì, xem trước khác biệt và sao lưu trước khi lưu." },
 ];
 

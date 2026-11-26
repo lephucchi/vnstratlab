@@ -194,7 +194,7 @@ The page opens in Vietnamese and works offline (no build step, nothing loaded fr
 Geist fonts are bundled under the SIL OFL). It uses the same monochrome look as the intro site and
 the PO dashboard, in light and dark, with a permanent "Chỉ khuyến nghị — không đặt lệnh" tag.
 
-Seven pages in the left nav (a drawer under 760 px): **Tổng quan** (data freshness, last runs,
+Eight pages in the left nav (a drawer under 760 px): **Tổng quan** (data freshness, last runs,
 quick actions, gaps by severity, strategy and trial counts), **Hướng dẫn** (the six-step guide, plus
 a "Tour" that highlights real parts of the page), **Runs** (start a pipeline, filter the grid, hover
 cards, compare two runs; the run page has Hủy / Chạy lại, a DAG and a log panel with search),
@@ -202,6 +202,14 @@ cards, compare two runs; the run page has Hủy / Chạy lại, a DAG and a log 
 (trial table that drives the equity chart, drawdown, comparison with the S17 equal-weight benchmark, run without the risk layer),
 **Chiến lược** (strategies, their param sets, add or delete your own sets) and **Cấu hình**
 (editable config with live validation, a diff preview and a backup on save).
+
+**Kết quả** now opens with "Khuyến nghị hiện tại": the recommended tickers per horizon (weight,
+consensus n/N, buy zone, lots, stop, cost) from `GET /api/recommendations/all`, labelled "Bản xem
+trước — chưa qua lab chọn lọc" with the data label and the disclaimer; the demo results sit below.
+A new **Cổ phiếu** page (`#/co-phieu/<TICKER>`, `g p`) lets you pick a ticker, run the analysis
+(`vnstratlab stock <TICKER>`, live progress) and read the numbers, strategy signals, features,
+backtest contribution, risk sizing, data quality and a MUA / GIỮ / KHÔNG / BÁN recommendation per
+horizon; "So sánh" shows up to four tickers side by side. Both work with `?mock=1`.
 
 Every action shows its equivalent CLI line (copy it or open it in the terminal). A **terminal** is
 docked at the bottom of every page (Ctrl+`): type `vnstratlab ...` commands (Tab completes, ↑/↓

@@ -19,6 +19,9 @@ All notable changes are documented here. The format follows
   counted. The packaged S17 trials run with the risk layer and lose the benchmark label.
 
 ### Added
+- **Console stock insight UI (X-stock-ui):** recommendations on Kết quả and a Tổng quan mini card,
+  new Cổ phiếu page (picker, live analysis run, numbers, signals, backtest, risk, compare), palette
+  and tour entries, contract-shaped `?mock=1` data (`docs/cards/stock-insight-api.md`).
 - **Recommendations preview and per-stock analysis (X-stock-api):** `vnstratlab recommend` and
   `vnstratlab stock TICKER`; `vnstratlab.insight` (equal weight over the registered trials of a
   horizon, then the risk layer once; lot, entry zone, ATR stop and cost from the engine rules;
