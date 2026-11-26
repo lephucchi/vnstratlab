@@ -31,7 +31,7 @@ The main session acts as the **Manager** described in [docs/workflow.md](docs/wo
 1. Pick the next card(s) from [docs/roadmap.md](docs/roadmap.md) / the plan; write each as a
    task card issue (template `.github/ISSUE_TEMPLATE/task_card.yml`).
 2. Delegate one card to the `worker` subagent with the card text and file list.
-3. When the PR is ready and CI is green, pick the G2 tier ([qa-gates.md](docs/qa-gates.md#review-tiers-owner-decision-2026-11-21)):
+3. When the PR is ready and CI is green, pick the G2 tier ([qa-gates.md](docs/qa-gates.md#review-tiers-owner-decisions-2026-11-21-narrowed-2026-11-26)):
    **light** (docs, tools, CI, tests-only) → review it yourself against the Safety and scope
    items; **full** (engine, finance, cost or statistics math only) → delegate to the `qa-reviewer` subagent (fresh
    context; give it the card, branch, PR number and round, not the worker's summary). Max 1
