@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795702571805,
+  "lastUpdate": 1795702965736,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -2015,6 +2015,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002311901237569806",
             "extra": "mean: 15.43471426666656 msec\nrounds: 15"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a0ca27b458c1ca6ddfcfe46763fd0a58c6782d24",
+          "message": "feat(app): Console recommendations on Kết quả and per-stock analysis page (X-stock-ui) (#96)\n\nCloses #94. Recommendations preview (lots, buy zone, ATR stop, cost, consensus, evidence, disclaimer), Cổ phiếu page (picker, live analysis run, MUA/GIỮ/KHÔNG per horizon, chart with strategy markers, signals, features with universe rank, backtest attribution, risk by book, data quality, compare). Checked against the real backend. G2 light (manager).",
+          "timestamp": "2026-11-26T21:22:02+07:00",
+          "tree_id": "69a741ae834e4d09b99ef40aaf61faeae8928452",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/a0ca27b458c1ca6ddfcfe46763fd0a58c6782d24"
+        },
+        "date": 1795702965135,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 1.985176870911548,
+            "unit": "iter/sec",
+            "range": "stddev: 0.013526484418577702",
+            "extra": "mean: 503.7334529999953 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 42.54272914606459,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0008249348844277499",
+            "extra": "mean: 23.505779250001524 msec\nrounds: 12"
           }
         ]
       }
