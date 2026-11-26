@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1795354104135,
+  "lastUpdate": 1795680871088,
   "repoUrl": "https://github.com/lephucchi/vnstratlab",
   "entries": {
     "vnstratlab": [
@@ -1331,6 +1331,44 @@ window.BENCHMARK_DATA = {
             "unit": "iter/sec",
             "range": "stddev: 0.0002778593344295973",
             "extra": "mean: 9.793329083341481 msec\nrounds: 12"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "phucchi12112004@gmail.com",
+            "name": "Lê Phúc Chí",
+            "username": "lephucchi"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cd2c2ec7440a018e69b0baacda9f8333753f9792",
+          "message": "docs: v0.1.0 scope — defer P1-T05/P1-T18/S13, backtest in v0.2, add init (#60)\n\nScope decisions for v0.1.0 (owner-delegated, 2026-11-26).",
+          "timestamp": "2026-11-26T15:13:47+07:00",
+          "tree_id": "ad6fd0397fac7ec6f6cb206b4e2ccaa5fb94c7b5",
+          "url": "https://github.com/lephucchi/vnstratlab/commit/cd2c2ec7440a018e69b0baacda9f8333753f9792"
+        },
+        "date": 1795680870822,
+        "tool": "pytest",
+        "benches": [
+          {
+            "name": "benchmarks/test_bench_features.py::test_bench_compute_features_15_tickers_3000_sessions",
+            "value": 3.0078905632198363,
+            "unit": "iter/sec",
+            "range": "stddev: 0.009774941932288785",
+            "extra": "mean: 332.45890399999683 msec\nrounds: 3"
+          },
+          {
+            "name": "benchmarks/test_bench_smoke.py::test_bench_cli_help",
+            "value": 116.86247948958973,
+            "unit": "iter/sec",
+            "range": "stddev: 0.0001673708742032977",
+            "extra": "mean: 8.557066428571554 msec\nrounds: 14"
           }
         ]
       }
