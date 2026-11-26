@@ -35,6 +35,8 @@ dependencies = [
     "pandas>=2.2",
     "pyarrow>=16",
     "scipy>=1.11",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +48,7 @@ dev = [
     "mypy>=1.10",
     "types-PyYAML",
     "pandas-stubs",
+    "httpx>=0.27",  # fastapi TestClient
     # tools/encrypt_po.py (Pages build): AES-GCM for the PO dashboard data
     "cryptography>=42",
 ]
