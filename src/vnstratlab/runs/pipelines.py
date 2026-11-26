@@ -14,6 +14,7 @@ Heavy imports (pandas, duckdb) happen inside the task functions, so importing th
 from __future__ import annotations
 
 import importlib.util
+import logging
 import tempfile
 from collections.abc import Mapping
 from datetime import date
@@ -227,9 +228,14 @@ def _bt_backtest(ctx: RunContext) -> Mapping[str, Any]:
         progress=ctx.note,
     )
     ctx.state["backtest"] = result
+    unrunnable = logging.getLogger("vnstratlab.runs")
+    for item in result.not_runnable:
+        unrunnable.warning("trial %s not runnable: %s", item.trial_id, item.reason)
     return {
         "source": result.source,
         "trials": len(result.trials),
+        "not_runnable": [{"trial_id": n.trial_id, "reason": n.reason} for n in result.not_runnable],
+        "not_runnable_count": len(result.not_runnable),
         "registered_now": len(result.registered_now),
         "rows_written": result.rows_written,
     }

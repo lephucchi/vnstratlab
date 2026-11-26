@@ -43,7 +43,7 @@ from vnstratlab.lab.walkforward import (
     run_trial,
 )
 from vnstratlab.paths import get_paths
-from vnstratlab.runs import run_pipeline
+from vnstratlab.runs import RunStore, run_pipeline
 from vnstratlab.strategies.base import BaseStrategy, LookaheadError, Strategy
 from vnstratlab.strategies.builtin.s01_weekly_reversal import S01WeeklyReversal
 from vnstratlab.strategies.builtin.s17_equal_weight import S17EqualWeight
@@ -260,6 +260,16 @@ def test_trials_come_from_the_registry_and_unrunnable_ones_are_reported(
     assert "hash mismatch" in reasons[stale.trial_id]
     assert "unknown strategy id" in reasons["u" * 16]
     assert len(reasons) == 2  # nothing skipped silently
+
+    piped = run_pipeline(home, "backtest_all", {"source": "synthetic", "register": True})
+    piped.raise_for_failure()
+    task = piped.state["backtest"]
+    assert set(reasons) <= {n.trial_id for n in task.not_runnable}
+    run = RunStore(home).get(piped.run_id)
+    assert run is not None
+    summary = next(t for t in run["tasks"] if t["id"] == "backtest")["summary"]
+    assert summary["not_runnable_count"] == 2
+    assert {n["trial_id"] for n in summary["not_runnable"]} == set(reasons)
 
 
 def test_summary_shows_only_trials_of_the_current_engine_version(
