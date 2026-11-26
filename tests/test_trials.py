@@ -89,7 +89,7 @@ def test_count_idempotence_and_new_trials(registry: TrialRegistry) -> None:
     variants = [
         spec_of(SyntheticEqualWeight, 1, code_hash="other-source"),  # code edit
         spec_of(SyntheticEqualWeight, 1, fv="fv2"),
-        spec_of(SyntheticEqualWeight, 1, engine="engine-v2"),
+        spec_of(SyntheticEqualWeight, 1, engine="engine-v3"),
     ]
     assert len({base.trial_id, *(v.trial_id for v in variants)}) == 4
     seen = registry.count()

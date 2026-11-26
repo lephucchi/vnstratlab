@@ -322,6 +322,18 @@ def test_build_demo_from_run_folder(tmp_path: Path) -> None:
     assert demo["equity"]["t1"]["dates"][-1] == "2020-01-28"
 
 
+def test_benchmark_row_is_the_no_risk_layer_one_not_a_packaged_s17_trial() -> None:
+    packaged = {"trial_id": "9cdb6732", "trial": "S17_equal_weight", "horizon": "short"}
+    bench = {
+        "trial_id": "benchmark_S17_equal_weight_short",
+        "trial": "S17_equal_weight (benchmark) no risk layer",
+        "horizon": "short",
+    }
+    assert not bs._is_benchmark(packaged)
+    assert bs._is_benchmark(bench)
+    assert bs._is_benchmark({"trial_id": "b1", "trial": "X (benchmark)"})
+
+
 @pytest.mark.parametrize("missing", [True, False])
 def test_build_demo_unavailable(tmp_path: Path, missing: bool) -> None:
     demo = bs.build_demo(None if missing else tmp_path / "empty")

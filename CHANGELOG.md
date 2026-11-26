@@ -6,6 +6,18 @@ All notable changes are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Circuit breaker re-arms on shadow equity (X-breaker, G3 finding R1, owner decision
+  2026-11-26):** the stateless breaker could never turn off once the book was in cash. While on,
+  a frictionless fractional shadow book follows the pre-breaker targets; the breaker turns off
+  when the shadow has fully recovered to `trigger_peak` and at least one decision period (the
+  stop cooldown, in sessions) has passed since the trigger (hysteresis, owner decision
+  2026-11-26); the peak then resets to the actual equity (engine.md section 7). `ENGINE_VERSION` is now `engine-v2`, so trial ids change.
+- **Demo benchmark is a true equal-weight book (G3 finding R2):** the row
+  `S17_equal_weight (benchmark) no risk layer` runs S17 with `risk=None` (executable, no ATR
+  sizing, position cap, vol scaling, stops or breaker). It is not a trial: not registered and not
+  counted. The packaged S17 trials run with the risk layer and lose the benchmark label.
+
 ### Added
 - **Lab statistics (P1-T21):** `vnstratlab.lab.stats` with per-period Sharpe, the Deflated
   Sharpe Ratio (plan Appendix C, non-excess kurtosis, N = every registered trial of the horizon)

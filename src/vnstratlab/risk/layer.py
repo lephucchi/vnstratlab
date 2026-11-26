@@ -46,13 +46,21 @@ class RiskLayer:
         self.config = config
 
     def breaker_active(self, equity: float, peak_equity: float) -> bool:
-        """Circuit breaker state: ``equity <= peak * (1 - circuit_breaker_drawdown_pct)``.
+        """Circuit breaker trigger: ``equity <= peak * (1 - circuit_breaker_drawdown_pct)``.
 
-        Stateless: the peak is the running maximum of equity (including the initial capital)
-        kept by the caller and is never reset. The breaker re-arms (buys allowed again) as soon as
-        equity is back above that threshold.
+        The trigger is stateless. The state (on/off, ``peak`` and its reset, the shadow book)
+        is kept by the caller (the engine loop, engine.md section 7); the layer is told the
+        state through ``apply(..., breaker=...)``.
         """
         return equity <= peak_equity * (1.0 - self.config.circuit_breaker_drawdown_pct)
+
+    def breaker_rearmed(
+        self, shadow_equity: float, trigger_peak: float, sessions_on: int, period: int
+    ) -> bool:
+        """Re-arm test while the breaker is on (owner decision 2026-11-26, hysteresis): the
+        shadow book is back at ``trigger_peak`` or above (full recovery) **and** at least
+        ``period`` sessions (one decision period) have passed since the trigger close."""
+        return shadow_equity >= trigger_peak and sessions_on >= period
 
     def stop_price(self, entry_price: float, atr_at_entry: float) -> float:
         """ATR stop level: ``entry - atr_stop_multiple * ATR14(at entry)``."""
@@ -69,6 +77,7 @@ class RiskLayer:
         peak_equity: float,
         cooldown: Collection[str] = (),
         returns_history: pd.Series | None = None,
+        breaker: bool | None = None,
     ) -> RiskDecision:
         """Apply the steps in order: cooldown, sizing, max weight, max positions, vol scaling,
         circuit breaker.
@@ -77,6 +86,9 @@ class RiskLayer:
         are per ticker. A ticker without a usable ATR cannot be sized: a new entry is dropped and
         a held position is not increased. Max positions keeps the largest weights after sizing and
         the max-weight cap; ties go to the alphabetically first ticker.
+
+        ``breaker`` is the caller's breaker state; ``None`` falls back to the stateless trigger
+        on ``equity`` and ``peak_equity``.
         """
         if equity <= 0:
             raise ValueError("equity must be positive")
@@ -117,7 +129,7 @@ class RiskLayer:
         if scale < 1.0:
             for t in sorted(w):
                 lower(t, w[t] * scale, "vol_scale")
-        alert = self.breaker_active(equity, peak_equity)  # 6. circuit breaker
+        alert = self.breaker_active(equity, peak_equity) if breaker is None else breaker  # 6.
         if alert:
             log.debug("circuit breaker active: equity %.0f, peak %.0f", equity, peak_equity)
             for t in sorted(w):

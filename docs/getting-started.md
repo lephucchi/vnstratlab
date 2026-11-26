@@ -81,12 +81,14 @@ Output shape (numbers are illustrative):
 
 ```text
 SYNTHETIC DATA - results say nothing about the real market.
-trial                                   horizon   CAGR    vol  Sharpe   maxDD  turnover  trades
-S01_weekly_reversal n=2                 short    -1.4%   5.4%   -0.23  -10.3%     0.574     364
-S17_equal_weight (benchmark)            short     2.4%   6.0%    0.43   -8.9%     0.065     177
+trial                                         horizon    CAGR    vol  Sharpe   maxDD  turnover  trades
+S01_weekly_reversal n=2                       short     -4.8%   6.5%   -0.72  -25.2%     0.596     494
+S17_equal_weight                              short      2.4%   6.0%    0.43   -8.9%     0.065     177
+S17_equal_weight (benchmark) no risk layer    short     10.1%  20.8%    0.57  -26.3%     0.026    1958
 ...
 data window 2016-01-01 .. 2020-12-31 (synthetic data from 2015-01-01, features warm)
 trials run 19, skipped 0
+benchmark rows (3): S17 equal weight without the risk layer; not trials, not registered, not counted
 run time 45.0 s
 no trials were registered (synthetic runs are not lab evidence)
 ```
@@ -175,7 +177,7 @@ quick actions, gaps by severity, strategy and trial counts), **Hướng dẫn** 
 a "Tour" that highlights real parts of the page), **Runs** (start a pipeline, filter the grid, hover
 cards, compare two runs; the run page has Hủy / Chạy lại, a DAG and a log panel with search),
 **Dữ liệu** (tickers with sparklines, price and volume chart, DQ findings, gaps), **Kết quả**
-(trial table that drives the equity chart, drawdown, comparison with the S17 benchmark),
+(trial table that drives the equity chart, drawdown, comparison with the S17 equal-weight benchmark, run without the risk layer),
 **Chiến lược** (strategies, their param sets, add or delete your own sets) and **Cấu hình**
 (editable config with live validation, a diff preview and a backup on save).
 
